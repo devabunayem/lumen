@@ -1,0 +1,26 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/WixTools/
+*.pdb
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & temporary files
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+coverage/
+.vitest/

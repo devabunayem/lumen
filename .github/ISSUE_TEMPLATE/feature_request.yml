@@ -1,0 +1,19 @@
+name: Feature Request
+description: Suggest a new widget, improvement, or capability for Lumen.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: What would you like Lumen to do?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why is this useful?
+      description: Describe the workflow or use case this improves while keeping Lumen fast and private.
+    validations:
+      required: true

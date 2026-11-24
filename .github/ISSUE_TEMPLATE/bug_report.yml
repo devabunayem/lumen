@@ -1,0 +1,42 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour in Lumen on Windows 10 or 11.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for reporting an issue! Please check existing issues before submitting.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly, including what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Lumen
+        2. Hover or click the pill...
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Windows Version
+      options:
+        - Windows 11 (x64)
+        - Windows 11 (ARM64)
+        - Windows 10 1809+ (x64)
+        - Windows 10 1809+ (ARM64)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Lumen Version / Commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true

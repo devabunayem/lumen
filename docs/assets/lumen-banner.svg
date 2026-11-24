@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="Lumen Dynamic Island for Windows Banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#09090B" />
+      <stop offset="50%" stop-color="#111116" />
+      <stop offset="100%" stop-color="#09090B" />
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="18%" r="45%">
+      <stop offset="0%" stop-color="#0A84FF" stop-opacity="0.22" />
+      <stop offset="55%" stop-color="#30D158" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <filter id="pillShadow" x="-10%" y="-20%" width="120%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.7" />
+    </filter>
+  </defs>
+
+  <rect width="1200" height="320" rx="24" fill="url(#bg)" />
+  <rect width="1200" height="320" rx="24" fill="url(#glow)" />
+
+  <!-- Top Notch / Pill Showcase -->
+  <g filter="url(#pillShadow)">
+    <path d="M 380 0 C 396 0 404 6 408 20 L 414 48 C 420 74 434 86 462 86 L 738 86 C 766 86 780 74 786 48 L 792 20 C 796 6 804 0 820 0 Z" fill="#000000" />
+    <path d="M 414 48 C 420 74 434 86 462 86 L 738 86 C 766 86 780 74 786 48" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.2" />
+  </g>
+
+  <!-- Minimal live indicators inside notch -->
+  <circle cx="468" cy="43" r="14" fill="#1C1C1E" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
+  <circle cx="468" cy="43" r="5" fill="#0A84FF" />
+  <text x="600" y="49" text-anchor="middle" fill="#FFFFFF" font-family="Inter, Segoe UI, sans-serif" font-size="18" font-weight="600" letter-spacing="0.4">Lumen</text>
+
+  <!-- Waveform accent -->
+  <g fill="#30D158">
+    <rect x="716" y="37" width="3" height="12" rx="1.5" />
+    <rect x="723" y="31" width="3" height="24" rx="1.5" />
+    <rect x="730" y="35" width="3" height="16" rx="1.5" />
+    <rect x="737" y="39" width="3" height="8" rx="1.5" />
+  </g>
+
+  <!-- Headline & Tagline -->
+  <text x="600" y="182" text-anchor="middle" fill="#FFFFFF" font-family="Inter, Segoe UI, sans-serif" font-size="46" font-weight="700" letter-spacing="-0.8">
+    A little island for your Windows desktop.
+  </text>
+  <text x="600" y="226" text-anchor="middle" fill="rgba(235,235,245,0.68)" font-family="Inter, Segoe UI, sans-serif" font-size="19" font-weight="500">
+    Free &amp; Open-Source Dynamic Island for Windows 10 &amp; 11 · Rust · Tauri v2 · React 19
+  </text>
+
+  <!-- Capsule feature tags -->
+  <g font-family="Inter, Segoe UI, sans-serif" font-size="13" font-weight="600" text-anchor="middle">
+    <rect x="218" y="254" width="130" height="32" rx="16" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+    <text x="283" y="275" fill="#FFFFFF">Music &amp; Lyrics</text>
+
+    <rect x="362" y="254" width="132" height="32" rx="16" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+    <text x="428" y="275" fill="#5AC8FA">Prayer Times</text>
+
+    <rect x="508" y="254" width="118" height="32" rx="16" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+    <text x="567" y="275" fill="#FF9F0A">Pomodoro</text>
+
+    <rect x="640" y="254" width="160" height="32" rx="16" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+    <text x="720" y="275" fill="#30D158">To-do &amp; Water</text>
+
+    <rect x="814" y="254" width="168" height="32" rx="16" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+    <text x="898" y="275" fill="#FFFFFF">Shelf &amp; Privacy HUDs</text>
+  </g>
+</svg>
