@@ -1,0 +1,9 @@
+[package]
+name = "lumen-prayer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offline Islamic prayer time calculations and Bangladesh city presets for Lumen"
+
+[dependencies]
+serde.workspace = true

@@ -1,0 +1,9 @@
+[package]
+name = "lumen-plugins"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Plugin manifest validation and sandbox permissions for third-party Lumen widgets"
+
+[dependencies]
+serde.workspace = true

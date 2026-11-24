@@ -1,0 +1,10 @@
+{
+  "app": {
+    "name": "Lumen",
+    "tagline": "A little island for your desktop."
+  },
+  "states": {
+    "idle": "Ready",
+    "expanded": "Expanded"
+  }
+}

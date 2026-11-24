@@ -1,0 +1,9 @@
+[package]
+name = "lumen-notify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Privacy-first Windows notification pipeline and filters for Lumen"
+
+[dependencies]
+serde.workspace = true
