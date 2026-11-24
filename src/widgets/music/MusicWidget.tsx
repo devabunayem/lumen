@@ -1,4 +1,13 @@
 import { motion, useReducedMotion } from "motion/react";
+import {
+  MusicNoteIcon,
+  NextIcon,
+  PauseIcon,
+  PlayIcon,
+  PrevIcon,
+  VolumeOffIcon,
+  VolumeOnIcon,
+} from "../../design/icons";
 import { getMotionTransition } from "../../design/motion";
 import type { LyricLine, MediaStateSnapshot } from "../../lib/ipc";
 
@@ -49,18 +58,14 @@ export function MusicWidget({
             Nothing playing
           </span>
           <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-            Play Spotify, YouTube, or any media app to control it from Lumen.
+            Play Spotify, YouTube, or any media app to control it here
           </span>
         </div>
         <span
-          className="type-caption rounded-full px-3 py-1"
-          style={{
-            backgroundColor: "var(--surface-button)",
-            color: "var(--text-secondary)",
-          }}
-        >
-          SMTC Ready
-        </span>
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: "var(--text-tertiary)" }}
+        />
       </div>
     );
   }
@@ -99,8 +104,8 @@ export function MusicWidget({
             className="h-full w-full object-cover"
           />
         ) : (
-          <span className="type-title" style={{ color: accent }}>
-            ♪
+          <span style={{ color: accent }}>
+            <MusicNoteIcon size={20} />
           </span>
         )}
       </div>
@@ -231,28 +236,28 @@ export function MusicWidget({
               type="button"
               aria-label="Previous track"
               onClick={() => onCommand("previous")}
-              className="type-caption cursor-pointer rounded-full border-0 px-2.5 py-1"
+              className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
               style={{ backgroundColor: "var(--surface-button)", color: "var(--text-primary)" }}
             >
-              ⏮
+              <PrevIcon size={13} />
             </button>
             <button
               type="button"
               aria-label={active.is_playing ? "Pause" : "Play"}
               onClick={() => onCommand("play_pause")}
-              className="type-caption cursor-pointer rounded-full border-0 px-3 py-1 font-semibold"
-              style={{ backgroundColor: accent, color: "var(--text-primary)" }}
+              className="type-caption flex h-7 w-8 cursor-pointer items-center justify-center rounded-full border-0 font-semibold"
+              style={{ backgroundColor: accent, color: "#000000" }}
             >
-              {active.is_playing ? "⏸" : "▶"}
+              {active.is_playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
             </button>
             <button
               type="button"
               aria-label="Next track"
               onClick={() => onCommand("next")}
-              className="type-caption cursor-pointer rounded-full border-0 px-2.5 py-1"
+              className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
               style={{ backgroundColor: "var(--surface-button)", color: "var(--text-primary)" }}
             >
-              ⏭
+              <NextIcon size={13} />
             </button>
           </div>
 
@@ -261,10 +266,10 @@ export function MusicWidget({
               type="button"
               aria-label={media?.muted ? "Unmute system volume" : "Mute system volume"}
               onClick={() => onCommand("toggle_mute")}
-              className="type-caption cursor-pointer rounded-full border-0 px-2 py-0.5"
+              className="type-caption flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
               style={{ backgroundColor: "var(--surface-button)", color: "var(--text-secondary)" }}
             >
-              {media?.muted ? "🔇" : "🔊"}
+              {media?.muted ? <VolumeOffIcon size={13} /> : <VolumeOnIcon size={13} />}
             </button>
             <input
               type="range"

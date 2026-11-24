@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
+import { CalendarIcon } from "../../design/icons";
 import { getMotionTransition } from "../../design/motion";
 import { requestKeyboardFocus, type TaskItem } from "../../lib/ipc";
 
@@ -54,7 +55,7 @@ export function TodoWidget({ tasks, onAdd, onToggle, onDelete }: TodoWidgetProps
               color: "var(--text-secondary)",
             }}
           >
-            <span className="type-caption">📅</span>
+            <CalendarIcon size={13} />
             {hasDueTasks && (
               <span
                 className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full"
@@ -70,7 +71,7 @@ export function TodoWidget({ tasks, onAdd, onToggle, onDelete }: TodoWidgetProps
               type="text"
               autoFocus
               aria-label="New task title"
-              placeholder="Add task & press Enter..."
+              placeholder="New task"
               value={draft}
               onFocus={() => void requestKeyboardFocus(true)}
               onBlur={() => void requestKeyboardFocus(false)}
@@ -160,7 +161,7 @@ export function TodoWidget({ tasks, onAdd, onToggle, onDelete }: TodoWidgetProps
                       : "1.5px solid var(--text-tertiary)",
                     color: "var(--surface)",
                     fontSize: "10px",
-                    fontWeight: 700,
+                    fontWeight: 600,
                   }}
                 >
                   {task.done ? "✓" : ""}

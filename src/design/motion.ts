@@ -1,19 +1,20 @@
 import type { Transition } from "motion/react";
 
 /**
- * Physics-based spring and fade presets (SRS Section 3.6).
+ * Critically-damped, zero-overshoot springs and smooth crossfade curves.
  */
 export const MOTION_PRESETS = {
   expand: {
     type: "spring",
-    stiffness: 380,
-    damping: 30,
-    mass: 1,
+    stiffness: 330,
+    damping: 34,
+    mass: 0.9,
   },
   collapse: {
     type: "spring",
-    stiffness: 420,
-    damping: 34,
+    stiffness: 370,
+    damping: 36,
+    mass: 0.9,
   },
   pageSwitch: {
     type: "spring",
@@ -22,16 +23,17 @@ export const MOTION_PRESETS = {
   },
   shapeMorph: {
     type: "spring",
-    duration: 0.45,
-    bounce: 0.2,
+    stiffness: 340,
+    damping: 35,
+    mass: 0.9,
   },
   pillHover: {
-    duration: 0.15,
-    ease: "easeOut",
+    duration: 0.14,
+    ease: [0.22, 1, 0.36, 1],
   },
   hideFullscreen: {
-    duration: 0.3,
-    ease: "easeInOut",
+    duration: 0.24,
+    ease: [0.22, 1, 0.36, 1],
   },
   progressSpring: {
     type: "spring",
@@ -45,9 +47,9 @@ export const MOTION_PRESETS = {
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {
-  expandDelayMs: 80,
-  expandStaggerMs: 30,
-  collapseFadeMs: 100,
+  expandDelayMs: 40,
+  expandStaggerMs: 20,
+  collapseFadeMs: 90,
 } as const;
 
 export function getMotionTransition(

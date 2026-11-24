@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
+import { BellIcon, DropletIcon } from "../../design/icons";
 import { getMotionTransition } from "../../design/motion";
 import type { WaterSummary } from "../../lib/ipc";
 
@@ -157,20 +158,20 @@ export function WaterWidget({
               aria-label="Toggle hydration reminders"
               aria-pressed={remindersEnabled}
               onClick={onToggleReminders}
-              className="type-caption cursor-pointer rounded-full border-0 px-2.5"
+              className="type-caption flex w-9 cursor-pointer items-center justify-center rounded-full border-0"
               style={{
                 height: "var(--capsule-height)",
                 backgroundColor: remindersEnabled ? "var(--accent-cyan)" : "var(--surface-button)",
                 color: remindersEnabled ? "var(--surface)" : "var(--text-secondary)",
               }}
             >
-              🔔
+              <BellIcon size={14} />
             </button>
           </div>
         )}
       </div>
 
-      {/* Right block: circular gradient gauge with percentage & droplet (FR-WT-2) */}
+      {/* Right block: circular solid-accent gauge (FR-WT-2) */}
       <div
         className="relative flex h-24 w-24 shrink-0 items-center justify-center"
         style={{
@@ -180,12 +181,6 @@ export function WaterWidget({
         }}
       >
         <svg width="82" height="82" viewBox="0 0 82 82" aria-hidden="true">
-          <defs>
-            <linearGradient id="waterGaugeGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="var(--accent-cyan)" />
-              <stop offset="100%" stopColor="var(--accent-blue)" />
-            </linearGradient>
-          </defs>
           <circle
             cx="41"
             cy="41"
@@ -199,7 +194,7 @@ export function WaterWidget({
             cy="41"
             r={radius}
             fill="none"
-            stroke="url(#waterGaugeGrad)"
+            stroke="var(--accent-blue)"
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={circumference}
@@ -207,12 +202,12 @@ export function WaterWidget({
             transform="rotate(-90 41 41)"
           />
         </svg>
-        <div className="absolute flex flex-col items-center">
-          <span className="text-xs" aria-hidden="true">
-            💧
+        <div className="absolute flex flex-col items-center gap-0.5">
+          <span style={{ color: "var(--accent-blue)" }}>
+            <DropletIcon size={13} />
           </span>
           <span
-            className="type-caption font-bold tabular-nums"
+            className="type-caption font-medium tabular-nums"
             style={{ color: "var(--text-primary)" }}
           >
             {pct}%

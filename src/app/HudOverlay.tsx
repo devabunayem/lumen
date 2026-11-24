@@ -1,4 +1,12 @@
 import { motion, useReducedMotion } from "motion/react";
+import {
+  BatteryIcon,
+  BoltIcon,
+  CapsIcon,
+  SunIcon,
+  VolumeOffIcon,
+  VolumeOnIcon,
+} from "../design/icons";
 import { getMotionTransition } from "../design/motion";
 import type { HudEvent } from "../lib/ipc";
 
@@ -6,20 +14,20 @@ export interface HudOverlayProps {
   hud: HudEvent;
 }
 
-function hudIcon(kind: string): string {
+function renderHudIcon(kind: string) {
   switch (kind) {
     case "volume":
-      return "🔊";
+      return <VolumeOnIcon size={15} />;
     case "mute":
-      return "🔇";
+      return <VolumeOffIcon size={15} />;
     case "caps_lock":
-      return "🔠";
+      return <CapsIcon size={15} />;
     case "battery":
-      return "🔋";
+      return <BatteryIcon size={15} />;
     case "brightness":
-      return "☀️";
+      return <SunIcon size={15} />;
     default:
-      return "⚡";
+      return <BoltIcon size={15} />;
   }
 }
 
@@ -30,9 +38,7 @@ export function HudOverlay({ hud }: HudOverlayProps) {
   return (
     <div className="flex h-full w-full items-center justify-between gap-3 px-4">
       <div className="flex items-center gap-2.5">
-        <span className="text-base" aria-hidden="true">
-          {hudIcon(hud.kind)}
-        </span>
+        <span style={{ color: "var(--text-secondary)" }}>{renderHudIcon(hud.kind)}</span>
         <span className="type-body" style={{ color: "var(--text-primary)" }}>
           {hud.label}
         </span>
@@ -55,13 +61,13 @@ export function HudOverlay({ hud }: HudOverlayProps) {
         </div>
       ) : (
         <span
-          className="type-caption rounded-full px-2.5 py-0.5 font-semibold"
+          className="type-caption rounded-full px-2.5 py-0.5 font-medium"
           style={{
             backgroundColor: hud.active ? "var(--accent-blue)" : "var(--surface-button)",
             color: "var(--text-primary)",
           }}
         >
-          {hud.active ? "ON" : "OFF"}
+          {hud.active ? "On" : "Off"}
         </span>
       )}
     </div>

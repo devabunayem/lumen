@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FileIcon, LinkIcon, NoteIcon } from "../../design/icons";
 import { requestKeyboardFocus, type ShelfItem } from "../../lib/ipc";
 
 export interface ShelfWidgetProps {
@@ -47,14 +48,14 @@ export function ShelfWidget({ items, onAdd, onOpen, onRemove, onClear }: ShelfWi
       style={{
         backgroundColor: "var(--surface-raised)",
         borderRadius: "var(--card-radius)",
-        border: "1px dashed var(--hairline-strong)",
+        border: "1px solid var(--hairline)",
       }}
     >
       <div className="flex items-center gap-2">
         <input
           type="text"
           aria-label="Drop or paste link or note"
-          placeholder="Drop files here or paste URL / note..."
+          placeholder="Drop files or paste a link"
           value={draft}
           onFocus={() => void requestKeyboardFocus(true)}
           onBlur={() => void requestKeyboardFocus(false)}
@@ -113,7 +114,15 @@ export function ShelfWidget({ items, onAdd, onOpen, onRemove, onClear }: ShelfWi
                 opacity: item.available ? 1 : 0.65,
               }}
             >
-              <span>{item.kind === "link" ? "🔗" : item.kind === "file" ? "📄" : "📝"}</span>
+              <span style={{ color: "var(--text-secondary)" }}>
+                {item.kind === "link" ? (
+                  <LinkIcon size={12} />
+                ) : item.kind === "file" ? (
+                  <FileIcon size={12} />
+                ) : (
+                  <NoteIcon size={12} />
+                )}
+              </span>
               <span className="truncate">{item.display_name}</span>
               {!item.available && (
                 <span style={{ color: "var(--accent-red)" }} title="Missing file">

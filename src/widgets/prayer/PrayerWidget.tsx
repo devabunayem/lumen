@@ -30,7 +30,7 @@ export function PrayerWidget({
         }}
       >
         <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-          Calculating offline prayer times...
+          Calculating offline prayer times
         </span>
       </div>
     );
@@ -89,7 +89,10 @@ export function PrayerWidget({
         </div>
 
         <div className="flex items-baseline justify-between gap-2">
-          <span className="type-title text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+          <span
+            className="type-title text-xl font-semibold"
+            style={{ color: "var(--text-primary)" }}
+          >
             {nextName}
           </span>
           <span className="type-body tabular-nums" style={{ color: "var(--accent-cyan)" }}>

@@ -6,8 +6,8 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 
 ### Island Shell & Window Engine
 
-- Pure-black (`#000000`) continuous-curvature SVG **Notch** and **Floating Pill** shapes with Motion spring morphing (`src/design/shapes.ts`)
-- **Hover Auto-Open & Ultra-Slim Notch Return:** Hover opens the expanded island (`150 ms`), leaving shrinks into an ultra-slim `96×14` notch indicator (`350 ms`), and restores the resting clock pill after `5s` (configurable in Settings)
+- Pure-black (`#000000`) continuous **Notch** and **Floating Pill** bezel surfaces with critically-damped Motion springs, uniform `1.5`-stroke SVG line icons, and flicker-free absolute crossfades (`src/design/icons.tsx`, `src/design/motion.ts`)
+- **Hover Auto-Open & Ultra-Slim Notch Return:** Hovering expands directly (`100 ms` intent delay without "Click to open" double-jump), leaving shrinks into an ultra-slim `96×14` notch indicator (`350 ms`), and restores the resting clock pill after `5s` (configurable in Settings)
 - **Pin Lock (`📌`), Typing Protection & Wheel Paging:** Lock the expanded island open while pinning or typing inside widgets, and scroll the mouse wheel to switch pages
 - Compact transparent Win32 window sizing (`260×52` ↔ `660×220`) that never blocks adjacent browser tabs
 - Auto-hide in true fullscreen apps/games (`FR-WIN-4`), single-instance lock, Windows Startup (`HKCU\...\Run`), System Tray controls, and global hotkeys (`Ctrl+Alt+L`, `Ctrl+Alt+Space`)

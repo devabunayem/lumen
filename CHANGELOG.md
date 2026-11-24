@@ -6,8 +6,9 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
-- **Hover Auto-Open & Ultra-Slim 5s Return:** Hovering expands the island (`150 ms` delay); moving the mouse away shrinks it into a `96×14` ultra-slim quiet notch (`350 ms` grace, paused while pinned or typing) before returning to the resting clock pill after `5s` (`hoverReturnSeconds` setting).
-- **Pin Lock & Scroll Paging:** Added an expanded header pin (`📌`) button and throttled mouse-wheel page switching across widgets.
+- **Hover Auto-Open & Ultra-Slim 5s Return:** Hovering expands directly (`100 ms` intent delay without "Click to open" peek jump); moving the mouse away shrinks into a `96×14` ultra-slim quiet notch (`350 ms` grace, paused while pinned or typing) before returning to the resting clock pill after `5s` (`hoverReturnSeconds` setting).
+- **Pin Lock & Scroll Paging:** Added an expanded header pin button and throttled mouse-wheel page switching across widgets.
+- **Unslop Craft & Animation Smoothness Pass:** Replaced all widget/chrome emojis with a unified `1.5`-stroke SVG line icon set (`src/design/icons.tsx`), removed CPU `drop-shadow` & full-size SVG path thrash in favor of hardware-composited surface springs with concave bezel ears, positioned `<AnimatePresence>` layers absolutely to eliminate crossfade vertical jumps, toned springs to critically-damped zero-overshoot motion, and aligned typography weights (`400–600`).
 
 ## [1.0.0] - 2026-11-25
 

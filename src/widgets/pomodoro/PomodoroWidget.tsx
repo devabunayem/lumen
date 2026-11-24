@@ -144,8 +144,11 @@ export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: Pomodoro
             transform="rotate(-90 41 41)"
           />
         </svg>
-        <span className="type-caption absolute font-bold" style={{ color: "var(--accent-orange)" }}>
-          {snap.running ? "LIVE" : "READY"}
+        <span
+          className="type-caption absolute font-medium"
+          style={{ color: "var(--accent-orange)" }}
+        >
+          {snap.running ? "Live" : "Ready"}
         </span>
       </div>
     </div>

@@ -74,16 +74,16 @@ a:focus-visible,
 }
 
 .type-display {
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1.05;
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.08;
   font-variant-numeric: tabular-nums;
 }
 
 .type-title {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .type-body {

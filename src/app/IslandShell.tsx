@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeftIcon, ChevronRightIcon, PinIcon, SettingsIcon } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
-import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import { type AppLanguage, getMessages } from "../i18n";
 import {
@@ -336,17 +336,6 @@ export function IslandShell({
   }, []);
 
   useEffect(() => {
-    if (!isTauriRuntime()) {
-      return;
-    }
-    dispatch({ type: "HOTKEY_TOGGLE_EXPAND" });
-    const collapseTimer = window.setTimeout(() => {
-      dispatch({ type: "ESCAPE" });
-    }, 2200);
-    return () => window.clearTimeout(collapseTimer);
-  }, [dispatch]);
-
-  useEffect(() => {
     void tasksList().then(setTasks);
     void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
     void prayerListCities().then(setPrayerCities);
@@ -531,24 +520,12 @@ export function IslandShell({
       return;
     }
 
-    const delayMs = state === "hidden" ? 280 : 220;
+    const delayMs = state === "hidden" ? 280 : 420;
     const timer = window.setTimeout(() => {
       void setIslandSurfaceMode(false, state === "hidden", false);
     }, delayMs);
     return () => window.clearTimeout(timer);
   }, [width, height, topOffset, state, hideInFullscreen]);
-
-  const shapePath = useMemo(() => {
-    if (isFloatingPill) {
-      return generatePillPath({ width, height });
-    }
-    return generateNotchPath({
-      width,
-      height,
-      earWidth: isSlimQuiet ? 7 : state === "expanded" ? 20 : 12,
-      bottomRadius: isSlimQuiet ? 7 : state === "expanded" ? BASE_GEOMETRY.notchBottomRadius : 16,
-    });
-  }, [isFloatingPill, width, height, state, isSlimQuiet]);
 
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
@@ -583,6 +560,13 @@ export function IslandShell({
       : getMotionTransition("collapse", prefersReducedMotion);
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
+  const surfaceBorderRadius = isFloatingPill
+    ? `${Math.min(28, Math.round(height / 2))}px`
+    : isSlimQuiet
+      ? "0px 0px 8px 8px"
+      : isExpanded
+        ? "0px 0px 28px 28px"
+        : "0px 0px 16px 16px";
 
   return (
     <div
@@ -639,22 +623,22 @@ export function IslandShell({
         }}
         className={`relative select-none ${isHidden ? "pointer-events-none" : "pointer-events-auto cursor-pointer"}`}
         style={{
-          width: `${width}px`,
-          height: `${height}px`,
-          filter: "drop-shadow(0 12px 24px rgba(0, 0, 0, 0.5))",
+          backgroundColor: "var(--surface)",
+          borderColor: "var(--hairline)",
+          borderStyle: "solid",
+          borderWidth: "1px",
+          borderTopWidth: isFloatingPill ? "1px" : "0px",
+          boxShadow: "0 10px 28px rgba(0, 0, 0, 0.42)",
+          transformOrigin: "top center",
         }}
         initial={false}
         animate={{
           width,
           height,
+          borderRadius: surfaceBorderRadius,
           opacity: isHidden ? 0 : 1,
           scaleY: isHidden ? 0.25 : 1,
         }}
-        whileHover={
-          !isExpanded && !isHidden && !prefersReducedMotion
-            ? { scale: 1.04, transition: getMotionTransition("pillHover", prefersReducedMotion) }
-            : undefined
-        }
         transition={sizeTransition}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -672,20 +656,25 @@ export function IslandShell({
           clearHoverTimers();
           setSlimReturnActive(false);
           if (!isExpanded && !isHidden && !isHud && !isNotify) {
-            dispatch({ type: "HOVER" });
             if (hoverToOpen) {
+              if (isTauriRuntime()) {
+                void setIslandSurfaceMode(true, false, false);
+              }
               hoverOpenTimerRef.current = window.setTimeout(() => {
                 hoverOpenTimerRef.current = null;
                 if (isHoveredRef.current) {
                   dispatch({ type: "HOVER_EXPAND" });
                 }
-              }, 150);
+              }, 100);
+            } else {
+              dispatch({ type: "HOVER" });
             }
           }
         }}
         onMouseLeave={() => {
           isHoveredRef.current = false;
           setIsHeaderHovered(false);
+          const pendingHoverOpen = hoverOpenTimerRef.current !== null;
           if (hoverOpenTimerRef.current !== null) {
             window.clearTimeout(hoverOpenTimerRef.current);
             hoverOpenTimerRef.current = null;
@@ -694,6 +683,9 @@ export function IslandShell({
             scheduleAutoClose();
           } else {
             dispatch({ type: "LEAVE" });
+            if (pendingHoverOpen && isTauriRuntime()) {
+              void setIslandSurfaceMode(false, false, false);
+            }
           }
         }}
         onClick={() => {
@@ -704,41 +696,39 @@ export function IslandShell({
           }
         }}
       >
-        <svg
-          width="100%"
-          height="100%"
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-        >
-          <motion.path
-            d={shapePath}
-            fill="var(--surface)"
-            stroke="var(--hairline-strong)"
-            strokeWidth={1.25}
-            initial={false}
-            animate={{ d: shapePath }}
-            transition={getMotionTransition("shapeMorph", prefersReducedMotion)}
-          />
-        </svg>
+        {!isFloatingPill && (
+          <>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              aria-hidden="true"
+              className="pointer-events-none absolute top-0 -left-[9px]"
+            >
+              <path d="M 10 0 L 0 0 C 5.5 0 10 4.5 10 10 Z" fill="var(--surface)" />
+            </svg>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              aria-hidden="true"
+              className="pointer-events-none absolute top-0 -right-[9px]"
+            >
+              <path d="M 0 0 L 10 0 C 4.5 0 0 4.5 0 10 Z" fill="var(--surface)" />
+            </svg>
+          </>
+        )}
 
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-4 top-0 h-px"
-          style={{ backgroundColor: "var(--hairline-top)" }}
-        />
-
-        <div className="relative h-full w-full overflow-hidden">
+        <div className="relative h-full w-full overflow-hidden rounded-[inherit]">
           <AnimatePresence initial={false}>
             {isNotify && activeNotification ? (
               <motion.div
                 key="notification-overlay"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.14 }}
-                className="h-full w-full"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 h-full w-full"
               >
                 <NotificationToast
                   notification={activeNotification}
@@ -751,11 +741,11 @@ export function IslandShell({
             ) : isHud && activeHud ? (
               <motion.div
                 key="hud-overlay"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.14 }}
-                className="h-full w-full"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 h-full w-full"
               >
                 <HudOverlay hud={activeHud} />
               </motion.div>
@@ -768,8 +758,8 @@ export function IslandShell({
                   opacity: 0,
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
-                transition={{ duration: 0.14 }}
-                className={`flex h-full w-full items-center ${isSlimQuiet ? "justify-center px-2" : "justify-between px-5"}`}
+                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                className={`absolute inset-0 flex h-full w-full items-center ${isSlimQuiet ? "justify-center px-2" : "justify-between px-5"}`}
               >
                 {isSlimQuiet ? (
                   <div
@@ -860,7 +850,7 @@ export function IslandShell({
                           className="type-caption tracking-wide"
                           style={{ color: "var(--text-secondary)" }}
                         >
-                          {effectiveState === "peek" ? msg.pill.clickToOpen : msg.appName}
+                          {msg.appName}
                         </span>
                       )}
                     </div>
@@ -882,18 +872,19 @@ export function IslandShell({
                   opacity: 1,
                   transition: {
                     delay: prefersReducedMotion ? 0 : CONTENT_STAGGER.expandDelayMs / 1000,
-                    duration: 0.18,
+                    duration: 0.14,
+                    ease: [0.22, 1, 0.36, 1],
                   },
                 }}
                 exit={{
                   opacity: 0,
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
-                className="flex h-full w-full flex-col justify-between"
+                className="absolute inset-0 flex h-full w-full flex-col justify-between"
                 style={{
                   padding: "var(--island-padding)",
-                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "32px",
-                  paddingRight: isFloatingPill ? "var(--island-padding)" : "32px",
+                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "28px",
+                  paddingRight: isFloatingPill ? "var(--island-padding)" : "28px",
                   gap: "var(--island-gap)",
                 }}
                 onClick={(event) => event.stopPropagation()}
@@ -901,7 +892,7 @@ export function IslandShell({
                 <div className="flex items-center justify-between">
                   <h1 className="type-title m-0 flex items-center gap-1.5">
                     <span style={{ color: "var(--text-primary)" }}>{activePage.titleLead}</span>
-                    <span style={{ color: activePage.accentVar }}>{activePage.titleAccent}</span>
+                    <span style={{ color: "var(--text-secondary)" }}>{activePage.titleAccent}</span>
                   </h1>
 
                   <button
@@ -956,7 +947,7 @@ export function IslandShell({
                         color: isPinned ? "#000000" : "var(--text-primary)",
                       }}
                     >
-                      📌
+                      <PinIcon size={13} />
                     </button>
 
                     <button
@@ -975,7 +966,7 @@ export function IslandShell({
                         color: "var(--text-primary)",
                       }}
                     >
-                      ⚙
+                      <SettingsIcon size={13} />
                     </button>
 
                     <button
@@ -1020,7 +1011,7 @@ export function IslandShell({
                         color: "var(--text-primary)",
                       }}
                     >
-                      ‹
+                      <ChevronLeftIcon size={13} />
                     </button>
                   )}
 
@@ -1207,7 +1198,7 @@ export function IslandShell({
                         color: "var(--text-primary)",
                       }}
                     >
-                      ›
+                      <ChevronRightIcon size={13} />
                     </button>
                   )}
                 </div>
@@ -1221,7 +1212,7 @@ export function IslandShell({
                         type="button"
                         aria-label={`Page ${index + 1}`}
                         onClick={() => setActivePageIndex(index)}
-                        className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-all"
+                        className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200"
                         style={{
                           width: active ? "18px" : "6px",
                           backgroundColor: active ? activePage.accentVar : "var(--text-tertiary)",

@@ -30,17 +30,15 @@ export function LumenMascot({
       aria-hidden="true"
       className="flex h-5 w-5 shrink-0 items-center justify-center"
       animate={
-        prefersReduced
+        prefersReduced || (!musicPlaying && !celebrating)
           ? undefined
           : celebrating
-            ? { y: [0, -3, 0], scale: [1, 1.12, 1] }
-            : musicPlaying
-              ? { y: [0, -1.5, 0] }
-              : { scaleY: [1, 1, 0.92, 1] }
+            ? { y: [0, -2, 0] }
+            : { y: [0, -1.5, 0] }
       }
       transition={{
-        duration: celebrating ? 0.8 : musicPlaying ? 0.7 : 3.6,
-        repeat: Infinity,
+        duration: celebrating ? 0.8 : 0.7,
+        repeat: musicPlaying || celebrating ? Infinity : 0,
         ease: "easeInOut",
       }}
     >
