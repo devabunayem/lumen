@@ -22,6 +22,7 @@ export const COLOR_TOKENS = {
 export const BASE_GEOMETRY = {
   collapsed: { width: 200, height: 32 },
   minimal: { width: 120, height: 28 },
+  slim: { width: 96, height: 14 },
   expanded: { width: 620, height: 190 },
   hud: { width: 360, height: 64 },
   notchBottomRadius: 32,

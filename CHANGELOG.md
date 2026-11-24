@@ -2,6 +2,13 @@
 
 All notable changes to **Lumen** are documented here following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Hover Auto-Open & Ultra-Slim 5s Return:** Hovering expands the island (`150 ms` delay); moving the mouse away shrinks it into a `96×14` ultra-slim quiet notch (`350 ms` grace, paused while pinned or typing) before returning to the resting clock pill after `5s` (`hoverReturnSeconds` setting).
+- **Pin Lock & Scroll Paging:** Added an expanded header pin (`📌`) button and throttled mouse-wheel page switching across widgets.
+
 ## [1.0.0] - 2026-11-25
 
 ### Added

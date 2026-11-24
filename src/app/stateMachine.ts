@@ -4,6 +4,9 @@ export type IslandState = "hidden" | "minimal" | "idle" | "live" | "peek" | "exp
 
 export type IslandEvent =
   | { type: "HOVER" }
+  | { type: "HOVER_EXPAND" }
+  | { type: "HOVER_COLLAPSE_SLIM" }
+  | { type: "RESTORE_NORMAL" }
   | { type: "LEAVE" }
   | { type: "CLICK" }
   | { type: "ESCAPE" }
@@ -126,6 +129,40 @@ export function reduceIslandState(ctx: IslandContext, event: IslandEvent): Islan
           ...ctx,
           previousNonHiddenState: ctx.state,
           state: "peek",
+        };
+      }
+      return ctx;
+    }
+
+    case "HOVER_EXPAND": {
+      if (ctx.state !== "hidden" && ctx.state !== "expanded") {
+        return {
+          ...ctx,
+          previousNonHiddenState: "expanded",
+          state: "expanded",
+        };
+      }
+      return ctx;
+    }
+
+    case "HOVER_COLLAPSE_SLIM": {
+      if (ctx.state === "expanded" || ctx.state === "peek") {
+        return {
+          ...ctx,
+          previousNonHiddenState: "minimal",
+          state: "minimal",
+        };
+      }
+      return ctx;
+    }
+
+    case "RESTORE_NORMAL": {
+      if (ctx.state === "minimal") {
+        const resting = resolveRestingState(ctx);
+        return {
+          ...ctx,
+          previousNonHiddenState: resting,
+          state: resting,
         };
       }
       return ctx;

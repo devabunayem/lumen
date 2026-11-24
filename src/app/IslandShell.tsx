@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
@@ -78,6 +78,8 @@ export interface IslandShellProps {
   scaleFactor?: number;
   hideInFullscreen?: boolean;
   minimalNotch?: boolean;
+  hoverToOpen?: boolean;
+  hoverReturnSeconds?: number;
   mascotEnabled?: boolean;
   showHeaderClockSetting?: boolean;
   language?: AppLanguage;
@@ -119,11 +121,35 @@ function isMediaExcluded(appId: string, title: string, exclusions: string[]): bo
   });
 }
 
+function isTypingInContainer(container: HTMLElement | null): boolean {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active || (container && !container.contains(active))) {
+    return false;
+  }
+  const tag = active.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable;
+}
+
+function hasScrollableAncestor(target: EventTarget | null, stopAt: HTMLElement | null): boolean {
+  let node = target as HTMLElement | null;
+  while (node && node !== stopAt) {
+    const style = window.getComputedStyle(node);
+    const scrollableY = style.overflowY === "auto" || style.overflowY === "scroll";
+    if (scrollableY && node.scrollHeight > node.clientHeight + 2) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
 export function IslandShell({
   shapeStyle = "notch",
   scaleFactor = 1,
   hideInFullscreen = true,
   minimalNotch = false,
+  hoverToOpen = true,
+  hoverReturnSeconds = 5,
   mascotEnabled = true,
   showHeaderClockSetting = true,
   language = "en",
@@ -163,9 +189,64 @@ export function IslandShell({
   const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
   const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
+  const [isPinned, setIsPinned] = useState(false);
+  const [slimReturnActive, setSlimReturnActive] = useState(false);
 
+  const pillRef = useRef<HTMLDivElement | null>(null);
   const lastTrackKeyRef = useRef<string>("");
   const hudTimerRef = useRef<number | null>(null);
+  const isHoveredRef = useRef(false);
+  const isPinnedRef = useRef(false);
+  const hoverOpenTimerRef = useRef<number | null>(null);
+  const leaveTimerRef = useRef<number | null>(null);
+  const returnNormalTimerRef = useRef<number | null>(null);
+  const lastWheelAtRef = useRef(0);
+
+  const clearHoverTimers = useCallback(() => {
+    if (hoverOpenTimerRef.current !== null) {
+      window.clearTimeout(hoverOpenTimerRef.current);
+      hoverOpenTimerRef.current = null;
+    }
+    if (leaveTimerRef.current !== null) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+    if (returnNormalTimerRef.current !== null) {
+      window.clearTimeout(returnNormalTimerRef.current);
+      returnNormalTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearHoverTimers, [clearHoverTimers]);
+
+  const scheduleAutoClose = useCallback(() => {
+    if (!hoverToOpen || isPinnedRef.current || isHoveredRef.current) {
+      return;
+    }
+    if (isTypingInContainer(pillRef.current)) {
+      return;
+    }
+    if (leaveTimerRef.current !== null) {
+      window.clearTimeout(leaveTimerRef.current);
+    }
+    leaveTimerRef.current = window.setTimeout(() => {
+      leaveTimerRef.current = null;
+      if (isHoveredRef.current || isPinnedRef.current || isTypingInContainer(pillRef.current)) {
+        return;
+      }
+      setSlimReturnActive(true);
+      dispatch({ type: "HOVER_COLLAPSE_SLIM" });
+      if (returnNormalTimerRef.current !== null) {
+        window.clearTimeout(returnNormalTimerRef.current);
+      }
+      const delayMs = Math.max(1, hoverReturnSeconds) * 1000;
+      returnNormalTimerRef.current = window.setTimeout(() => {
+        returnNormalTimerRef.current = null;
+        setSlimReturnActive(false);
+        dispatch({ type: "RESTORE_NORMAL" });
+      }, delayMs);
+    }, 350);
+  }, [dispatch, hoverReturnSeconds, hoverToOpen]);
 
   const pages = useMemo<IslandPageMeta[]>(() => {
     const catalog = new Map<string, IslandPageMeta>([
@@ -389,6 +470,10 @@ export function IslandShell({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        clearHoverTimers();
+        isPinnedRef.current = false;
+        setIsPinned(false);
+        setSlimReturnActive(false);
         dispatch({ type: "ESCAPE" });
       } else if (state === "expanded" && event.key === "ArrowRight") {
         setActivePageIndex((idx) => (idx + 1) % pages.length);
@@ -398,11 +483,15 @@ export function IslandShell({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dispatch, state, pages.length]);
+  }, [dispatch, state, pages.length, clearHoverTimers]);
 
   const effectiveState = state === "idle" && minimalNotch ? "minimal" : state;
+  const isSlimQuiet = effectiveState === "minimal" && slimReturnActive;
 
   const dimensions = useMemo(() => {
+    if (isSlimQuiet) {
+      return BASE_GEOMETRY.slim;
+    }
     switch (effectiveState) {
       case "minimal":
         return BASE_GEOMETRY.minimal;
@@ -417,7 +506,7 @@ export function IslandShell({
       default:
         return BASE_GEOMETRY.collapsed;
     }
-  }, [effectiveState]);
+  }, [effectiveState, isSlimQuiet]);
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
@@ -456,10 +545,10 @@ export function IslandShell({
     return generateNotchPath({
       width,
       height,
-      earWidth: state === "expanded" ? 20 : 12,
-      bottomRadius: state === "expanded" ? BASE_GEOMETRY.notchBottomRadius : 16,
+      earWidth: isSlimQuiet ? 7 : state === "expanded" ? 20 : 12,
+      bottomRadius: isSlimQuiet ? 7 : state === "expanded" ? BASE_GEOMETRY.notchBottomRadius : 16,
     });
-  }, [isFloatingPill, width, height, state]);
+  }, [isFloatingPill, width, height, state, isSlimQuiet]);
 
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
@@ -501,11 +590,13 @@ export function IslandShell({
       style={{ paddingTop: `${topOffset}px` }}
     >
       <motion.div
+        ref={pillRef}
         role="region"
         aria-label="Lumen Dynamic Island"
         aria-hidden={isHidden}
         data-testid="lumen-island-pill"
         data-state={effectiveState}
+        data-slim={isSlimQuiet ? "true" : "false"}
         data-shape={shapeStyle}
         data-target-width={width}
         data-target-height={height}
@@ -513,8 +604,38 @@ export function IslandShell({
         onKeyDown={(event) => {
           if (!isExpanded && !isHidden && (event.key === "Enter" || event.key === " ")) {
             event.preventDefault();
+            clearHoverTimers();
+            setSlimReturnActive(false);
             dispatch({ type: "CLICK" });
           }
+        }}
+        onBlurCapture={() => {
+          window.setTimeout(() => {
+            if (isExpanded && !isHoveredRef.current && !isTypingInContainer(pillRef.current)) {
+              scheduleAutoClose();
+            }
+          }, 0);
+        }}
+        onWheel={(event) => {
+          if (!isExpanded || pages.length <= 1) {
+            return;
+          }
+          if (hasScrollableAncestor(event.target, pillRef.current)) {
+            return;
+          }
+          const now = Date.now();
+          if (now - lastWheelAtRef.current < 220) {
+            return;
+          }
+          if (Math.abs(event.deltaY) < 4 && Math.abs(event.deltaX) < 4) {
+            return;
+          }
+          lastWheelAtRef.current = now;
+          const dir =
+            Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+          setActivePageIndex((idx) =>
+            dir > 0 ? (idx + 1) % pages.length : (idx - 1 + pages.length) % pages.length,
+          );
         }}
         className={`relative select-none ${isHidden ? "pointer-events-none" : "pointer-events-auto cursor-pointer"}`}
         style={{
@@ -537,6 +658,8 @@ export function IslandShell({
         transition={sizeTransition}
         onDragEnter={(event) => {
           event.preventDefault();
+          clearHoverTimers();
+          setSlimReturnActive(false);
           const shelfIdx = pages.findIndex((p) => p.id === "shelf");
           if (shelfIdx >= 0) {
             setActivePageIndex(shelfIdx);
@@ -544,15 +667,39 @@ export function IslandShell({
           dispatch({ type: "DRAG_ENTER" });
         }}
         onMouseEnter={() => {
+          isHoveredRef.current = true;
           setIsHeaderHovered(true);
-          dispatch({ type: "HOVER" });
+          clearHoverTimers();
+          setSlimReturnActive(false);
+          if (!isExpanded && !isHidden && !isHud && !isNotify) {
+            dispatch({ type: "HOVER" });
+            if (hoverToOpen) {
+              hoverOpenTimerRef.current = window.setTimeout(() => {
+                hoverOpenTimerRef.current = null;
+                if (isHoveredRef.current) {
+                  dispatch({ type: "HOVER_EXPAND" });
+                }
+              }, 150);
+            }
+          }
         }}
         onMouseLeave={() => {
+          isHoveredRef.current = false;
           setIsHeaderHovered(false);
-          dispatch({ type: "LEAVE" });
+          if (hoverOpenTimerRef.current !== null) {
+            window.clearTimeout(hoverOpenTimerRef.current);
+            hoverOpenTimerRef.current = null;
+          }
+          if (isExpanded) {
+            scheduleAutoClose();
+          } else {
+            dispatch({ type: "LEAVE" });
+          }
         }}
         onClick={() => {
           if (!isExpanded && !isHidden) {
+            clearHoverTimers();
+            setSlimReturnActive(false);
             dispatch({ type: "CLICK" });
           }
         }}
@@ -622,9 +769,26 @@ export function IslandShell({
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
                 transition={{ duration: 0.14 }}
-                className="flex h-full w-full items-center justify-between px-5"
+                className={`flex h-full w-full items-center ${isSlimQuiet ? "justify-center px-2" : "justify-between px-5"}`}
               >
-                {pomodoro?.running ? (
+                {isSlimQuiet ? (
+                  <div
+                    data-testid="lumen-slim-indicator"
+                    className="flex h-full w-full items-center justify-center"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-[3px] w-7 rounded-full"
+                      style={{
+                        backgroundColor: liveTrack?.is_playing
+                          ? mediaAccent
+                          : pomodoro?.running
+                            ? "var(--accent-orange)"
+                            : "var(--text-tertiary)",
+                      }}
+                    />
+                  </div>
+                ) : pomodoro?.running ? (
                   <>
                     <div className="flex items-center gap-2">
                       <span
@@ -773,6 +937,30 @@ export function IslandShell({
 
                     <button
                       type="button"
+                      aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
+                      aria-pressed={isPinned}
+                      onClick={() => {
+                        const next = !isPinned;
+                        isPinnedRef.current = next;
+                        setIsPinned(next);
+                        if (next && leaveTimerRef.current !== null) {
+                          window.clearTimeout(leaveTimerRef.current);
+                          leaveTimerRef.current = null;
+                        }
+                      }}
+                      className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
+                      style={{
+                        backgroundColor: isPinned
+                          ? "var(--accent-orange)"
+                          : "var(--surface-button)",
+                        color: isPinned ? "#000000" : "var(--text-primary)",
+                      }}
+                    >
+                      📌
+                    </button>
+
+                    <button
+                      type="button"
                       aria-label={msg.pill.openSettings}
                       onClick={() => {
                         if (onOpenSettings) {
@@ -793,7 +981,13 @@ export function IslandShell({
                     <button
                       type="button"
                       aria-label={msg.pill.collapse}
-                      onClick={() => dispatch({ type: "CLICK" })}
+                      onClick={() => {
+                        clearHoverTimers();
+                        isPinnedRef.current = false;
+                        setIsPinned(false);
+                        setSlimReturnActive(false);
+                        dispatch({ type: "CLICK" });
+                      }}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
                       style={{
                         backgroundColor: "var(--surface-raised)",

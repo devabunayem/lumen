@@ -462,6 +462,40 @@ export function SettingsWindow({
 
             <SettingCard>
               <ToggleRow
+                label={msg.settings.appearance.hoverToOpen}
+                hint={msg.settings.appearance.hoverToOpenHint}
+                checked={settings.hoverToOpen}
+                onChange={(v) => void commit({ ...settings, hoverToOpen: v })}
+              />
+            </SettingCard>
+
+            <SettingCard>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="type-body text-sm">
+                    {msg.settings.appearance.hoverReturnSeconds}
+                  </div>
+                  <div className="type-caption" style={{ color: "var(--text-secondary)" }}>
+                    {msg.settings.appearance.hoverReturnSecondsHint}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {([3, 5, 10] as const).map((sec) => (
+                    <CapsuleButton
+                      key={sec}
+                      active={settings.hoverReturnSeconds === sec}
+                      accent="var(--accent-purple)"
+                      onClick={() => void commit({ ...settings, hoverReturnSeconds: sec })}
+                    >
+                      {sec}s
+                    </CapsuleButton>
+                  ))}
+                </div>
+              </div>
+            </SettingCard>
+
+            <SettingCard>
+              <ToggleRow
                 label={msg.settings.appearance.mascot}
                 hint={msg.settings.appearance.mascotHint}
                 checked={settings.mascotEnabled}

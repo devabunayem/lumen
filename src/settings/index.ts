@@ -7,6 +7,8 @@ export interface LumenSettings {
   shapeStyle: ShapeStyle;
   scale: IslandScaleSetting | "auto" | "100" | "115" | "130" | "150";
   minimalNotch: boolean;
+  hoverToOpen: boolean;
+  hoverReturnSeconds: number;
   mascotEnabled: boolean;
   showHeaderClock: boolean;
   hideInFullscreen: boolean;
@@ -29,6 +31,8 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   shapeStyle: "notch",
   scale: "auto",
   minimalNotch: false,
+  hoverToOpen: true,
+  hoverReturnSeconds: 5,
   mascotEnabled: true,
   showHeaderClock: true,
   hideInFullscreen: true,

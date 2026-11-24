@@ -20,6 +20,9 @@ pub enum IslandState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandEvent {
     Hover,
+    HoverExpand,
+    HoverCollapseSlim,
+    RestoreNormal,
     Leave,
     Click,
     Escape,
@@ -39,6 +42,9 @@ impl IslandEvent {
     pub fn from_command(name: &str) -> Option<Self> {
         match name {
             "hover" => Some(Self::Hover),
+            "hover_expand" => Some(Self::HoverExpand),
+            "hover_collapse_slim" => Some(Self::HoverCollapseSlim),
+            "restore_normal" => Some(Self::RestoreNormal),
             "leave" => Some(Self::Leave),
             "click" => Some(Self::Click),
             "escape" => Some(Self::Escape),
@@ -159,6 +165,25 @@ impl IslandMachine {
                 ) {
                     self.previous_non_hidden = self.state;
                     self.state = IslandState::Peek;
+                }
+            }
+            IslandEvent::HoverExpand => {
+                if !matches!(self.state, IslandState::Hidden | IslandState::Expanded) {
+                    self.previous_non_hidden = IslandState::Expanded;
+                    self.state = IslandState::Expanded;
+                }
+            }
+            IslandEvent::HoverCollapseSlim => {
+                if matches!(self.state, IslandState::Expanded | IslandState::Peek) {
+                    self.previous_non_hidden = IslandState::Minimal;
+                    self.state = IslandState::Minimal;
+                }
+            }
+            IslandEvent::RestoreNormal => {
+                if self.state == IslandState::Minimal {
+                    let resting = self.resting_state();
+                    self.previous_non_hidden = resting;
+                    self.state = resting;
                 }
             }
             IslandEvent::Leave => {
@@ -388,6 +413,9 @@ fn default_page_order() -> Vec<String> {
 fn default_water_goal_ml() -> i64 {
     1500
 }
+fn default_hover_return_seconds() -> u32 {
+    5
+}
 
 /// Versioned user preferences persisted in `%APPDATA%/Lumen/settings.json` (`NFR-REL-2`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,6 +428,10 @@ pub struct LumenSettings {
     #[serde(default = "default_scale")]
     pub scale: String,
     pub minimal_notch: bool,
+    #[serde(default = "default_true")]
+    pub hover_to_open: bool,
+    #[serde(default = "default_hover_return_seconds")]
+    pub hover_return_seconds: u32,
     #[serde(default = "default_true")]
     pub mascot_enabled: bool,
     #[serde(default = "default_true")]
@@ -433,6 +465,8 @@ impl Default for LumenSettings {
             shape_style: default_shape_style(),
             scale: default_scale(),
             minimal_notch: false,
+            hover_to_open: true,
+            hover_return_seconds: default_hover_return_seconds(),
             mascot_enabled: true,
             show_header_clock: true,
             hide_in_fullscreen: true,
@@ -475,6 +509,7 @@ impl LumenSettings {
         if !matches!(self.language.as_str(), "en" | "bn") {
             self.language = default_language();
         }
+        self.hover_return_seconds = self.hover_return_seconds.clamp(1, 30);
         self.position_offset_x = self.position_offset_x.clamp(-400, 400);
         self.water_goal_ml = self.water_goal_ml.clamp(250, 10_000);
         if self.hotkey_hide.trim().is_empty() {
@@ -600,5 +635,18 @@ mod tests {
         let mut machine = IslandMachine::new();
         machine.set_minimal_mode(true);
         assert_eq!(machine.snapshot().state, IslandState::Minimal);
+    }
+
+    #[test]
+    fn hover_expand_slim_collapse_and_restore_normal() {
+        let mut machine = IslandMachine::new();
+        machine.apply(IslandEvent::HoverExpand);
+        assert_eq!(machine.snapshot().state, IslandState::Expanded);
+
+        machine.apply(IslandEvent::HoverCollapseSlim);
+        assert_eq!(machine.snapshot().state, IslandState::Minimal);
+
+        machine.apply(IslandEvent::RestoreNormal);
+        assert_eq!(machine.snapshot().state, IslandState::Idle);
     }
 }

@@ -43,6 +43,8 @@ export function App() {
       scaleFactor={resolveSettingsScaleFactor(settings.scale)}
       hideInFullscreen={settings.hideInFullscreen}
       minimalNotch={settings.minimalNotch}
+      hoverToOpen={settings.hoverToOpen}
+      hoverReturnSeconds={settings.hoverReturnSeconds}
       mascotEnabled={settings.mascotEnabled}
       showHeaderClockSetting={settings.showHeaderClock}
       language={settings.language}
