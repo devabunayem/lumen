@@ -59,12 +59,11 @@ mod win32 {
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     };
     use windows::Win32::UI::Shell::{
-        QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
-        SHQueryUserNotificationState,
+        QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GWL_EXSTYLE, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW,
-        GetWindowRect, SetWindowLongPtrW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        GetWindowRect, IsZoomed, SetWindowLongPtrW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
     /// Configures the Tauri window as a non-activating tool window (`FR-WIN-1`, `FR-WIN-3`).
@@ -140,20 +139,18 @@ mod win32 {
             }
 
             let mr = mon_info.rcMonitor;
-            let covers_monitor = win_rect.left <= mr.left
-                && win_rect.top <= mr.top
-                && win_rect.right >= mr.right
-                && win_rect.bottom >= mr.bottom;
+            let is_exact_fullscreen = !IsZoomed(fg).as_bool()
+                && win_rect.left == mr.left
+                && win_rect.top == mr.top
+                && win_rect.right == mr.right
+                && win_rect.bottom == mr.bottom;
 
-            if covers_monitor {
+            if is_exact_fullscreen {
                 return true;
             }
 
             if let Ok(state) = SHQueryUserNotificationState() {
-                return matches!(
-                    state,
-                    QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE | QUNS_BUSY
-                ) && covers_monitor;
+                return matches!(state, QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE);
             }
 
             false
