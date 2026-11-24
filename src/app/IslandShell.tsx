@@ -7,6 +7,13 @@ import {
   getMediaState,
   isTauriRuntime,
   type MediaStateSnapshot,
+  type PrayerCityPreset,
+  type PrayerSchedule,
+  type TaskItem,
+  type WaterSummary,
+  prayerGetSchedule,
+  prayerListCities,
+  prayerSetCity,
   seekMedia,
   selectMediaSession,
   sendMediaCommand,
@@ -17,9 +24,19 @@ import {
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
+  tasksAdd,
+  tasksDelete,
+  tasksList,
+  tasksToggle,
+  waterGetSummary,
+  waterLog,
+  waterUndo,
 } from "../lib/ipc";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { MusicWidget } from "../widgets/music/MusicWidget";
+import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
+import { TodoWidget } from "../widgets/todo/TodoWidget";
+import { WaterWidget } from "../widgets/water/WaterWidget";
 import { useIslandStore } from "./stateMachine";
 
 export interface IslandShellProps {
@@ -66,8 +83,17 @@ export function IslandShell({
   const [showHeaderClock, setShowHeaderClock] = useState(true);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [waterGoalMl, setWaterGoalMl] = useState(1500);
+  const [waterSummary, setWaterSummary] = useState<WaterSummary | null>(null);
+  const [waterReminders, setWaterReminders] = useState(true);
+  const [prayerSchedule, setPrayerSchedule] = useState<PrayerSchedule | null>(null);
+  const [prayerCities, setPrayerCities] = useState<PrayerCityPreset[]>([]);
+  const [prayerLang, setPrayerLang] = useState<"en" | "bn">("en");
+
   const lastTrackKeyRef = useRef<string>("");
 
   const pages = useMemo(
@@ -79,10 +105,22 @@ export function IslandShell({
         accentVar: media?.active?.accent_hex || "var(--accent-blue)",
       },
       {
-        id: "overview",
-        titleLead: "Lumen",
-        titleAccent: "Island",
+        id: "todo",
+        titleLead: "Todo",
+        titleAccent: "List",
         accentVar: "var(--accent-green)",
+      },
+      {
+        id: "water",
+        titleLead: "Water",
+        titleAccent: "Tracker",
+        accentVar: "var(--accent-blue)",
+      },
+      {
+        id: "prayer",
+        titleLead: "Prayer",
+        titleAccent: "Times",
+        accentVar: "var(--accent-cyan)",
       },
     ],
     [media?.active?.accent_hex],
@@ -105,6 +143,18 @@ export function IslandShell({
     }, 2200);
     return () => window.clearTimeout(collapseTimer);
   }, [dispatch]);
+
+  useEffect(() => {
+    void tasksList().then(setTasks);
+    void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
+    void prayerListCities().then(setPrayerCities);
+    void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
+
+    const prayerTimer = window.setInterval(() => {
+      void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
+    }, 30_000);
+    return () => window.clearInterval(prayerTimer);
+  }, [waterGoalMl]);
 
   useEffect(() => {
     let unlistenFs: (() => void) | undefined;
@@ -489,7 +539,7 @@ export function IslandShell({
                     </button>
                   )}
 
-                  {activePage.id === "music" ? (
+                  {activePage.id === "music" && (
                     <MusicWidget
                       media={media}
                       lyricsOpen={lyricsOpen}
@@ -507,30 +557,98 @@ export function IslandShell({
                         void selectMediaSession(appId).then((next) => next && setMedia(next));
                       }}
                     />
-                  ) : (
-                    <div
-                      className="flex h-full w-full items-center justify-between px-4 py-2.5"
-                      style={{
-                        backgroundColor: "var(--surface-raised)",
-                        borderRadius: "var(--card-radius)",
-                        border: "1px solid var(--hairline)",
+                  )}
+
+                  {activePage.id === "todo" && (
+                    <TodoWidget
+                      tasks={tasks}
+                      onAdd={(title, dueAt) => {
+                        void tasksAdd(title, dueAt).then((updated) => {
+                          if (updated.length > 0 || isTauriRuntime()) {
+                            setTasks(updated);
+                          } else {
+                            setTasks((prev) => [
+                              {
+                                id: Date.now(),
+                                title,
+                                done: false,
+                                due_at: dueAt ?? null,
+                                created_at: new Date().toISOString(),
+                              },
+                              ...prev,
+                            ]);
+                          }
+                        });
                       }}
-                    >
-                      <div className="flex max-w-[70%] flex-col gap-0.5">
-                        <span className="type-body" style={{ color: "var(--text-primary)" }}>
-                          Lumen Desktop Island
-                        </span>
-                        <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                          SMTC Media Bridge active · Click-through &amp; fullscreen auto-hide ready.
-                        </span>
-                      </div>
-                      <span
-                        className="tabular-nums text-3xl font-bold"
-                        style={{ color: activePage.accentVar }}
-                      >
-                        100%
-                      </span>
-                    </div>
+                      onToggle={(id) => {
+                        void tasksToggle(id).then((updated) => {
+                          if (isTauriRuntime()) {
+                            setTasks(updated);
+                          } else {
+                            setTasks((prev) =>
+                              prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+                            );
+                          }
+                        });
+                      }}
+                      onDelete={(id) => {
+                        void tasksDelete(id).then((updated) => {
+                          if (isTauriRuntime()) {
+                            setTasks(updated);
+                          } else {
+                            setTasks((prev) => prev.filter((t) => t.id !== id));
+                          }
+                        });
+                      }}
+                    />
+                  )}
+
+                  {activePage.id === "water" && (
+                    <WaterWidget
+                      summary={waterSummary}
+                      servingMl={250}
+                      remindersEnabled={waterReminders}
+                      onDrink={(ml) => {
+                        void waterLog(ml, waterGoalMl, 4).then((w) => {
+                          if (w) {
+                            setWaterSummary(w);
+                          } else {
+                            const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
+                            const pct = (nextTotal / waterGoalMl) * 100;
+                            setWaterSummary({
+                              today_ml: nextTotal,
+                              goal_ml: waterGoalMl,
+                              percentage: pct,
+                              goal_reached: pct >= 100,
+                              last_entry_id: Date.now(),
+                              weekly: [],
+                            });
+                          }
+                        });
+                      }}
+                      onUndo={(entryId) => {
+                        void waterUndo(entryId, waterGoalMl, 4).then(
+                          (w) => w && setWaterSummary(w),
+                        );
+                      }}
+                      onToggleReminders={() => setWaterReminders((v) => !v)}
+                      onChangeGoal={(goal) => {
+                        setWaterGoalMl(goal);
+                        void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
+                      }}
+                    />
+                  )}
+
+                  {activePage.id === "prayer" && (
+                    <PrayerWidget
+                      schedule={prayerSchedule}
+                      cities={prayerCities}
+                      language={prayerLang}
+                      onSelectCity={(cityId) => {
+                        void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
+                      }}
+                      onToggleLanguage={() => setPrayerLang((l) => (l === "en" ? "bn" : "en"))}
+                    />
                   )}
 
                   {isHeaderHovered && (

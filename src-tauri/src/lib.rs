@@ -1,11 +1,16 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use chrono::Utc;
 use lumen_core::{IslandEvent, IslandMachine, IslandSnapshot};
 use lumen_media::{
     MediaCommand, MediaStateSnapshot, read_media_state, seek_media, send_media_command,
     set_system_volume,
 };
+use lumen_prayer::{
+    BANGLADESH_CITIES, PrayerCityPreset, PrayerConfig, PrayerSchedule, compute_prayer_schedule,
+};
+use lumen_storage::{StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{compute_top_center_position, is_other_app_fullscreen};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -36,6 +41,8 @@ struct AppState {
     machine: Mutex<IslandMachine>,
     config: Arc<Mutex<IslandRuntimeConfig>>,
     preferred_media_app: Arc<Mutex<Option<String>>>,
+    storage: Arc<StorageRepo>,
+    prayer_config: Mutex<PrayerConfig>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -223,18 +230,141 @@ async fn media_select_session(
         .map_err(|e| format!("session select join error: {e}"))
 }
 
+#[tauri::command]
+fn tasks_list(state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
+    state.storage.list_tasks()
+}
+
+#[tauri::command]
+fn tasks_add(
+    title: String,
+    due_at: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskItem>, String> {
+    state.storage.add_task(&title, due_at)
+}
+
+#[tauri::command]
+fn tasks_toggle(id: i64, state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
+    state.storage.toggle_task(id)
+}
+
+#[tauri::command]
+fn tasks_update(
+    id: i64,
+    title: String,
+    due_at: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskItem>, String> {
+    state.storage.update_task(id, &title, due_at)
+}
+
+#[tauri::command]
+fn tasks_delete(id: i64, state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
+    state.storage.delete_task(id)
+}
+
+#[tauri::command]
+fn tasks_export_json(state: State<'_, AppState>) -> Result<String, String> {
+    state.storage.export_tasks_json()
+}
+
+#[tauri::command]
+fn tasks_import_json(
+    raw_json: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskItem>, String> {
+    state.storage.import_tasks_json(&raw_json)
+}
+
+#[tauri::command]
+fn water_get_summary(
+    goal_ml: i64,
+    reset_hour: u32,
+    state: State<'_, AppState>,
+) -> Result<WaterSummary, String> {
+    state.storage.water_summary(Utc::now(), goal_ml, reset_hour)
+}
+
+#[tauri::command]
+fn water_log(
+    ml: i64,
+    goal_ml: i64,
+    reset_hour: u32,
+    state: State<'_, AppState>,
+) -> Result<WaterSummary, String> {
+    state.storage.log_water(ml, Utc::now(), goal_ml, reset_hour)
+}
+
+#[tauri::command]
+fn water_undo(
+    entry_id: i64,
+    goal_ml: i64,
+    reset_hour: u32,
+    state: State<'_, AppState>,
+) -> Result<WaterSummary, String> {
+    state
+        .storage
+        .undo_water(entry_id, Utc::now(), goal_ml, reset_hour)
+}
+
+#[tauri::command]
+fn prayer_list_cities() -> Vec<PrayerCityPreset> {
+    BANGLADESH_CITIES.to_vec()
+}
+
+#[tauri::command]
+fn prayer_get_schedule(state: State<'_, AppState>) -> Result<PrayerSchedule, String> {
+    let cfg = state
+        .prayer_config
+        .lock()
+        .map_err(|_| "prayer config mutex poisoned".to_string())?;
+    Ok(compute_prayer_schedule(Utc::now(), &cfg))
+}
+
+#[tauri::command]
+fn prayer_set_city(city_id: String, state: State<'_, AppState>) -> Result<PrayerSchedule, String> {
+    let preset = BANGLADESH_CITIES
+        .iter()
+        .find(|c| c.id == city_id)
+        .ok_or_else(|| format!("unknown Bangladesh city preset: {city_id}"))?;
+    let mut cfg = state
+        .prayer_config
+        .lock()
+        .map_err(|_| "prayer config mutex poisoned".to_string())?;
+    cfg.city_name = preset.name_en.into();
+    cfg.latitude = preset.latitude;
+    cfg.longitude = preset.longitude;
+    cfg.tz_offset_minutes = preset.tz_offset_minutes;
+    Ok(compute_prayer_schedule(Utc::now(), &cfg))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
     let preferred_media_app = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
-        .manage(AppState {
-            machine: Mutex::new(IslandMachine::new()),
-            config: Arc::clone(&shared_config),
-            preferred_media_app: Arc::clone(&preferred_media_app),
-        })
         .setup(move |app| {
+            let db_path = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("Lumen"))
+                .join("lumen.db");
+            let storage = Arc::new(
+                StorageRepo::open(&db_path)
+                    .or_else(|_| StorageRepo::open_in_memory())
+                    .expect("failed to initialize Lumen storage"),
+            );
+
+            app.manage(AppState {
+                machine: Mutex::new(IslandMachine::new()),
+                config: Arc::clone(&shared_config),
+                preferred_media_app: Arc::clone(&preferred_media_app),
+                storage,
+                prayer_config: Mutex::new(PrayerConfig::default()),
+            });
+
             let Some(window) = app.get_webview_window("island") else {
                 return Ok(());
             };
@@ -342,7 +472,20 @@ pub fn run() {
             media_control,
             media_seek,
             media_set_volume,
-            media_select_session
+            media_select_session,
+            tasks_list,
+            tasks_add,
+            tasks_toggle,
+            tasks_update,
+            tasks_delete,
+            tasks_export_json,
+            tasks_import_json,
+            water_get_summary,
+            water_log,
+            water_undo,
+            prayer_list_cities,
+            prayer_get_schedule,
+            prayer_set_city
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

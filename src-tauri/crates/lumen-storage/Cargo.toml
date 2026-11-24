@@ -6,4 +6,7 @@ license.workspace = true
 description = "SQLite schema, migrations, and JSON export/import models for Lumen"
 
 [dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 serde.workspace = true
+serde_json.workspace = true

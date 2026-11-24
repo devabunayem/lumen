@@ -6,4 +6,6 @@ license.workspace = true
 description = "Offline Islamic prayer time calculations and Bangladesh city presets for Lumen"
 
 [dependencies]
+adhan = "0.2"
+chrono = { version = "0.4", features = ["serde"] }
 serde.workspace = true
