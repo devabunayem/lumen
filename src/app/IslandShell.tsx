@@ -4,6 +4,7 @@ import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import {
+  isTauriRuntime,
   setIslandSurfaceMode,
   subscribeFullscreenChange,
   subscribeTrayToggleExpand,
@@ -96,6 +97,17 @@ export function IslandShell({
     }, 10_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    dispatch({ type: "HOTKEY_TOGGLE_EXPAND" });
+    const collapseTimer = window.setTimeout(() => {
+      dispatch({ type: "ESCAPE" });
+    }, 2200);
+    return () => window.clearTimeout(collapseTimer);
+  }, [dispatch]);
 
   useEffect(() => {
     let unlistenFs: (() => void) | undefined;
