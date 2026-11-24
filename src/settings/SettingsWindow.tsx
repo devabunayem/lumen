@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { getMessages } from "../i18n";
 import {
+  type LoadedPlugin,
   type MonitorInfo,
   monitorsList,
   type NotificationPrivacyConfig,
   notifyGetConfig,
   notifyPushTest,
   notifySetConfig,
+  pluginsList,
   settingsGet,
   settingsUpdate,
 } from "../lib/ipc";
@@ -60,6 +62,7 @@ export function SettingsWindow({
   });
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
   const [warningBanner, setWarningBanner] = useState<string | null>(null);
+  const [discoveredPlugins, setDiscoveredPlugins] = useState<LoadedPlugin[]>([]);
 
   const msg = getMessages(settings.language);
   const activeDef = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
@@ -75,7 +78,18 @@ export function SettingsWindow({
     }
     void monitorsList().then(setMonitors);
     void notifyGetConfig().then((cfg) => cfg && setNotifyCfg(cfg));
+    void pluginsList().then(setDiscoveredPlugins);
   }, [initialSettings]);
+
+  const effectivePlugins =
+    pluginCards.length > 0
+      ? pluginCards
+      : discoveredPlugins.map((p) => ({
+          id: p.manifest.id,
+          name: p.manifest.name,
+          version: p.manifest.version,
+          permissions: p.manifest.permissions,
+        }));
 
   const commit = async (next: LumenSettings) => {
     setSettings(next);
@@ -570,18 +584,26 @@ export function SettingsWindow({
                 <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
                   {msg.settings.pluginsTab.folderHint}
                 </span>
-                {onReloadPlugins && (
-                  <CapsuleButton active accent="var(--accent-red)" onClick={onReloadPlugins}>
-                    {msg.settings.pluginsTab.reload}
-                  </CapsuleButton>
-                )}
+                <CapsuleButton
+                  active
+                  accent="var(--accent-red)"
+                  onClick={() => {
+                    if (onReloadPlugins) {
+                      onReloadPlugins();
+                    } else {
+                      void pluginsList().then(setDiscoveredPlugins);
+                    }
+                  }}
+                >
+                  {msg.settings.pluginsTab.reload}
+                </CapsuleButton>
               </div>
-              {pluginCards.length === 0 ? (
+              {effectivePlugins.length === 0 ? (
                 <p className="type-body m-0 text-sm" style={{ color: "var(--text-secondary)" }}>
                   {msg.settings.pluginsTab.empty}
                 </p>
               ) : (
-                pluginCards.map((plugin) => (
+                effectivePlugins.map((plugin) => (
                   <div
                     key={plugin.id}
                     className="flex items-center justify-between rounded-xl px-3 py-2"

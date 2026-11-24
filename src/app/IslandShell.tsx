@@ -8,11 +8,13 @@ import {
   getMediaState,
   type HudEvent,
   isTauriRuntime,
+  type LoadedPlugin,
   type LyricLine,
   mediaGetLyrics,
   type MediaStateSnapshot,
   type NotificationPopup,
   openSettingsWindow,
+  pluginsList,
   pomodoroGetState,
   pomodoroReset,
   pomodoroSkip,
@@ -55,8 +57,14 @@ import {
 import { DEFAULT_SETTINGS } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { MusicWidget } from "../widgets/music/MusicWidget";
+import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
 import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
 import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
+import {
+  BUILTIN_WIDGET_IDS,
+  type IslandPageMeta,
+  resolveOrderedWidgetIds,
+} from "../widgets/registry";
 import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
@@ -152,14 +160,15 @@ export function IslandShell({
   const prayerLang = prayerLangOverride ?? language;
   const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
+  const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
   const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
 
   const lastTrackKeyRef = useRef<string>("");
   const hudTimerRef = useRef<number | null>(null);
 
-  const pages = useMemo(() => {
-    const catalog = new Map([
+  const pages = useMemo<IslandPageMeta[]>(() => {
+    const catalog = new Map<string, IslandPageMeta>([
       [
         "music",
         {
@@ -216,16 +225,27 @@ export function IslandShell({
       ],
     ]);
 
-    const visible = pageOrder
-      .filter((id) => !hiddenPages.includes(id))
-      .map((id) => catalog.get(id))
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-    if (visible.length > 0) {
-      return visible;
+    for (const plugin of plugins) {
+      catalog.set(plugin.manifest.id, {
+        id: plugin.manifest.id,
+        titleLead: plugin.manifest.name,
+        titleAccent: msg.pages.pluginAccent,
+        accentVar: "var(--accent-cyan)",
+        plugin,
+      });
     }
-    return [catalog.get("music")!];
-  }, [media?.active?.accent_hex, msg.pages, pageOrder, hiddenPages]);
+
+    const orderedIds = resolveOrderedWidgetIds(
+      BUILTIN_WIDGET_IDS,
+      plugins.map((p) => p.manifest.id),
+      pageOrder,
+      hiddenPages,
+    );
+
+    return orderedIds
+      .map((id) => catalog.get(id))
+      .filter((item): item is IslandPageMeta => Boolean(item));
+  }, [media?.active?.accent_hex, msg.pages, pageOrder, hiddenPages, plugins]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -252,6 +272,7 @@ export function IslandShell({
     void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
     void pomodoroGetState().then((p) => p && setPomodoro(p));
     void shelfList().then(setShelfItems);
+    void pluginsList().then(setPlugins);
 
     const prayerTimer = window.setInterval(() => {
       void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
@@ -978,6 +999,8 @@ export function IslandShell({
                       }}
                     />
                   )}
+
+                  {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
 
                   {isHeaderHovered && (
                     <button

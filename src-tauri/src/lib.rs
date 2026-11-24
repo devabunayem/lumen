@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ use lumen_notify::{
     NotificationPopup, NotificationPrivacyConfig, filter_notification, is_focus_assist_quiet,
     listener_access_available,
 };
+use lumen_plugins::{LoadedPlugin, discover_plugins};
 use lumen_prayer::{
     BANGLADESH_CITIES, PrayerCityPreset, PrayerConfig, PrayerSchedule, compute_prayer_schedule,
 };
@@ -82,8 +84,41 @@ struct AppState {
     notify_seq: Mutex<u64>,
     settings: Mutex<LumenSettings>,
     settings_path: PathBuf,
+    plugins_dir: PathBuf,
     surface_mode: Mutex<(bool, bool, bool)>,
     hotkeys: Mutex<Option<GlobalHotkeyManager>>,
+}
+
+fn append_log_line(log_dir: &Path, line: &str) {
+    let _ = std::fs::create_dir_all(log_dir);
+    let log_path = log_dir.join("lumen.log");
+    if let Ok(meta) = std::fs::metadata(&log_path)
+        && meta.len() > 2 * 1024 * 1024
+    {
+        let prev = log_dir.join("lumen.prev.log");
+        let _ = std::fs::rename(&log_path, prev);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let stamp = Utc::now().to_rfc3339();
+        let _ = writeln!(file, "[{stamp}] {line}");
+    }
+}
+
+fn install_crash_logger(log_dir: PathBuf) {
+    append_log_line(
+        &log_dir,
+        &format!("Lumen v{} started", env!("CARGO_PKG_VERSION")),
+    );
+    let hook_dir = log_dir;
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        append_log_line(&hook_dir, &format!("PANIC: {info}"));
+        prev_hook(info);
+    }));
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -727,6 +762,11 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
+    discover_plugins(&state.plugins_dir)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if !acquire_single_instance_mutex() {
@@ -742,6 +782,10 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::temp_dir().join("Lumen"));
+            install_crash_logger(data_dir.join("logs"));
+            let plugins_dir = data_dir.join("plugins");
+            let _ = std::fs::create_dir_all(&plugins_dir);
+
             let settings_path = data_dir.join("settings.json");
             let mut initial_settings = LumenSettings::load_from_path(&settings_path);
             if !settings_path.exists() {
@@ -794,6 +838,7 @@ pub fn run() {
                 notify_seq: Mutex::new(0),
                 settings: Mutex::new(initial_settings.clone()),
                 settings_path,
+                plugins_dir,
                 surface_mode: Mutex::new((false, false, false)),
                 hotkeys: Mutex::new(hotkeys),
             });
@@ -1038,7 +1083,8 @@ pub fn run() {
             monitors_list,
             settings_get,
             settings_update,
-            open_settings_window
+            open_settings_window,
+            plugins_list
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

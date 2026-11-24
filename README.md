@@ -128,7 +128,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --workspace
 | **Phase 4** | Pomodoro timer, File Shelf, System HUDs & Synced Lyrics                         | ✅ Done    |
 | **Phase 5** | Privacy-first Windows Notifications pipeline                                    | ✅ Done    |
 | **Phase 6** | Settings window, multi-monitor DPI, Bangla i18n & Accessibility pass            | ✅ Done    |
-| **Phase 7** | Third-party Plugin SDK, signed MSI/NSIS installer (`v1.0.0`), Winget & Scoop    | 🚧 Next    |
+| **Phase 7** | Third-party Plugin SDK, signed MSI/NSIS installer (`v1.0.0`), Winget & Scoop    | ✅ Done    |
 | **Phase 8** | Ask (BYO-key AI), Weather, Calendar, Clipboard & System Stats widgets           | ⏳ Planned |
 
 ---

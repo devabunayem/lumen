@@ -1,0 +1,23 @@
+PackageIdentifier: Etarnity.Lumen
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: Etarnity Global Innovation (Abu Nayem)
+PublisherUrl: https://github.com/devabunayem
+PackageName: Lumen
+PackageUrl: https://github.com/devabunayem/lumen
+License: MIT
+LicenseUrl: https://github.com/devabunayem/lumen/blob/main/LICENSE
+ShortDescription: Free, open-source, zero-telemetry Dynamic Island overlay for Windows 10 and 11.
+Tags:
+  - dynamic-island
+  - notch
+  - windows-11
+  - productivity
+  - open-source
+Installers:
+  - Architecture: x64
+    InstallerType: nullsoft
+    InstallerUrl: https://github.com/devabunayem/lumen/releases/download/v1.0.0/Lumen_1.0.0_x64-setup.exe
+    InstallerSha256: REPLACE_WITH_RELEASE_SHA256
+ManifestType: singleton
+ManifestVersion: 1.6.0

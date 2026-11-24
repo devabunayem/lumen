@@ -7,3 +7,4 @@ description = "Plugin manifest validation and sandbox permissions for third-part
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true

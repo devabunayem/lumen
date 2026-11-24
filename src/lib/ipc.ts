@@ -18,6 +18,21 @@ export interface SettingsUpdateResult {
   autostart_warning: string | null;
 }
 
+export type PluginPermission = "network" | "storage" | "media" | "notifications";
+
+export interface WidgetManifest {
+  id: string;
+  name: string;
+  version: string;
+  entry: string;
+  permissions: PluginPermission[];
+}
+
+export interface LoadedPlugin {
+  manifest: WidgetManifest;
+  html_srcdoc: string;
+}
+
 export interface IslandSnapshot {
   state: IslandState;
   minimal_mode: boolean;
@@ -542,4 +557,11 @@ export async function subscribeSettingsUpdated(
   return listen<LumenSettings>("lumen://settings-updated", (event) => {
     onUpdate(event.payload);
   });
+}
+
+export async function pluginsList(): Promise<LoadedPlugin[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<LoadedPlugin[]>("plugins_list");
 }

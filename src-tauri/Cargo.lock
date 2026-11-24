@@ -1899,7 +1899,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "lumen"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "lumen-core",
@@ -1918,7 +1918,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-media"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.23.1",
  "serde",
@@ -1936,7 +1936,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-notify"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "windows",
@@ -1944,14 +1944,15 @@ dependencies = [
 
 [[package]]
 name = "lumen-plugins"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "lumen-prayer"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adhan",
  "chrono",
@@ -1960,7 +1961,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-storage"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -1970,7 +1971,7 @@ dependencies = [
 
 [[package]]
 name = "lumen-windows"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "windows",

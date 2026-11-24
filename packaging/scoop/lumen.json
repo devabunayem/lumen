@@ -1,0 +1,22 @@
+{
+  "version": "1.0.0",
+  "description": "Free, open-source, zero-telemetry Dynamic Island for Windows 10 and Windows 11",
+  "homepage": "https://github.com/devabunayem/lumen",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/devabunayem/lumen/releases/download/v1.0.0/Lumen-portable-x64.zip",
+      "hash": "REPLACE_WITH_RELEASE_SHA256"
+    }
+  },
+  "bin": "lumen.exe",
+  "shortcuts": [["lumen.exe", "Lumen"]],
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/devabunayem/lumen/releases/download/v$version/Lumen-portable-x64.zip"
+      }
+    }
+  }
+}
