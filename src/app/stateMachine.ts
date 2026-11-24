@@ -1,13 +1,11 @@
 import { create } from "zustand";
 
-export type IslandState = "hidden" | "minimal" | "idle" | "live" | "peek" | "expanded" | "hud";
+export type IslandState = "hidden" | "minimal" | "idle" | "live" | "expanded" | "hud";
 
 export type IslandEvent =
-  | { type: "HOVER" }
   | { type: "HOVER_EXPAND" }
   | { type: "HOVER_COLLAPSE_SLIM" }
   | { type: "RESTORE_NORMAL" }
-  | { type: "LEAVE" }
   | { type: "CLICK" }
   | { type: "ESCAPE" }
   | { type: "HOTKEY_TOGGLE_HIDE" }
@@ -114,21 +112,10 @@ export function reduceIslandState(ctx: IslandContext, event: IslandEvent): Islan
     }
 
     case "ESCAPE": {
-      if (ctx.state === "expanded" || ctx.state === "peek") {
+      if (ctx.state === "expanded") {
         return {
           ...ctx,
           state: resolveRestingState(ctx),
-        };
-      }
-      return ctx;
-    }
-
-    case "HOVER": {
-      if (ctx.state === "idle" || ctx.state === "live" || ctx.state === "minimal") {
-        return {
-          ...ctx,
-          previousNonHiddenState: ctx.state,
-          state: "peek",
         };
       }
       return ctx;
@@ -146,7 +133,7 @@ export function reduceIslandState(ctx: IslandContext, event: IslandEvent): Islan
     }
 
     case "HOVER_COLLAPSE_SLIM": {
-      if (ctx.state === "expanded" || ctx.state === "peek") {
+      if (ctx.state === "expanded") {
         return {
           ...ctx,
           previousNonHiddenState: "minimal",
@@ -163,16 +150,6 @@ export function reduceIslandState(ctx: IslandContext, event: IslandEvent): Islan
           ...ctx,
           previousNonHiddenState: resting,
           state: resting,
-        };
-      }
-      return ctx;
-    }
-
-    case "LEAVE": {
-      if (ctx.state === "peek") {
-        return {
-          ...ctx,
-          state: resolveRestingState(ctx),
         };
       }
       return ctx;

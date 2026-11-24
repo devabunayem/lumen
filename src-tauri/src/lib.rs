@@ -24,7 +24,7 @@ use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{
     GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
     compute_top_center_position, cursor_screen_pos, is_autostart_enabled, is_caps_lock_on,
-    is_other_app_fullscreen, open_shell_target, set_autostart_enabled,
+    is_other_app_fullscreen, open_shell_target, set_autostart_enabled, set_window_bounds_atomic,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -174,20 +174,31 @@ fn recenter_window(
     let mult = settings.scale_multiplier();
     let logical_width = (base_width * mult).round();
     let logical_height = (base_height * mult).round();
-    let _ = window.set_size(LogicalSize::new(logical_width, logical_height));
 
     if let Some(monitor) = pick_target_monitor(window, settings) {
         let monitor_pos = monitor.position();
         let monitor_size = monitor.size();
         let dpi_scale = monitor.scale_factor();
         let phys_w = (logical_width * dpi_scale).round() as i32;
+        let phys_h = (logical_height * dpi_scale).round() as i32;
         let (x, y) = compute_top_center_position(
             monitor_pos.x,
             monitor_pos.y,
             monitor_size.width as i32,
             phys_w,
         );
-        let _ = window.set_position(PhysicalPosition::new(x + settings.position_offset_x, y));
+        let target_x = x + settings.position_offset_x;
+
+        #[cfg(windows)]
+        if let Ok(hwnd) = window.hwnd() {
+            set_window_bounds_atomic(hwnd.0 as isize, target_x, y, phys_w, phys_h);
+            return;
+        }
+
+        let _ = window.set_size(LogicalSize::new(logical_width, logical_height));
+        let _ = window.set_position(PhysicalPosition::new(target_x, y));
+    } else {
+        let _ = window.set_size(LogicalSize::new(logical_width, logical_height));
     }
 }
 

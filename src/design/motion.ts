@@ -6,15 +6,15 @@ import type { Transition } from "motion/react";
 export const MOTION_PRESETS = {
   expand: {
     type: "spring",
-    stiffness: 330,
-    damping: 34,
-    mass: 0.9,
+    stiffness: 280,
+    damping: 30,
+    mass: 0.85,
   },
   collapse: {
     type: "spring",
-    stiffness: 370,
-    damping: 36,
-    mass: 0.9,
+    stiffness: 320,
+    damping: 33,
+    mass: 0.85,
   },
   pageSwitch: {
     type: "spring",
@@ -47,9 +47,9 @@ export const MOTION_PRESETS = {
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {
-  expandDelayMs: 40,
+  expandDelayMs: 35,
   expandStaggerMs: 20,
-  collapseFadeMs: 90,
+  collapseFadeMs: 80,
 } as const;
 
 export function getMotionTransition(

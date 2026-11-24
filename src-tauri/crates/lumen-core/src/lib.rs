@@ -3,7 +3,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-/// All seven deterministic states of the Lumen island (SRS Section 4 & 7.3).
+/// Deterministic states of the Lumen island.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IslandState {
@@ -11,7 +11,6 @@ pub enum IslandState {
     Minimal,
     Idle,
     Live,
-    Peek,
     Expanded,
     Hud,
 }
@@ -19,11 +18,9 @@ pub enum IslandState {
 /// Inputs accepted by the island state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IslandEvent {
-    Hover,
     HoverExpand,
     HoverCollapseSlim,
     RestoreNormal,
-    Leave,
     Click,
     Escape,
     HotkeyToggleHide,
@@ -41,11 +38,9 @@ impl IslandEvent {
     #[must_use]
     pub fn from_command(name: &str) -> Option<Self> {
         match name {
-            "hover" => Some(Self::Hover),
             "hover_expand" => Some(Self::HoverExpand),
             "hover_collapse_slim" => Some(Self::HoverCollapseSlim),
             "restore_normal" => Some(Self::RestoreNormal),
-            "leave" => Some(Self::Leave),
             "click" => Some(Self::Click),
             "escape" => Some(Self::Escape),
             "hotkey_toggle_hide" => Some(Self::HotkeyToggleHide),
@@ -154,17 +149,8 @@ impl IslandMachine {
                 };
             }
             IslandEvent::Escape => {
-                if matches!(self.state, IslandState::Expanded | IslandState::Peek) {
+                if self.state == IslandState::Expanded {
                     self.state = self.resting_state();
-                }
-            }
-            IslandEvent::Hover => {
-                if matches!(
-                    self.state,
-                    IslandState::Idle | IslandState::Live | IslandState::Minimal
-                ) {
-                    self.previous_non_hidden = self.state;
-                    self.state = IslandState::Peek;
                 }
             }
             IslandEvent::HoverExpand => {
@@ -174,7 +160,7 @@ impl IslandMachine {
                 }
             }
             IslandEvent::HoverCollapseSlim => {
-                if matches!(self.state, IslandState::Expanded | IslandState::Peek) {
+                if self.state == IslandState::Expanded {
                     self.previous_non_hidden = IslandState::Minimal;
                     self.state = IslandState::Minimal;
                 }
@@ -184,11 +170,6 @@ impl IslandMachine {
                     let resting = self.resting_state();
                     self.previous_non_hidden = resting;
                     self.state = resting;
-                }
-            }
-            IslandEvent::Leave => {
-                if self.state == IslandState::Peek {
-                    self.state = self.resting_state();
                 }
             }
             IslandEvent::DragEnter => {

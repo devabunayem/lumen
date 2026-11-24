@@ -13,7 +13,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     vi.useRealTimers();
   });
 
-  it("opens on hover after 100ms without peek flicker, collapses to 96x14 slim notch on leave, then restores normal pill after 5s", () => {
+  it("opens on hover after 70ms without peek flicker, collapses to 96x14 slim notch on leave, then restores normal pill after 5s", () => {
     render(<IslandShell hoverToOpen hoverReturnSeconds={5} />);
     const pill = screen.getByTestId("lumen-island-pill");
 
@@ -24,14 +24,14 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(screen.queryByText("Click to open")).toBeNull();
 
     act(() => {
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(70);
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
     expect(pill).toHaveAttribute("data-target-width", "620");
 
     fireEvent.mouseLeave(pill);
     act(() => {
-      vi.advanceTimersByTime(350);
+      vi.advanceTimersByTime(420);
     });
     expect(pill).toHaveAttribute("data-state", "minimal");
     expect(pill).toHaveAttribute("data-slim", "true");
@@ -54,7 +54,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
 
     fireEvent.mouseEnter(pill);
     act(() => {
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(70);
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 

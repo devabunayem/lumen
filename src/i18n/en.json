@@ -1,7 +1,6 @@
 {
   "appName": "Lumen",
   "pill": {
-    "clickToOpen": "Click to open",
     "focus": "Focus",
     "openSettings": "Open settings",
     "collapse": "Collapse island",

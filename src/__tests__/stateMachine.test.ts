@@ -6,11 +6,14 @@ describe("Island Finite State Machine", () => {
     expect(INITIAL_ISLAND_CONTEXT.state).toBe("idle");
   });
 
-  it("transitions idle -> peek on hover and back on leave", () => {
-    const peeked = reduceIslandState(INITIAL_ISLAND_CONTEXT, { type: "HOVER" });
-    expect(peeked.state).toBe("peek");
+  it("transitions idle -> expanded on hover expand -> minimal slim -> idle restore", () => {
+    const expanded = reduceIslandState(INITIAL_ISLAND_CONTEXT, { type: "HOVER_EXPAND" });
+    expect(expanded.state).toBe("expanded");
 
-    const rested = reduceIslandState(peeked, { type: "LEAVE" });
+    const slim = reduceIslandState(expanded, { type: "HOVER_COLLAPSE_SLIM" });
+    expect(slim.state).toBe("minimal");
+
+    const rested = reduceIslandState(slim, { type: "RESTORE_NORMAL" });
     expect(rested.state).toBe("idle");
   });
 

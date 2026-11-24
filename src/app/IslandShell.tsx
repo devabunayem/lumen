@@ -112,15 +112,6 @@ function formatShortTimer(secs: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-function isMediaExcluded(appId: string, title: string, exclusions: string[]): boolean {
-  const a = appId.toLowerCase();
-  const t = title.toLowerCase();
-  return exclusions.some((item) => {
-    const q = item.trim().toLowerCase();
-    return q.length > 0 && (a.includes(q) || t.includes(q));
-  });
-}
-
 function isTypingInContainer(container: HTMLElement | null): boolean {
   const active = document.activeElement as HTMLElement | null;
   if (!active || (container && !container.contains(active))) {
@@ -193,10 +184,11 @@ export function IslandShell({
   const [slimReturnActive, setSlimReturnActive] = useState(false);
 
   const pillRef = useRef<HTMLDivElement | null>(null);
-  const lastTrackKeyRef = useRef<string>("");
   const hudTimerRef = useRef<number | null>(null);
   const isHoveredRef = useRef(false);
   const isPinnedRef = useRef(false);
+  const expandedAtRef = useRef(0);
+  const lastSurfaceBucketRef = useRef<string>("collapsed");
   const hoverOpenTimerRef = useRef<number | null>(null);
   const leaveTimerRef = useRef<number | null>(null);
   const returnNormalTimerRef = useRef<number | null>(null);
@@ -219,34 +211,37 @@ export function IslandShell({
 
   useEffect(() => clearHoverTimers, [clearHoverTimers]);
 
-  const scheduleAutoClose = useCallback(() => {
-    if (!hoverToOpen || isPinnedRef.current || isHoveredRef.current) {
-      return;
-    }
-    if (isTypingInContainer(pillRef.current)) {
-      return;
-    }
-    if (leaveTimerRef.current !== null) {
-      window.clearTimeout(leaveTimerRef.current);
-    }
-    leaveTimerRef.current = window.setTimeout(() => {
-      leaveTimerRef.current = null;
-      if (isHoveredRef.current || isPinnedRef.current || isTypingInContainer(pillRef.current)) {
+  const scheduleAutoClose = useCallback(
+    (graceMs = 350) => {
+      if (!hoverToOpen || isPinnedRef.current || isHoveredRef.current) {
         return;
       }
-      setSlimReturnActive(true);
-      dispatch({ type: "HOVER_COLLAPSE_SLIM" });
-      if (returnNormalTimerRef.current !== null) {
-        window.clearTimeout(returnNormalTimerRef.current);
+      if (isTypingInContainer(pillRef.current)) {
+        return;
       }
-      const delayMs = Math.max(1, hoverReturnSeconds) * 1000;
-      returnNormalTimerRef.current = window.setTimeout(() => {
-        returnNormalTimerRef.current = null;
-        setSlimReturnActive(false);
-        dispatch({ type: "RESTORE_NORMAL" });
-      }, delayMs);
-    }, 350);
-  }, [dispatch, hoverReturnSeconds, hoverToOpen]);
+      if (leaveTimerRef.current !== null) {
+        window.clearTimeout(leaveTimerRef.current);
+      }
+      leaveTimerRef.current = window.setTimeout(() => {
+        leaveTimerRef.current = null;
+        if (isHoveredRef.current || isPinnedRef.current || isTypingInContainer(pillRef.current)) {
+          return;
+        }
+        setSlimReturnActive(true);
+        dispatch({ type: "HOVER_COLLAPSE_SLIM" });
+        if (returnNormalTimerRef.current !== null) {
+          window.clearTimeout(returnNormalTimerRef.current);
+        }
+        const delayMs = Math.max(1, hoverReturnSeconds) * 1000;
+        returnNormalTimerRef.current = window.setTimeout(() => {
+          returnNormalTimerRef.current = null;
+          setSlimReturnActive(false);
+          dispatch({ type: "RESTORE_NORMAL" });
+        }, delayMs);
+      }, graceMs);
+    },
+    [dispatch, hoverReturnSeconds, hoverToOpen],
+  );
 
   const pages = useMemo<IslandPageMeta[]>(() => {
     const catalog = new Map<string, IslandPageMeta>([
@@ -372,22 +367,17 @@ export function IslandShell({
         return;
       }
       setMedia(snapshot);
-      const isPlaying = Boolean(snapshot.active?.is_playing);
+      const activeTitle = snapshot.active?.title ?? "";
+      const activeApp = snapshot.active?.app_id ?? "";
+      const excluded = mediaExclusions.some((item) => {
+        const q = item.trim().toLowerCase();
+        return (
+          q.length > 0 &&
+          (activeApp.toLowerCase().includes(q) || activeTitle.toLowerCase().includes(q))
+        );
+      });
+      const isPlaying = Boolean(snapshot.active?.is_playing) && !excluded;
       dispatch({ type: "MEDIA_CHANGE", active: isPlaying });
-
-      if (snapshot.active) {
-        const key = `${snapshot.active.app_id}:${snapshot.active.title}`;
-        if (
-          lastTrackKeyRef.current &&
-          lastTrackKeyRef.current !== key &&
-          isPlaying &&
-          !isMediaExcluded(snapshot.active.app_id, snapshot.active.title, mediaExclusions)
-        ) {
-          dispatch({ type: "HOVER" });
-          window.setTimeout(() => dispatch({ type: "LEAVE" }), 1800);
-        }
-        lastTrackKeyRef.current = key;
-      }
     };
 
     void getMediaState().then(handleMediaSnapshot);
@@ -486,8 +476,6 @@ export function IslandShell({
         return BASE_GEOMETRY.minimal;
       case "live":
         return { width: 244, height: 34 };
-      case "peek":
-        return { width: 248, height: 38 };
       case "expanded":
         return BASE_GEOMETRY.expanded;
       case "hud":
@@ -499,6 +487,8 @@ export function IslandShell({
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
+  const expandedW = Math.round(BASE_GEOMETRY.expanded.width * scaleFactor);
+  const expandedH = Math.round(BASE_GEOMETRY.expanded.height * scaleFactor);
   const isFloatingPill = shapeStyle === "pill";
   const topOffset = isFloatingPill ? Math.round(BASE_GEOMETRY.pillFloatOffset * scaleFactor) : 0;
 
@@ -511,18 +501,32 @@ export function IslandShell({
       hideInFullscreen,
     });
 
-    if (state === "expanded") {
+    const surfaceBucket =
+      state === "expanded"
+        ? "expanded"
+        : state === "hud"
+          ? "hud"
+          : state === "hidden"
+            ? "hidden"
+            : "collapsed";
+
+    if (lastSurfaceBucketRef.current === surfaceBucket) {
+      return;
+    }
+    lastSurfaceBucketRef.current = surfaceBucket;
+
+    if (surfaceBucket === "expanded") {
       void setIslandSurfaceMode(true, false, false);
       return;
     }
-    if (state === "hud") {
+    if (surfaceBucket === "hud") {
       void setIslandSurfaceMode(false, false, true);
       return;
     }
 
-    const delayMs = state === "hidden" ? 280 : 420;
+    const delayMs = surfaceBucket === "hidden" ? 280 : 380;
     const timer = window.setTimeout(() => {
-      void setIslandSurfaceMode(false, state === "hidden", false);
+      void setIslandSurfaceMode(false, surfaceBucket === "hidden", false);
     }, delayMs);
     return () => window.clearTimeout(timer);
   }, [width, height, topOffset, state, hideInFullscreen]);
@@ -655,37 +659,31 @@ export function IslandShell({
           setIsHeaderHovered(true);
           clearHoverTimers();
           setSlimReturnActive(false);
-          if (!isExpanded && !isHidden && !isHud && !isNotify) {
-            if (hoverToOpen) {
+          if (!isExpanded && !isHidden && !isHud && !isNotify && hoverToOpen) {
+            hoverOpenTimerRef.current = window.setTimeout(() => {
+              hoverOpenTimerRef.current = null;
+              if (!isHoveredRef.current) {
+                return;
+              }
+              expandedAtRef.current = Date.now();
+              lastSurfaceBucketRef.current = "expanded";
               if (isTauriRuntime()) {
                 void setIslandSurfaceMode(true, false, false);
               }
-              hoverOpenTimerRef.current = window.setTimeout(() => {
-                hoverOpenTimerRef.current = null;
-                if (isHoveredRef.current) {
-                  dispatch({ type: "HOVER_EXPAND" });
-                }
-              }, 100);
-            } else {
-              dispatch({ type: "HOVER" });
-            }
+              dispatch({ type: "HOVER_EXPAND" });
+            }, 70);
           }
         }}
         onMouseLeave={() => {
           isHoveredRef.current = false;
           setIsHeaderHovered(false);
-          const pendingHoverOpen = hoverOpenTimerRef.current !== null;
           if (hoverOpenTimerRef.current !== null) {
             window.clearTimeout(hoverOpenTimerRef.current);
             hoverOpenTimerRef.current = null;
           }
           if (isExpanded) {
-            scheduleAutoClose();
-          } else {
-            dispatch({ type: "LEAVE" });
-            if (pendingHoverOpen && isTauriRuntime()) {
-              void setIslandSurfaceMode(false, false, false);
-            }
+            const recentlyExpanded = Date.now() - expandedAtRef.current < 180;
+            scheduleAutoClose(recentlyExpanded ? 420 : 350);
           }
         }}
         onClick={() => {
@@ -759,7 +757,7 @@ export function IslandShell({
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
                 transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                className={`absolute inset-0 flex h-full w-full items-center ${isSlimQuiet ? "justify-center px-2" : "justify-between px-5"}`}
+                className={`absolute inset-0 flex h-full w-full items-center whitespace-nowrap ${isSlimQuiet ? "justify-center px-2" : "justify-between px-5"}`}
               >
                 {isSlimQuiet ? (
                   <div
@@ -867,21 +865,27 @@ export function IslandShell({
             ) : (
               <motion.div
                 key="expanded-island"
-                initial={{ opacity: 0 }}
+                initial={{ opacity: 0, scale: 0.94 }}
                 animate={{
                   opacity: 1,
+                  scale: 1,
                   transition: {
                     delay: prefersReducedMotion ? 0 : CONTENT_STAGGER.expandDelayMs / 1000,
-                    duration: 0.14,
+                    duration: 0.16,
                     ease: [0.22, 1, 0.36, 1],
                   },
                 }}
                 exit={{
                   opacity: 0,
+                  scale: 0.95,
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
-                className="absolute inset-0 flex h-full w-full flex-col justify-between"
+                className="absolute top-0 flex flex-col justify-between"
                 style={{
+                  left: "50%",
+                  x: "-50%",
+                  width: `${expandedW}px`,
+                  height: `${expandedH}px`,
                   padding: "var(--island-padding)",
                   paddingLeft: isFloatingPill ? "var(--island-padding)" : "28px",
                   paddingRight: isFloatingPill ? "var(--island-padding)" : "28px",

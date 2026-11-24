@@ -129,7 +129,8 @@ mod win32 {
     use std::sync::{Arc, Mutex, OnceLock};
 
     use windows::Win32::Foundation::{
-        CloseHandle, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError, LPARAM, POINT, RECT, WPARAM,
+        CloseHandle, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError, HWND, LPARAM, POINT, RECT,
+        WPARAM,
     };
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
@@ -147,7 +148,7 @@ mod win32 {
     use windows::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetWindowRect,
         IsWindowVisible, IsZoomed, MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
-        SW_SHOWNORMAL, WM_HOTKEY, WM_USER,
+        SW_SHOWNORMAL, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, WM_HOTKEY, WM_USER,
     };
     use windows::core::{HSTRING, PCWSTR};
 
@@ -479,11 +480,39 @@ mod win32 {
         }
         Ok(())
     }
+
+    /// Atomically moves and resizes an overlay HWND in a single DWM frame without cursor flicker.
+    pub fn set_window_bounds_atomic(raw_hwnd: isize, x: i32, y: i32, width: i32, height: i32) {
+        if raw_hwnd == 0 {
+            return;
+        }
+        // SAFETY: Valid HWND belonging to our Tauri overlay window.
+        let _ = unsafe {
+            SetWindowPos(
+                HWND(raw_hwnd as *mut core::ffi::c_void),
+                None,
+                x,
+                y,
+                width,
+                height,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+        };
+    }
 }
 
 #[cfg(not(windows))]
 mod win32 {
     use crate::HotkeyAction;
+
+    pub const fn set_window_bounds_atomic(
+        _raw_hwnd: isize,
+        _x: i32,
+        _y: i32,
+        _width: i32,
+        _height: i32,
+    ) {
+    }
 
     #[must_use]
     pub const fn acquire_single_instance_mutex() -> bool {
@@ -546,7 +575,7 @@ mod win32 {
 pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, cursor_screen_pos,
     is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen, open_shell_target,
-    set_autostart_enabled,
+    set_autostart_enabled, set_window_bounds_atomic,
 };
 
 #[cfg(test)]
