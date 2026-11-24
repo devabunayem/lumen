@@ -1,10 +1,11 @@
 import { motion, useReducedMotion } from "motion/react";
 import { getMotionTransition } from "../../design/motion";
-import type { MediaStateSnapshot } from "../../lib/ipc";
+import type { LyricLine, MediaStateSnapshot } from "../../lib/ipc";
 
 export interface MusicWidgetProps {
   media: MediaStateSnapshot | null;
   lyricsOpen: boolean;
+  lyricsLines?: LyricLine[];
   onToggleLyrics: () => void;
   onCommand: (cmd: "play_pause" | "next" | "previous" | "toggle_mute") => void;
   onSeek: (positionMs: number) => void;
@@ -22,6 +23,7 @@ function formatDurationMs(ms: number): string {
 export function MusicWidget({
   media,
   lyricsOpen,
+  lyricsLines = [],
   onToggleLyrics,
   onCommand,
   onSeek,
@@ -68,6 +70,10 @@ export function MusicWidget({
   const progressPct = Math.min(100, Math.max(0, (clampedPos / duration) * 100));
   const remainingMs = Math.max(0, duration - clampedPos);
 
+  const activeLyricIdx = lyricsLines.reduce((acc, line, idx) => {
+    return line.time_ms <= clampedPos ? idx : acc;
+  }, -1);
+
   return (
     <div
       className="flex h-full w-full items-center gap-3 px-3.5 py-2.5"
@@ -99,84 +105,111 @@ export function MusicWidget({
         )}
       </div>
 
-      {/* Track metadata, seek bar & controls */}
+      {/* Track metadata or Synced Lyrics view (FR-MUS-3, FR-MUS-4) */}
       <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div
-              className="type-body truncate"
-              style={{ color: "var(--text-primary)" }}
-              title={active.title}
-            >
-              {active.title}
-            </div>
-            <div
-              className="type-caption truncate"
-              style={{ color: "var(--text-secondary)" }}
-              title={active.artist}
-            >
-              {active.artist || active.app_id}
-            </div>
+        {lyricsOpen ? (
+          <div className="flex h-16 flex-col justify-center gap-1 overflow-y-auto pr-1">
+            {lyricsLines.length === 0 ? (
+              <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
+                No synced lyrics found on LRCLIB for this track.
+              </span>
+            ) : (
+              lyricsLines
+                .slice(Math.max(0, activeLyricIdx), Math.max(0, activeLyricIdx) + 3)
+                .map((line, i) => (
+                  <div
+                    key={`${line.time_ms}-${i}`}
+                    className={
+                      i === 0 ? "type-body truncate font-semibold" : "type-caption truncate"
+                    }
+                    style={{
+                      color: i === 0 ? accent : "var(--text-secondary)",
+                    }}
+                  >
+                    {line.text}
+                  </div>
+                ))
+            )}
           </div>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div
+                  className="type-body truncate"
+                  style={{ color: "var(--text-primary)" }}
+                  title={active.title}
+                >
+                  {active.title}
+                </div>
+                <div
+                  className="type-caption truncate"
+                  style={{ color: "var(--text-secondary)" }}
+                  title={active.artist}
+                >
+                  {active.artist || active.app_id}
+                </div>
+              </div>
 
-          {media && media.sessions.length > 1 && (
-            <select
-              aria-label="Switch active media player"
-              value={active.app_id}
-              onChange={(e) => onSelectSession(e.target.value)}
-              className="type-caption max-w-[110px] cursor-pointer truncate rounded-full border-0 px-2 py-0.5"
-              style={{
-                backgroundColor: "var(--surface-button)",
-                color: "var(--text-primary)",
-              }}
-            >
-              {media.sessions.map((s) => (
-                <option key={s.app_id} value={s.app_id}>
-                  {s.title || s.app_id}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {/* Seekable progress bar + elapsed / remaining tabular time */}
-        <div className="flex items-center gap-2">
-          <span
-            className="type-caption w-9 shrink-0 tabular-nums"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            {formatDurationMs(clampedPos)}
-          </span>
-          <div className="relative flex flex-1 items-center">
-            <div
-              className="h-1.5 w-full overflow-hidden rounded-full"
-              style={{ backgroundColor: "var(--surface-button)" }}
-            >
-              <motion.div
-                className="h-full rounded-full"
-                style={{ backgroundColor: accent }}
-                initial={false}
-                animate={{ width: `${progressPct}%` }}
-                transition={getMotionTransition("progressSpring", prefersReducedMotion)}
-              />
+              {media && media.sessions.length > 1 && (
+                <select
+                  aria-label="Switch active media player"
+                  value={active.app_id}
+                  onChange={(e) => onSelectSession(e.target.value)}
+                  className="type-caption max-w-[110px] cursor-pointer truncate rounded-full border-0 px-2 py-0.5"
+                  style={{
+                    backgroundColor: "var(--surface-button)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {media.sessions.map((s) => (
+                    <option key={s.app_id} value={s.app_id}>
+                      {s.title || s.app_id}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-            <input
-              type="range"
-              aria-label="Seek track position"
-              min={0}
-              max={duration}
-              value={clampedPos}
-              onChange={(e) => onSeek(Number(e.target.value))}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            />
-          </div>
-          <span
-            className="type-caption w-10 shrink-0 text-right tabular-nums"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            -{formatDurationMs(remainingMs)}
-          </span>
-        </div>
+
+            <div className="flex items-center gap-2">
+              <span
+                className="type-caption w-9 shrink-0 tabular-nums"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                {formatDurationMs(clampedPos)}
+              </span>
+              <div className="relative flex flex-1 items-center">
+                <div
+                  className="h-1.5 w-full overflow-hidden rounded-full"
+                  style={{ backgroundColor: "var(--surface-button)" }}
+                >
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: accent }}
+                    initial={false}
+                    animate={{ width: `${progressPct}%` }}
+                    transition={getMotionTransition("progressSpring", prefersReducedMotion)}
+                  />
+                </div>
+                <input
+                  type="range"
+                  aria-label="Seek track position"
+                  min={0}
+                  max={duration}
+                  value={clampedPos}
+                  onChange={(e) => onSeek(Number(e.target.value))}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </div>
+              <span
+                className="type-caption w-10 shrink-0 text-right tabular-nums"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                -{formatDurationMs(remainingMs)}
+              </span>
+            </div>
+          </>
+        )}
 
         {/* Controls row: lyrics, prev, play/pause, next, system volume (FR-MUS-2, FR-MUS-3) */}
         <div className="flex items-center justify-between gap-2">

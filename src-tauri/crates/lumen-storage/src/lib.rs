@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Duration, Local, NaiveTime, TimeZone, Utc};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 /// Core SQLite schema matching SRS Section 7.4.
@@ -68,7 +68,18 @@ pub struct WaterSummary {
     pub weekly: Vec<WaterDayPoint>,
 }
 
-/// Thread-safe SQLite repository backing Lumen's local-first storage (`FR-TD-*`, `FR-WT-*`).
+/// File/link/text item stored by reference in the Shelf (`FR-SH-1..3`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShelfItem {
+    pub id: i64,
+    pub kind: String,
+    pub path_or_text: String,
+    pub display_name: String,
+    pub available: bool,
+    pub added_at: String,
+}
+
+/// Thread-safe SQLite repository backing Lumen's local-first storage.
 pub struct StorageRepo {
     conn: Mutex<Connection>,
 }
@@ -353,6 +364,145 @@ impl StorageRepo {
         })
     }
 
+    pub fn list_shelf(&self) -> Result<Vec<ShelfItem>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare("SELECT id, kind, path_or_text, added_at FROM shelf_items ORDER BY id DESC")
+            .map_err(|e| format!("prepare shelf failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                let kind: String = row.get(1)?;
+                let path_or_text: String = row.get(2)?;
+                let available = if kind == "file" || kind == "folder" {
+                    Path::new(&path_or_text).exists()
+                } else {
+                    true
+                };
+                let display_name = if kind == "file" || kind == "folder" {
+                    Path::new(&path_or_text)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&path_or_text)
+                        .to_string()
+                } else {
+                    path_or_text.chars().take(48).collect()
+                };
+                Ok(ShelfItem {
+                    id: row.get(0)?,
+                    kind,
+                    path_or_text,
+                    display_name,
+                    available,
+                    added_at: row.get(3)?,
+                })
+            })
+            .map_err(|e| format!("query shelf failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("shelf row error: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn add_shelf_item(
+        &self,
+        kind: &str,
+        path_or_text: &str,
+        cap: usize,
+    ) -> Result<Vec<ShelfItem>, String> {
+        let trimmed = path_or_text.trim();
+        if trimmed.is_empty() {
+            return Err("shelf item cannot be empty".into());
+        }
+        let max_items = cap.max(1) as i64;
+        let now = Utc::now().to_rfc3339();
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute(
+                "INSERT INTO shelf_items (kind, path_or_text, added_at) VALUES (?1, ?2, ?3)",
+                params![kind, trimmed, now],
+            )
+            .map_err(|e| format!("insert shelf failed: {e}"))?;
+            conn.execute(
+                "DELETE FROM shelf_items WHERE id NOT IN (SELECT id FROM shelf_items ORDER BY id DESC LIMIT ?1)",
+                params![max_items],
+            )
+            .map_err(|e| format!("enforce shelf cap failed: {e}"))?;
+        }
+        self.list_shelf()
+    }
+
+    pub fn remove_shelf_item(&self, id: i64) -> Result<Vec<ShelfItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute("DELETE FROM shelf_items WHERE id = ?1", params![id])
+                .map_err(|e| format!("remove shelf failed: {e}"))?;
+        }
+        self.list_shelf()
+    }
+
+    pub fn clear_shelf(&self) -> Result<Vec<ShelfItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute("DELETE FROM shelf_items", [])
+                .map_err(|e| format!("clear shelf failed: {e}"))?;
+        }
+        Ok(Vec::new())
+    }
+
+    pub fn get_cached_lyrics(&self, track_key: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.query_row(
+            "SELECT lrc FROM lyrics_cache WHERE track_key = ?1",
+            params![track_key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| format!("lyrics cache read failed: {e}"))
+    }
+
+    pub fn save_cached_lyrics(&self, track_key: &str, lrc: &str) -> Result<(), String> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO lyrics_cache (track_key, lrc, fetched_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(track_key) DO UPDATE SET lrc = excluded.lrc, fetched_at = excluded.fetched_at",
+            params![track_key, lrc, now],
+        )
+        .map_err(|e| format!("lyrics cache write failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn record_pomodoro_session(
+        &self,
+        kind: &str,
+        duration_s: u32,
+        completed: bool,
+    ) -> Result<(), String> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO pomodoro_sessions (kind, started_at, duration_s, completed) VALUES (?1, ?2, ?3, ?4)",
+            params![kind, now, i64::from(duration_s), i64::from(completed)],
+        )
+        .map_err(|e| format!("record pomodoro failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn daily_focus_minutes(&self, now_utc: DateTime<Utc>) -> Result<i64, String> {
+        let day_start = Self::day_window_start_utc(now_utc, 0);
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let secs: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(duration_s), 0) FROM pomodoro_sessions
+                 WHERE kind = 'focus' AND completed = 1 AND started_at >= ?1",
+                params![day_start.to_rfc3339()],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("daily focus query failed: {e}"))?;
+        Ok(secs / 60)
+    }
+
     pub fn with_connection<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, String>,
@@ -421,9 +571,35 @@ mod tests {
         assert!(goal_summary.goal_reached);
         assert!(goal_summary.percentage > 100.0);
 
-        // Next day after reset hour must start fresh at 0 ml
         let day2 = day1 + Duration::days(1);
         let reset_summary = repo.water_summary(day2, 1500, 4).expect("next day");
         assert_eq!(reset_summary.today_ml, 0);
+    }
+
+    #[test]
+    fn enforces_shelf_cap_missing_files_and_caches_lyrics() {
+        let repo = StorageRepo::open_in_memory().expect("db");
+        for idx in 0..5 {
+            repo.add_shelf_item("text", &format!("note {idx}"), 3)
+                .expect("add note");
+        }
+        let shelf = repo.list_shelf().expect("list");
+        assert_eq!(shelf.len(), 3);
+
+        let with_missing = repo
+            .add_shelf_item("file", "Z:\\definitely_missing_lumen_file.txt", 10)
+            .expect("add missing");
+        assert!(!with_missing[0].available);
+
+        repo.save_cached_lyrics("artist::song", "[00:01.00] Hello")
+            .expect("save lrc");
+        assert_eq!(
+            repo.get_cached_lyrics("artist::song").expect("get lrc"),
+            Some("[00:01.00] Hello".into())
+        );
+
+        repo.record_pomodoro_session("focus", 1500, true)
+            .expect("record pomodoro");
+        assert_eq!(repo.daily_focus_minutes(Utc::now()).expect("mins"), 25);
     }
 }

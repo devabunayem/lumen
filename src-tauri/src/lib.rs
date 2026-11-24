@@ -2,16 +2,21 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
-use lumen_core::{IslandEvent, IslandMachine, IslandSnapshot};
+use lumen_core::{
+    IslandEvent, IslandMachine, IslandSnapshot, PomodoroController, PomodoroPhase, PomodoroSnapshot,
+};
 use lumen_media::{
-    MediaCommand, MediaStateSnapshot, read_media_state, seek_media, send_media_command,
-    set_system_volume,
+    LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_system_volume,
+    parse_lrc_lines, read_media_state, seek_media, send_media_command, set_system_volume,
 };
 use lumen_prayer::{
     BANGLADESH_CITIES, PrayerCityPreset, PrayerConfig, PrayerSchedule, compute_prayer_schedule,
 };
-use lumen_storage::{StorageRepo, TaskItem, WaterSummary};
-use lumen_windows::{compute_top_center_position, is_other_app_fullscreen};
+use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
+use lumen_windows::{
+    HudEvent, battery_status, compute_top_center_position, is_caps_lock_on,
+    is_other_app_fullscreen, open_shell_target,
+};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -21,6 +26,8 @@ const COLLAPSED_WIN_W: f64 = 260.0;
 const COLLAPSED_WIN_H: f64 = 52.0;
 const EXPANDED_WIN_W: f64 = 660.0;
 const EXPANDED_WIN_H: f64 = 220.0;
+const HUD_WIN_W: f64 = 380.0;
+const HUD_WIN_H: f64 = 84.0;
 
 #[derive(Debug, Clone, Copy)]
 struct IslandRuntimeConfig {
@@ -43,6 +50,7 @@ struct AppState {
     preferred_media_app: Arc<Mutex<Option<String>>>,
     storage: Arc<StorageRepo>,
     prayer_config: Mutex<PrayerConfig>,
+    pomodoro: Arc<Mutex<PomodoroController>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,6 +122,7 @@ fn sync_pill_bounds(
 fn set_island_surface_mode(
     expanded: bool,
     hidden: bool,
+    hud: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("island") {
@@ -122,6 +131,8 @@ fn set_island_surface_mode(
         } else {
             let (w, h) = if expanded {
                 (EXPANDED_WIN_W, EXPANDED_WIN_H)
+            } else if hud.unwrap_or(false) {
+                (HUD_WIN_W, HUD_WIN_H)
             } else {
                 (COLLAPSED_WIN_W, COLLAPSED_WIN_H)
             };
@@ -228,6 +239,32 @@ async fn media_select_session(
     tokio::task::spawn_blocking(move || read_media_state(preferred.as_deref()))
         .await
         .map_err(|e| format!("session select join error: {e}"))
+}
+
+#[tauri::command]
+async fn media_get_lyrics(
+    artist: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<LyricLine>, String> {
+    let key = format!(
+        "{}::{}",
+        artist.trim().to_lowercase(),
+        title.trim().to_lowercase()
+    );
+    if let Ok(Some(cached)) = state.storage.get_cached_lyrics(&key) {
+        return Ok(parse_lrc_lines(&cached));
+    }
+    let storage = Arc::clone(&state.storage);
+    tokio::task::spawn_blocking(move || {
+        if let Some(lrc) = fetch_lrclib_lrc(&artist, &title) {
+            let _ = storage.save_cached_lyrics(&key, &lrc);
+            return parse_lrc_lines(&lrc);
+        }
+        Vec::new()
+    })
+    .await
+    .map_err(|e| format!("lyrics task error: {e}"))
 }
 
 #[tauri::command]
@@ -339,6 +376,74 @@ fn prayer_set_city(city_id: String, state: State<'_, AppState>) -> Result<Prayer
     Ok(compute_prayer_schedule(Utc::now(), &cfg))
 }
 
+#[tauri::command]
+fn pomodoro_get_state(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
+    let guard = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?;
+    Ok(guard.snapshot())
+}
+
+#[tauri::command]
+fn pomodoro_toggle(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
+    let mut guard = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?;
+    guard.toggle_start_pause();
+    Ok(guard.snapshot())
+}
+
+#[tauri::command]
+fn pomodoro_skip(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
+    let mut guard = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?;
+    guard.skip();
+    Ok(guard.snapshot())
+}
+
+#[tauri::command]
+fn pomodoro_reset(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
+    let mut guard = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?;
+    guard.reset();
+    Ok(guard.snapshot())
+}
+
+#[tauri::command]
+fn shelf_list(state: State<'_, AppState>) -> Result<Vec<ShelfItem>, String> {
+    state.storage.list_shelf()
+}
+
+#[tauri::command]
+fn shelf_add(
+    kind: String,
+    path_or_text: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ShelfItem>, String> {
+    state.storage.add_shelf_item(&kind, &path_or_text, 50)
+}
+
+#[tauri::command]
+fn shelf_remove(id: i64, state: State<'_, AppState>) -> Result<Vec<ShelfItem>, String> {
+    state.storage.remove_shelf_item(id)
+}
+
+#[tauri::command]
+fn shelf_clear(state: State<'_, AppState>) -> Result<Vec<ShelfItem>, String> {
+    state.storage.clear_shelf()
+}
+
+#[tauri::command]
+fn shelf_open(target: String) -> Result<(), String> {
+    open_shell_target(&target)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
@@ -356,13 +461,19 @@ pub fn run() {
                     .or_else(|_| StorageRepo::open_in_memory())
                     .expect("failed to initialize Lumen storage"),
             );
+            let daily_mins = storage.daily_focus_minutes(Utc::now()).unwrap_or(0);
+            let pomodoro = Arc::new(Mutex::new(PomodoroController::new(
+                Default::default(),
+                daily_mins,
+            )));
 
             app.manage(AppState {
                 machine: Mutex::new(IslandMachine::new()),
                 config: Arc::clone(&shared_config),
                 preferred_media_app: Arc::clone(&preferred_media_app),
-                storage,
+                storage: Arc::clone(&storage),
                 prayer_config: Mutex::new(PrayerConfig::default()),
+                pomodoro: Arc::clone(&pomodoro),
             });
 
             let Some(window) = app.get_webview_window("island") else {
@@ -411,7 +522,7 @@ pub fn run() {
             }
             let _ = tray_builder.build(app)?;
 
-            // Fullscreen monitor loop at 2 Hz (FR-WIN-4, NFR-PERF-3 compliant)
+            // Fullscreen & System HUD monitor loop at 2 Hz (FR-WIN-4, FR-HUD-1, NFR-PERF-3)
             #[cfg(windows)]
             let own_hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
             #[cfg(not(windows))]
@@ -421,6 +532,10 @@ pub fn run() {
             let fs_config = Arc::clone(&shared_config);
             tauri::async_runtime::spawn(async move {
                 let mut last_fullscreen = false;
+                let mut last_caps = is_caps_lock_on();
+                let mut last_vol = get_system_volume();
+                let mut last_battery = battery_status();
+
                 loop {
                     let hide_in_fullscreen = fs_config
                         .lock()
@@ -438,13 +553,73 @@ pub fn run() {
                             FullscreenChangedPayload { active: fullscreen },
                         );
                     }
+
+                    let caps = is_caps_lock_on();
+                    if caps != last_caps {
+                        last_caps = caps;
+                        let _ = fs_window.emit(
+                            "lumen://hud-event",
+                            HudEvent {
+                                kind: "caps_lock".into(),
+                                label: if caps {
+                                    "Caps Lock On"
+                                } else {
+                                    "Caps Lock Off"
+                                }
+                                .into(),
+                                value_pct: None,
+                                active: caps,
+                            },
+                        );
+                    }
+
+                    let vol = get_system_volume();
+                    if vol != last_vol {
+                        last_vol = vol;
+                        let _ = fs_window.emit(
+                            "lumen://hud-event",
+                            HudEvent {
+                                kind: if vol.1 { "mute" } else { "volume" }.into(),
+                                label: if vol.1 {
+                                    "Muted".into()
+                                } else {
+                                    format!("Volume {}%", vol.0)
+                                },
+                                value_pct: Some(if vol.1 { 0 } else { vol.0 }),
+                                active: !vol.1,
+                            },
+                        );
+                    }
+
+                    let bat = battery_status();
+                    if let (Some((prev_pct, prev_chg)), Some((pct, chg))) = (last_battery, bat)
+                        && (chg != prev_chg || (pct <= 15 && prev_pct > 15))
+                    {
+                        let _ = fs_window.emit(
+                            "lumen://hud-event",
+                            HudEvent {
+                                kind: "battery".into(),
+                                label: if chg {
+                                    format!("Charging · {pct}%")
+                                } else {
+                                    format!("Battery {pct}%")
+                                },
+                                value_pct: Some(pct),
+                                active: chg,
+                            },
+                        );
+                    }
+                    last_battery = bat;
+
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             });
 
-            // Background SMTC watcher at 1 Hz (FR-MUS-1, NFR-PERF-3 compliant)
+            // Background SMTC + Pomodoro tick loop at 1 Hz (FR-MUS-1, FR-PO-2, NFR-PERF-3)
             let media_window = window.clone();
             let media_pref = Arc::clone(&preferred_media_app);
+            let pom_ref = Arc::clone(&pomodoro);
+            let storage_ref = Arc::clone(&storage);
             tauri::async_runtime::spawn(async move {
                 let mut last_snapshot: Option<MediaStateSnapshot> = None;
                 loop {
@@ -456,6 +631,38 @@ pub fn run() {
                         last_snapshot = Some(snapshot.clone());
                         let _ = media_window.emit("lumen://media-updated", snapshot);
                     }
+
+                    let mut completed: Option<(PomodoroPhase, u32)> = None;
+                    let mut snap_to_emit: Option<PomodoroSnapshot> = None;
+                    if let Ok(mut guard) = pom_ref.lock()
+                        && guard.is_running()
+                    {
+                        completed = guard.tick();
+                        if completed.is_some() {
+                            let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
+                            guard.set_daily_focus_minutes(mins);
+                        }
+                        snap_to_emit = Some(guard.snapshot());
+                    }
+
+                    if let Some((phase, secs)) = completed {
+                        let kind = match phase {
+                            PomodoroPhase::Focus => "focus",
+                            PomodoroPhase::ShortBreak => "short_break",
+                            PomodoroPhase::LongBreak => "long_break",
+                        };
+                        let _ = storage_ref.record_pomodoro_session(kind, secs, true);
+                        if let Ok(mut guard) = pom_ref.lock() {
+                            let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
+                            guard.set_daily_focus_minutes(mins);
+                            snap_to_emit = Some(guard.snapshot());
+                        }
+                    }
+
+                    if let Some(snap) = snap_to_emit {
+                        let _ = media_window.emit("lumen://pomodoro-tick", snap);
+                    }
+
                     tokio::time::sleep(Duration::from_millis(1000)).await;
                 }
             });
@@ -473,6 +680,7 @@ pub fn run() {
             media_seek,
             media_set_volume,
             media_select_session,
+            media_get_lyrics,
             tasks_list,
             tasks_add,
             tasks_toggle,
@@ -485,7 +693,16 @@ pub fn run() {
             water_undo,
             prayer_list_cities,
             prayer_get_schedule,
-            prayer_set_city
+            prayer_set_city,
+            pomodoro_get_state,
+            pomodoro_toggle,
+            pomodoro_skip,
+            pomodoro_reset,
+            shelf_list,
+            shelf_add,
+            shelf_remove,
+            shelf_clear,
+            shelf_open
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

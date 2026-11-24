@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 /// Physical screen rectangle of the active visible island surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PillRect {
@@ -5,6 +7,15 @@ pub struct PillRect {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+}
+
+/// System HUD popup payload (`FR-HUD-1..2`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HudEvent {
+    pub kind: String,
+    pub label: String,
+    pub value_pct: Option<u8>,
+    pub active: bool,
 }
 
 impl PillRect {
@@ -58,14 +69,15 @@ mod win32 {
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     };
+    use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CAPITAL};
+    use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetForegroundWindow, GetWindowRect, IsWindowVisible, IsZoomed,
+        GetClassNameW, GetForegroundWindow, GetWindowRect, IsWindowVisible, IsZoomed, SW_SHOWNORMAL,
     };
+    use windows::core::{HSTRING, PCWSTR};
 
     /// Detects whether another visible foreground application covers the entire monitor (`FR-WIN-4`).
-    ///
-    /// Ignores desktop shell windows (`Progman`, `WorkerW`, `Shell_TrayWnd`) and normal
-    /// maximized windows (`IsZoomed`) so Focus Assist / maximized apps never hide the island.
     #[must_use]
     pub fn is_other_app_fullscreen(own_raw_hwnd: isize) -> bool {
         // SAFETY: Win32 read-only queries against foreground HWND and monitor geometry.
@@ -112,6 +124,49 @@ mod win32 {
                 && win_rect.bottom == mr.bottom
         }
     }
+
+    /// Reads Caps Lock toggle state (`FR-HUD-1`).
+    #[must_use]
+    pub fn is_caps_lock_on() -> bool {
+        // SAFETY: Read-only keyboard toggle query.
+        unsafe { (GetKeyState(i32::from(VK_CAPITAL.0)) & 1) != 0 }
+    }
+
+    /// Reads battery percentage and AC charging state (`FR-HUD-1`).
+    #[must_use]
+    pub fn battery_status() -> Option<(u8, bool)> {
+        let mut status = SYSTEM_POWER_STATUS::default();
+        // SAFETY: Valid pointer to stack-allocated `SYSTEM_POWER_STATUS`.
+        if unsafe { GetSystemPowerStatus(&mut status) }.is_err() {
+            return None;
+        }
+        if status.BatteryFlag == 128 || status.BatteryLifePercent > 100 {
+            return None;
+        }
+        let charging = status.ACLineStatus == 1;
+        Some((status.BatteryLifePercent, charging))
+    }
+
+    /// Opens a file, folder, or URL using the Windows Shell (`FR-SH-2`).
+    pub fn open_shell_target(target: &str) -> Result<(), String> {
+        let verb = HSTRING::from("open");
+        let file = HSTRING::from(target);
+        // SAFETY: HSTRING pointers live for the duration of ShellExecuteW call.
+        let res = unsafe {
+            ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(file.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        if (res.0 as isize) <= 32 {
+            return Err("failed to open target via Windows Shell".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(windows))]
@@ -120,9 +175,23 @@ mod win32 {
     pub const fn is_other_app_fullscreen(_own_raw_hwnd: isize) -> bool {
         false
     }
+
+    #[must_use]
+    pub const fn is_caps_lock_on() -> bool {
+        false
+    }
+
+    #[must_use]
+    pub const fn battery_status() -> Option<(u8, bool)> {
+        None
+    }
+
+    pub fn open_shell_target(_target: &str) -> Result<(), String> {
+        Ok(())
+    }
 }
 
-pub use win32::is_other_app_fullscreen;
+pub use win32::{battery_status, is_caps_lock_on, is_other_app_fullscreen, open_shell_target};
 
 #[cfg(test)]
 mod tests {

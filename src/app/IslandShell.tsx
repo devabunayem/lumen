@@ -5,38 +5,57 @@ import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import {
   getMediaState,
+  type HudEvent,
   isTauriRuntime,
+  type LyricLine,
+  mediaGetLyrics,
   type MediaStateSnapshot,
+  pomodoroGetState,
+  pomodoroReset,
+  pomodoroSkip,
+  type PomodoroSnapshot,
+  pomodoroToggle,
   type PrayerCityPreset,
-  type PrayerSchedule,
-  type TaskItem,
-  type WaterSummary,
   prayerGetSchedule,
   prayerListCities,
+  type PrayerSchedule,
   prayerSetCity,
   seekMedia,
   selectMediaSession,
   sendMediaCommand,
   setIslandSurfaceMode,
   setSystemVolume,
+  shelfAdd,
+  shelfClear,
+  type ShelfItem,
+  shelfList,
+  shelfOpen,
+  shelfRemove,
   subscribeFullscreenChange,
+  subscribeHudEvent,
   subscribeMediaUpdated,
+  subscribePomodoroTick,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
+  type TaskItem,
   tasksAdd,
   tasksDelete,
   tasksList,
   tasksToggle,
   waterGetSummary,
   waterLog,
+  type WaterSummary,
   waterUndo,
 } from "../lib/ipc";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { MusicWidget } from "../widgets/music/MusicWidget";
+import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
 import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
+import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
+import { HudOverlay } from "./HudOverlay";
 import { useIslandStore } from "./stateMachine";
 
 export interface IslandShellProps {
@@ -59,6 +78,12 @@ function formatClockParts(now: Date): { dateText: string; timeText: string } {
     minute: "2-digit",
   });
   return { dateText, timeText };
+}
+
+function formatShortTimer(secs: number): string {
+  const m = Math.floor(Math.max(0, secs) / 60);
+  const s = Math.max(0, secs) % 60;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 function isMediaExcluded(appId: string, title: string, exclusions: string[]): boolean {
@@ -86,6 +111,7 @@ export function IslandShell({
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [waterGoalMl, setWaterGoalMl] = useState(1500);
   const [waterSummary, setWaterSummary] = useState<WaterSummary | null>(null);
@@ -93,8 +119,12 @@ export function IslandShell({
   const [prayerSchedule, setPrayerSchedule] = useState<PrayerSchedule | null>(null);
   const [prayerCities, setPrayerCities] = useState<PrayerCityPreset[]>([]);
   const [prayerLang, setPrayerLang] = useState<"en" | "bn">("en");
+  const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
+  const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
+  const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
 
   const lastTrackKeyRef = useRef<string>("");
+  const hudTimerRef = useRef<number | null>(null);
 
   const pages = useMemo(
     () => [
@@ -121,6 +151,18 @@ export function IslandShell({
         titleLead: "Prayer",
         titleAccent: "Times",
         accentVar: "var(--accent-cyan)",
+      },
+      {
+        id: "pomodoro",
+        titleLead: "Focus",
+        titleAccent: "Timer",
+        accentVar: "var(--accent-orange)",
+      },
+      {
+        id: "shelf",
+        titleLead: "File",
+        titleAccent: "Shelf",
+        accentVar: "var(--accent-purple)",
       },
     ],
     [media?.active?.accent_hex],
@@ -149,6 +191,8 @@ export function IslandShell({
     void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
     void prayerListCities().then(setPrayerCities);
     void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
+    void pomodoroGetState().then((p) => p && setPomodoro(p));
+    void shelfList().then(setShelfItems);
 
     const prayerTimer = window.setInterval(() => {
       void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
@@ -157,10 +201,20 @@ export function IslandShell({
   }, [waterGoalMl]);
 
   useEffect(() => {
+    const active = media?.active;
+    if (!active?.title) {
+      return;
+    }
+    void mediaGetLyrics(active.artist, active.title).then(setLyricsLines);
+  }, [media?.active]);
+
+  useEffect(() => {
     let unlistenFs: (() => void) | undefined;
     let unlistenExpand: (() => void) | undefined;
     let unlistenHide: (() => void) | undefined;
     let unlistenMedia: (() => void) | undefined;
+    let unlistenPom: (() => void) | undefined;
+    let unlistenHud: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
@@ -187,24 +241,38 @@ export function IslandShell({
 
     void getMediaState().then(handleMediaSnapshot);
 
-    void subscribeMediaUpdated((snapshot) => {
-      handleMediaSnapshot(snapshot);
-    }).then((fn) => {
+    void subscribeMediaUpdated(handleMediaSnapshot).then((fn) => {
       unlistenMedia = fn;
     });
-
+    void subscribePomodoroTick((snap) => {
+      setPomodoro(snap);
+      dispatch({ type: "TIMER_TICK", active: snap.running });
+    }).then((fn) => {
+      unlistenPom = fn;
+    });
+    void subscribeHudEvent((hud) => {
+      setActiveHud(hud);
+      dispatch({ type: "NOTIFICATION" });
+      if (hudTimerRef.current !== null) {
+        window.clearTimeout(hudTimerRef.current);
+      }
+      hudTimerRef.current = window.setTimeout(() => {
+        setActiveHud(null);
+        dispatch({ type: "HUD_DISMISS" });
+      }, 1800);
+    }).then((fn) => {
+      unlistenHud = fn;
+    });
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
     }).then((fn) => {
       unlistenFs = fn;
     });
-
     void subscribeTrayToggleExpand(() => {
       dispatch({ type: "HOTKEY_TOGGLE_EXPAND" });
     }).then((fn) => {
       unlistenExpand = fn;
     });
-
     void subscribeTrayToggleHide(() => {
       dispatch({ type: "HOTKEY_TOGGLE_HIDE" });
     }).then((fn) => {
@@ -216,6 +284,8 @@ export function IslandShell({
       unlistenExpand?.();
       unlistenHide?.();
       unlistenMedia?.();
+      unlistenPom?.();
+      unlistenHud?.();
     };
   }, [dispatch, mediaExclusions]);
 
@@ -265,13 +335,17 @@ export function IslandShell({
     });
 
     if (state === "expanded") {
-      void setIslandSurfaceMode(true, false);
+      void setIslandSurfaceMode(true, false, false);
+      return;
+    }
+    if (state === "hud") {
+      void setIslandSurfaceMode(false, false, true);
       return;
     }
 
     const delayMs = state === "hidden" ? 280 : 220;
     const timer = window.setTimeout(() => {
-      void setIslandSurfaceMode(false, state === "hidden");
+      void setIslandSurfaceMode(false, state === "hidden", false);
     }, delayMs);
     return () => window.clearTimeout(timer);
   }, [width, height, topOffset, state, hideInFullscreen]);
@@ -291,8 +365,23 @@ export function IslandShell({
   const activePage = pages[activePageIndex] ?? pages[0];
   const isExpanded = state === "expanded";
   const isHidden = state === "hidden";
+  const isHud = state === "hud" && activeHud !== null;
   const liveTrack = media?.active ?? null;
   const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
+  const activeLyricsLines = useMemo(
+    () => (liveTrack?.title ? lyricsLines : []),
+    [liveTrack?.title, lyricsLines],
+  );
+  const activeLyric = useMemo(() => {
+    if (!liveTrack || activeLyricsLines.length === 0) {
+      return null;
+    }
+    const idx = activeLyricsLines.reduce(
+      (acc, l, i) => (l.time_ms <= liveTrack.position_ms ? i : acc),
+      -1,
+    );
+    return idx >= 0 ? (activeLyricsLines[idx]?.text ?? null) : null;
+  }, [liveTrack, activeLyricsLines]);
 
   const sizeTransition = isHidden
     ? getMotionTransition("hideFullscreen", prefersReducedMotion)
@@ -335,6 +424,11 @@ export function IslandShell({
             : undefined
         }
         transition={sizeTransition}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setActivePageIndex(pages.findIndex((p) => p.id === "shelf"));
+          dispatch({ type: "DRAG_ENTER" });
+        }}
         onMouseEnter={() => {
           setIsHeaderHovered(true);
           dispatch({ type: "HOVER" });
@@ -376,7 +470,18 @@ export function IslandShell({
 
         <div className="relative h-full w-full overflow-hidden">
           <AnimatePresence initial={false}>
-            {!isExpanded ? (
+            {isHud && activeHud ? (
+              <motion.div
+                key="hud-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.14 }}
+                className="h-full w-full"
+              >
+                <HudOverlay hud={activeHud} />
+              </motion.div>
+            ) : !isExpanded ? (
               <motion.div
                 key="collapsed-pill"
                 initial={{ opacity: 0 }}
@@ -388,7 +493,26 @@ export function IslandShell({
                 transition={{ duration: 0.14 }}
                 className="flex h-full w-full items-center justify-between px-5"
               >
-                {liveTrack ? (
+                {pomodoro?.running ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: "var(--accent-orange)" }}
+                      />
+                      <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
+                        Focus
+                      </span>
+                    </div>
+                    <span
+                      className="type-header-clock tabular-nums"
+                      style={{ color: "var(--accent-orange)" }}
+                    >
+                      {formatShortTimer(pomodoro.remaining_secs)}
+                    </span>
+                  </>
+                ) : liveTrack ? (
                   <>
                     <div className="flex min-w-0 items-center gap-2">
                       {liveTrack.album_art_data_url ? (
@@ -405,10 +529,10 @@ export function IslandShell({
                         />
                       )}
                       <span
-                        className="type-caption max-w-[118px] truncate"
+                        className="type-caption max-w-[125px] truncate"
                         style={{ color: "var(--text-primary)" }}
                       >
-                        {liveTrack.title}
+                        {activeLyric ?? liveTrack.title}
                       </span>
                     </div>
                     <LiveWaveform playing={liveTrack.is_playing} accentColor={mediaAccent} />
@@ -543,6 +667,7 @@ export function IslandShell({
                     <MusicWidget
                       media={media}
                       lyricsOpen={lyricsOpen}
+                      lyricsLines={activeLyricsLines}
                       onToggleLyrics={() => setLyricsOpen((v) => !v)}
                       onCommand={(cmd) => {
                         void sendMediaCommand(cmd).then((next) => next && setMedia(next));
@@ -648,6 +773,61 @@ export function IslandShell({
                         void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
                       }}
                       onToggleLanguage={() => setPrayerLang((l) => (l === "en" ? "bn" : "en"))}
+                    />
+                  )}
+
+                  {activePage.id === "pomodoro" && (
+                    <PomodoroWidget
+                      pomodoro={pomodoro}
+                      onToggle={() => {
+                        void pomodoroToggle().then((p) => p && setPomodoro(p));
+                      }}
+                      onSkip={() => {
+                        void pomodoroSkip().then((p) => p && setPomodoro(p));
+                      }}
+                      onReset={() => {
+                        void pomodoroReset().then((p) => p && setPomodoro(p));
+                      }}
+                    />
+                  )}
+
+                  {activePage.id === "shelf" && (
+                    <ShelfWidget
+                      items={shelfItems}
+                      onAdd={(kind, val) => {
+                        void shelfAdd(kind, val).then((items) => {
+                          if (isTauriRuntime()) {
+                            setShelfItems(items);
+                          } else {
+                            setShelfItems((prev) => [
+                              {
+                                id: Date.now(),
+                                kind,
+                                path_or_text: val,
+                                display_name: val.slice(0, 40),
+                                available: true,
+                                added_at: new Date().toISOString(),
+                              },
+                              ...prev,
+                            ]);
+                          }
+                        });
+                      }}
+                      onOpen={(target) => {
+                        void shelfOpen(target);
+                      }}
+                      onRemove={(id) => {
+                        void shelfRemove(id).then((items) => {
+                          if (isTauriRuntime()) {
+                            setShelfItems(items);
+                          } else {
+                            setShelfItems((prev) => prev.filter((i) => i.id !== id));
+                          }
+                        });
+                      }}
+                      onClear={() => {
+                        void shelfClear().then(() => setShelfItems([]));
+                      }}
                     />
                   )}
 

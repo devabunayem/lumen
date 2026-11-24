@@ -125,8 +125,8 @@ cargo test --manifest-path src-tauri/Cargo.toml --workspace
 | **Phase 1** | Click-through window engine, fullscreen auto-hide, Notch ↔ Pill spring morphing | ✅ Done    |
 | **Phase 2** | Music widget with Windows SMTC, controls & waveform live activity               | ✅ Done    |
 | **Phase 3** | SQLite storage, To-do, Water Tracker & Offline Prayer Times                     | ✅ Done    |
-| **Phase 4** | Pomodoro timer, File Shelf, System HUDs & Synced Lyrics                         | 🚧 Next    |
-| **Phase 5** | Privacy-first Windows Notifications pipeline                                    | ⏳ Planned |
+| **Phase 4** | Pomodoro timer, File Shelf, System HUDs & Synced Lyrics                         | ✅ Done    |
+| **Phase 5** | Privacy-first Windows Notifications pipeline                                    | 🚧 Next    |
 | **Phase 6** | Settings window, multi-monitor DPI, Bangla i18n & Accessibility pass            | ⏳ Planned |
 | **Phase 7** | Third-party Plugin SDK, signed MSI/NSIS installer (`v1.0.0`), Winget & Scoop    | ⏳ Planned |
 | **Phase 8** | Ask (BYO-key AI), Weather, Calendar, Clipboard & System Stats widgets           | ⏳ Planned |

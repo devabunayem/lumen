@@ -42,6 +42,11 @@ export interface MediaStateSnapshot {
   muted: boolean;
 }
 
+export interface LyricLine {
+  time_ms: number;
+  text: string;
+}
+
 export interface TaskItem {
   id: number;
   title: string;
@@ -97,6 +102,33 @@ export interface PrayerCityPreset {
   tz_offset_minutes: number;
 }
 
+export interface PomodoroSnapshot {
+  phase: "focus" | "short_break" | "long_break";
+  remaining_secs: number;
+  total_secs: number;
+  running: boolean;
+  cycle_index: number;
+  cycles_before_long: number;
+  daily_focus_minutes: number;
+  chime_tick: number;
+}
+
+export interface ShelfItem {
+  id: number;
+  kind: string;
+  path_or_text: string;
+  display_name: string;
+  available: boolean;
+  added_at: string;
+}
+
+export interface HudEvent {
+  kind: string;
+  label: string;
+  value_pct: number | null;
+  active: boolean;
+}
+
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -128,11 +160,15 @@ export async function syncPillBounds(bounds: PillBoundsPayload): Promise<void> {
   });
 }
 
-export async function setIslandSurfaceMode(expanded: boolean, hidden: boolean): Promise<void> {
+export async function setIslandSurfaceMode(
+  expanded: boolean,
+  hidden: boolean,
+  hud = false,
+): Promise<void> {
   if (!isTauriRuntime()) {
     return;
   }
-  await invoke("set_island_surface_mode", { expanded, hidden });
+  await invoke("set_island_surface_mode", { expanded, hidden, hud });
 }
 
 export async function requestKeyboardFocus(focused: boolean): Promise<void> {
@@ -177,6 +213,13 @@ export async function selectMediaSession(appId: string): Promise<MediaStateSnaps
     return null;
   }
   return invoke<MediaStateSnapshot>("media_select_session", { appId });
+}
+
+export async function mediaGetLyrics(artist: string, title: string): Promise<LyricLine[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<LyricLine[]>("media_get_lyrics", { artist, title });
 }
 
 export async function tasksList(): Promise<TaskItem[]> {
@@ -264,6 +307,69 @@ export async function prayerSetCity(cityId: string): Promise<PrayerSchedule | nu
   return invoke<PrayerSchedule>("prayer_set_city", { cityId });
 }
 
+export async function pomodoroGetState(): Promise<PomodoroSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<PomodoroSnapshot>("pomodoro_get_state");
+}
+
+export async function pomodoroToggle(): Promise<PomodoroSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<PomodoroSnapshot>("pomodoro_toggle");
+}
+
+export async function pomodoroSkip(): Promise<PomodoroSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<PomodoroSnapshot>("pomodoro_skip");
+}
+
+export async function pomodoroReset(): Promise<PomodoroSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<PomodoroSnapshot>("pomodoro_reset");
+}
+
+export async function shelfList(): Promise<ShelfItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ShelfItem[]>("shelf_list");
+}
+
+export async function shelfAdd(kind: string, pathOrText: string): Promise<ShelfItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ShelfItem[]>("shelf_add", { kind, pathOrText });
+}
+
+export async function shelfRemove(id: number): Promise<ShelfItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ShelfItem[]>("shelf_remove", { id });
+}
+
+export async function shelfClear(): Promise<ShelfItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ShelfItem[]>("shelf_clear");
+}
+
+export async function shelfOpen(target: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("shelf_open", { target });
+}
+
 export async function subscribeFullscreenChange(
   onChange: (active: boolean) => void,
 ): Promise<UnlistenFn> {
@@ -283,6 +389,26 @@ export async function subscribeMediaUpdated(
   }
   return listen<MediaStateSnapshot>("lumen://media-updated", (event) => {
     onUpdate(event.payload);
+  });
+}
+
+export async function subscribePomodoroTick(
+  onTick: (snapshot: PomodoroSnapshot) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<PomodoroSnapshot>("lumen://pomodoro-tick", (event) => {
+    onTick(event.payload);
+  });
+}
+
+export async function subscribeHudEvent(onHud: (hud: HudEvent) => void): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<HudEvent>("lumen://hud-event", (event) => {
+    onHud(event.payload);
   });
 }
 
