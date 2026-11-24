@@ -121,9 +121,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --workspace
 
 | Phase       | Milestone                                                                       | Status     |
 | ----------- | ------------------------------------------------------------------------------- | ---------- |
-| **Phase 0** | Repo, CI, design tokens, Tauri v2 + React 19 skeleton & top-centre pill         | ✅ Active  |
-| **Phase 1** | Click-through window engine, fullscreen auto-hide, Notch ↔ Pill spring morphing | ⏳ Planned |
-| **Phase 2** | Music widget with Windows SMTC, controls & waveform live activity               | ⏳ Planned |
+| **Phase 0** | Repo, CI, design tokens, Tauri v2 + React 19 skeleton & top-centre pill         | ✅ Done    |
+| **Phase 1** | Click-through window engine, fullscreen auto-hide, Notch ↔ Pill spring morphing | ✅ Done    |
+| **Phase 2** | Music widget with Windows SMTC, controls & waveform live activity               | 🚧 Next    |
 | **Phase 3** | SQLite storage, To-do, Water Tracker & Offline Prayer Times                     | ⏳ Planned |
 | **Phase 4** | Pomodoro timer, File Shelf, System HUDs & Synced Lyrics                         | ⏳ Planned |
 | **Phase 5** | Privacy-first Windows Notifications pipeline                                    | ⏳ Planned |

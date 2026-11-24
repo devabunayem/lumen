@@ -1,10 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IslandState } from "../app/stateMachine";
 
 export interface IslandSnapshot {
   state: IslandState;
   minimal_mode: boolean;
   has_live_activity: boolean;
+}
+
+export interface PillBoundsPayload {
+  width: number;
+  height: number;
+  topOffset: number;
+  visible: boolean;
+  hideInFullscreen: boolean;
 }
 
 function isTauriRuntime(): boolean {
@@ -23,4 +32,35 @@ export async function dispatchIslandCommand(eventName: string): Promise<IslandSn
     return null;
   }
   return invoke<IslandSnapshot>("dispatch_island_event", { eventName });
+}
+
+export async function syncPillBounds(bounds: PillBoundsPayload): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("sync_pill_bounds", {
+    width: bounds.width,
+    height: bounds.height,
+    topOffset: bounds.topOffset,
+    visible: bounds.visible,
+    hideInFullscreen: bounds.hideInFullscreen,
+  });
+}
+
+export async function requestKeyboardFocus(focused: boolean): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("request_keyboard_focus", { focused });
+}
+
+export async function subscribeFullscreenChange(
+  onChange: (active: boolean) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<{ active: boolean }>("lumen://fullscreen-changed", (event) => {
+    onChange(event.payload.active);
+  });
 }
