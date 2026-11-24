@@ -7,3 +7,12 @@ description = "Privacy-first Windows notification pipeline and filters for Lumen
 
 [dependencies]
 serde.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Foundation_Collections",
+    "UI_Notifications",
+    "UI_Notifications_Management",
+    "Win32_UI_Shell",
+] }

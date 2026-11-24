@@ -10,6 +10,7 @@ import {
   type LyricLine,
   mediaGetLyrics,
   type MediaStateSnapshot,
+  type NotificationPopup,
   pomodoroGetState,
   pomodoroReset,
   pomodoroSkip,
@@ -34,6 +35,7 @@ import {
   subscribeFullscreenChange,
   subscribeHudEvent,
   subscribeMediaUpdated,
+  subscribeNotificationPopup,
   subscribePomodoroTick,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
@@ -56,6 +58,7 @@ import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
 import { HudOverlay } from "./HudOverlay";
+import { NotificationToast } from "./NotificationToast";
 import { useIslandStore } from "./stateMachine";
 
 export interface IslandShellProps {
@@ -122,6 +125,7 @@ export function IslandShell({
   const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
+  const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
 
   const lastTrackKeyRef = useRef<string>("");
   const hudTimerRef = useRef<number | null>(null);
@@ -215,6 +219,7 @@ export function IslandShell({
     let unlistenMedia: (() => void) | undefined;
     let unlistenPom: (() => void) | undefined;
     let unlistenHud: (() => void) | undefined;
+    let unlistenNotify: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
@@ -251,6 +256,7 @@ export function IslandShell({
       unlistenPom = fn;
     });
     void subscribeHudEvent((hud) => {
+      setActiveNotification(null);
       setActiveHud(hud);
       dispatch({ type: "NOTIFICATION" });
       if (hudTimerRef.current !== null) {
@@ -262,6 +268,20 @@ export function IslandShell({
       }, 1800);
     }).then((fn) => {
       unlistenHud = fn;
+    });
+    void subscribeNotificationPopup((popup) => {
+      setActiveHud(null);
+      setActiveNotification(popup);
+      dispatch({ type: "NOTIFICATION" });
+      if (hudTimerRef.current !== null) {
+        window.clearTimeout(hudTimerRef.current);
+      }
+      hudTimerRef.current = window.setTimeout(() => {
+        setActiveNotification(null);
+        dispatch({ type: "HUD_DISMISS" });
+      }, 4000);
+    }).then((fn) => {
+      unlistenNotify = fn;
     });
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
@@ -286,6 +306,7 @@ export function IslandShell({
       unlistenMedia?.();
       unlistenPom?.();
       unlistenHud?.();
+      unlistenNotify?.();
     };
   }, [dispatch, mediaExclusions]);
 
@@ -366,6 +387,7 @@ export function IslandShell({
   const isExpanded = state === "expanded";
   const isHidden = state === "hidden";
   const isHud = state === "hud" && activeHud !== null;
+  const isNotify = state === "hud" && activeNotification !== null;
   const liveTrack = media?.active ?? null;
   const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
   const activeLyricsLines = useMemo(
@@ -470,7 +492,24 @@ export function IslandShell({
 
         <div className="relative h-full w-full overflow-hidden">
           <AnimatePresence initial={false}>
-            {isHud && activeHud ? (
+            {isNotify && activeNotification ? (
+              <motion.div
+                key="notification-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.14 }}
+                className="h-full w-full"
+              >
+                <NotificationToast
+                  notification={activeNotification}
+                  onDismiss={() => {
+                    setActiveNotification(null);
+                    dispatch({ type: "HUD_DISMISS" });
+                  }}
+                />
+              </motion.div>
+            ) : isHud && activeHud ? (
               <motion.div
                 key="hud-overlay"
                 initial={{ opacity: 0 }}

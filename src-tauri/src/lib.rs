@@ -9,6 +9,10 @@ use lumen_media::{
     LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_system_volume,
     parse_lrc_lines, read_media_state, seek_media, send_media_command, set_system_volume,
 };
+use lumen_notify::{
+    NotificationPopup, NotificationPrivacyConfig, filter_notification, is_focus_assist_quiet,
+    listener_access_available,
+};
 use lumen_prayer::{
     BANGLADESH_CITIES, PrayerCityPreset, PrayerConfig, PrayerSchedule, compute_prayer_schedule,
 };
@@ -51,6 +55,8 @@ struct AppState {
     storage: Arc<StorageRepo>,
     prayer_config: Mutex<PrayerConfig>,
     pomodoro: Arc<Mutex<PomodoroController>>,
+    notify_config: Mutex<NotificationPrivacyConfig>,
+    notify_seq: Mutex<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -444,6 +450,68 @@ fn shelf_open(target: String) -> Result<(), String> {
     open_shell_target(&target)
 }
 
+#[tauri::command]
+fn notify_get_config(state: State<'_, AppState>) -> Result<NotificationPrivacyConfig, String> {
+    let guard = state
+        .notify_config
+        .lock()
+        .map_err(|_| "notify config mutex poisoned".to_string())?;
+    Ok(guard.clone())
+}
+
+#[tauri::command]
+fn notify_set_config(
+    config: NotificationPrivacyConfig,
+    state: State<'_, AppState>,
+) -> Result<NotificationPrivacyConfig, String> {
+    let mut guard = state
+        .notify_config
+        .lock()
+        .map_err(|_| "notify config mutex poisoned".to_string())?;
+    *guard = config.clone();
+    Ok(config)
+}
+
+#[tauri::command]
+fn notify_listener_status() -> bool {
+    listener_access_available()
+}
+
+#[tauri::command]
+fn notify_push_test(
+    app_name: String,
+    title: String,
+    body: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<NotificationPopup>, String> {
+    let cfg = state
+        .notify_config
+        .lock()
+        .map_err(|_| "notify config mutex poisoned".to_string())?
+        .clone();
+    let mut seq = state
+        .notify_seq
+        .lock()
+        .map_err(|_| "notify seq mutex poisoned".to_string())?;
+    *seq = seq.saturating_add(1);
+    let filtered = filter_notification(
+        *seq,
+        &app_name,
+        &title,
+        &body,
+        &cfg,
+        false,
+        is_focus_assist_quiet(),
+    );
+    if let Some(ref popup) = filtered
+        && let Some(win) = app.get_webview_window("island")
+    {
+        let _ = win.emit("lumen://notification-popup", popup);
+    }
+    Ok(filtered)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
@@ -474,6 +542,8 @@ pub fn run() {
                 storage: Arc::clone(&storage),
                 prayer_config: Mutex::new(PrayerConfig::default()),
                 pomodoro: Arc::clone(&pomodoro),
+                notify_config: Mutex::new(NotificationPrivacyConfig::default()),
+                notify_seq: Mutex::new(0),
             });
 
             let Some(window) = app.get_webview_window("island") else {
@@ -702,7 +772,11 @@ pub fn run() {
             shelf_add,
             shelf_remove,
             shelf_clear,
-            shelf_open
+            shelf_open,
+            notify_get_config,
+            notify_set_config,
+            notify_listener_status,
+            notify_push_test
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

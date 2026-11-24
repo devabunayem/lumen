@@ -129,6 +129,24 @@ export interface HudEvent {
   active: boolean;
 }
 
+export interface NotificationPrivacyConfig {
+  enabled: boolean;
+  hide_previews: boolean;
+  quiet_during_fullscreen: boolean;
+  respect_focus_assist: boolean;
+  allow_list: string[];
+  deny_list: string[];
+  masked_keywords: string[];
+  suppress_native_toast: boolean;
+}
+
+export interface NotificationPopup {
+  id: number;
+  app_name: string;
+  title: string;
+  body: string;
+}
+
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -409,6 +427,44 @@ export async function subscribeHudEvent(onHud: (hud: HudEvent) => void): Promise
   }
   return listen<HudEvent>("lumen://hud-event", (event) => {
     onHud(event.payload);
+  });
+}
+
+export async function notifyGetConfig(): Promise<NotificationPrivacyConfig | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<NotificationPrivacyConfig>("notify_get_config");
+}
+
+export async function notifySetConfig(
+  config: NotificationPrivacyConfig,
+): Promise<NotificationPrivacyConfig | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<NotificationPrivacyConfig>("notify_set_config", { config });
+}
+
+export async function notifyPushTest(
+  appName: string,
+  title: string,
+  body: string,
+): Promise<NotificationPopup | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<NotificationPopup | null>("notify_push_test", { appName, title, body });
+}
+
+export async function subscribeNotificationPopup(
+  onPopup: (popup: NotificationPopup) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<NotificationPopup>("lumen://notification-popup", (event) => {
+    onPopup(event.payload);
   });
 }
 
