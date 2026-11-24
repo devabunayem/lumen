@@ -2,42 +2,58 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use lumen_core::{IslandEvent, IslandMachine, IslandSnapshot};
-use lumen_windows::{
-    compute_pill_screen_rect, compute_top_center_position, cursor_screen_pos, init_island_window,
-    is_other_app_fullscreen, set_no_activate, set_window_click_through,
-};
+use lumen_windows::{compute_top_center_position, is_other_app_fullscreen};
 use serde::Serialize;
-use tauri::{Emitter, Manager, PhysicalPosition, State};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow};
+
+const COLLAPSED_WIN_W: f64 = 260.0;
+const COLLAPSED_WIN_H: f64 = 52.0;
+const EXPANDED_WIN_W: f64 = 660.0;
+const EXPANDED_WIN_H: f64 = 220.0;
 
 #[derive(Debug, Clone, Copy)]
-struct ActivePillBounds {
-    width_logical: f64,
-    height_logical: f64,
-    top_offset_logical: f64,
-    visible: bool,
+struct IslandRuntimeConfig {
     hide_in_fullscreen: bool,
+    visible: bool,
 }
 
-impl Default for ActivePillBounds {
+impl Default for IslandRuntimeConfig {
     fn default() -> Self {
         Self {
-            width_logical: 200.0,
-            height_logical: 32.0,
-            top_offset_logical: 0.0,
-            visible: true,
             hide_in_fullscreen: true,
+            visible: true,
         }
     }
 }
 
 struct AppState {
     machine: Mutex<IslandMachine>,
-    bounds: Arc<Mutex<ActivePillBounds>>,
+    config: Arc<Mutex<IslandRuntimeConfig>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct FullscreenChangedPayload {
     active: bool,
+}
+
+fn recenter_window(window: &WebviewWindow, logical_width: f64, logical_height: f64) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let _ = window.set_size(LogicalSize::new(logical_width, logical_height));
+
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let monitor_pos = monitor.position();
+        let monitor_size = monitor.size();
+        let phys_w = (logical_width * scale).round() as i32;
+        let (x, y) = compute_top_center_position(
+            monitor_pos.x,
+            monitor_pos.y,
+            monitor_size.width as i32,
+            phys_w,
+        );
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
 }
 
 #[tauri::command]
@@ -66,149 +82,136 @@ fn dispatch_island_event(
 
 #[tauri::command]
 fn sync_pill_bounds(
-    width: f64,
-    height: f64,
-    top_offset: f64,
+    _width: f64,
+    _height: f64,
+    _top_offset: f64,
     visible: bool,
     hide_in_fullscreen: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut guard = state
-        .bounds
+        .config
         .lock()
-        .map_err(|_| "pill bounds mutex poisoned".to_string())?;
-    guard.width_logical = width.max(0.0);
-    guard.height_logical = height.max(0.0);
-    guard.top_offset_logical = top_offset.max(0.0);
+        .map_err(|_| "runtime config mutex poisoned".to_string())?;
     guard.visible = visible;
     guard.hide_in_fullscreen = hide_in_fullscreen;
     Ok(())
 }
 
 #[tauri::command]
-fn request_keyboard_focus(focused: bool, app: tauri::AppHandle) -> Result<(), String> {
+fn set_island_surface_mode(
+    expanded: bool,
+    hidden: bool,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("island") {
-        #[cfg(windows)]
-        if let Ok(hwnd) = window.hwnd() {
-            set_no_activate(hwnd.0 as isize, !focused);
+        if hidden {
+            let _ = window.hide();
+        } else {
+            let (w, h) = if expanded {
+                (EXPANDED_WIN_W, EXPANDED_WIN_H)
+            } else {
+                (COLLAPSED_WIN_W, COLLAPSED_WIN_H)
+            };
+            recenter_window(&window, w, h);
+            let _ = window.show();
         }
-        if focused {
-            let _ = window.set_focus();
-        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn request_keyboard_focus(focused: bool, app: tauri::AppHandle) -> Result<(), String> {
+    if focused && let Some(window) = app.get_webview_window("island") {
+        let _ = window.set_focus();
     }
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let shared_bounds = Arc::new(Mutex::new(ActivePillBounds::default()));
+    let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
 
     tauri::Builder::default()
         .manage(AppState {
             machine: Mutex::new(IslandMachine::new()),
-            bounds: Arc::clone(&shared_bounds),
+            config: Arc::clone(&shared_config),
         })
         .setup(move |app| {
             let Some(window) = app.get_webview_window("island") else {
                 return Ok(());
             };
 
-            let (mut target_x, mut target_y) = (0, 0);
-            if let Ok(Some(monitor)) = window.primary_monitor() {
-                let monitor_pos = monitor.position();
-                let monitor_size = monitor.size();
-                let window_size = window.outer_size().unwrap_or(tauri::PhysicalSize {
-                    width: 700,
-                    height: 250,
-                });
-                let (x, y) = compute_top_center_position(
-                    monitor_pos.x,
-                    monitor_pos.y,
-                    monitor_size.width as i32,
-                    window_size.width as i32,
-                );
-                target_x = x;
-                target_y = y;
-                let _ = window.set_position(PhysicalPosition::new(x, y));
-            }
+            recenter_window(&window, COLLAPSED_WIN_W, COLLAPSED_WIN_H);
+            let _ = window.show();
 
+            // System tray icon & menu (FR-WIN-7)
+            let toggle_item =
+                MenuItem::with_id(app, "toggle", "Open / Collapse Lumen", true, None::<&str>)?;
+            let show_item =
+                MenuItem::with_id(app, "show_hide", "Show / Hide Island", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Lumen", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&toggle_item, &show_item, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .tooltip("Lumen — Dynamic Island")
+                .on_menu_event(|app_handle, event| match event.id.as_ref() {
+                    "toggle" => {
+                        let _ = app_handle.emit("lumen://tray-toggle-expand", ());
+                    }
+                    "show_hide" => {
+                        let _ = app_handle.emit("lumen://tray-toggle-hide", ());
+                    }
+                    "quit" => {
+                        app_handle.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let _ = tray.app_handle().emit("lumen://tray-toggle-expand", ());
+                    }
+                });
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+            let _ = tray_builder.build(app)?;
+
+            // Fullscreen monitor loop at 2 Hz (FR-WIN-4, NFR-PERF-3 compliant)
             #[cfg(windows)]
             let own_hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
             #[cfg(not(windows))]
             let own_hwnd = 0isize;
 
-            if own_hwnd != 0 {
-                let _ = init_island_window(own_hwnd, target_x, target_y);
-            }
-            let _ = window.show();
-
-            let hit_window = window.clone();
-            let hit_bounds = Arc::clone(&shared_bounds);
+            let fs_window = window.clone();
+            let fs_config = Arc::clone(&shared_config);
             tauri::async_runtime::spawn(async move {
-                let mut last_ignore = true;
                 let mut last_fullscreen = false;
-                let mut tick_counter: u8 = 0;
-
                 loop {
-                    let snapshot = hit_bounds.lock().map(|g| *g).unwrap_or_default();
-
-                    let scale = hit_window.scale_factor().unwrap_or(1.0);
-                    let pos = hit_window.outer_position().ok();
-                    let size = hit_window.outer_size().ok();
-
-                    let mut near_top_band = false;
-                    let mut should_ignore = true;
-
-                    if snapshot.visible
-                        && !last_fullscreen
-                        && let (Some(win_pos), Some(win_size), Some((cx, cy))) =
-                            (pos, size, cursor_screen_pos())
-                    {
-                        near_top_band = cy <= win_pos.y + (280.0 * scale).round() as i32;
-                        let pill_rect = compute_pill_screen_rect(
-                            win_pos.x,
-                            win_pos.y,
-                            win_size.width as i32,
-                            (snapshot.width_logical * scale).round() as i32,
-                            (snapshot.height_logical * scale).round() as i32,
-                            (snapshot.top_offset_logical * scale).round() as i32,
-                        );
-                        let margin = (4.0 * scale).round() as i32;
-                        should_ignore = !pill_rect.contains_point(cx, cy, margin);
-                    }
-
-                    if should_ignore != last_ignore && own_hwnd != 0 {
-                        set_window_click_through(own_hwnd, should_ignore);
-                        last_ignore = should_ignore;
-                    }
-
-                    tick_counter = tick_counter.wrapping_add(1);
-                    if tick_counter.is_multiple_of(5) {
-                        let fullscreen = if snapshot.hide_in_fullscreen {
-                            is_other_app_fullscreen(own_hwnd)
-                        } else {
-                            false
-                        };
-                        if fullscreen != last_fullscreen {
-                            last_fullscreen = fullscreen;
-                            let _ = hit_window.emit(
-                                "lumen://fullscreen-changed",
-                                FullscreenChangedPayload { active: fullscreen },
-                            );
-                            if fullscreen && !last_ignore && own_hwnd != 0 {
-                                set_window_click_through(own_hwnd, true);
-                                last_ignore = true;
-                            }
-                        }
-                    }
-
-                    // 10 Hz when idle away from top band (NFR-PERF-3), 30 Hz near the pill for crisp hover
-                    let interval = if near_top_band {
-                        Duration::from_millis(33)
+                    let hide_in_fullscreen = fs_config
+                        .lock()
+                        .map(|c| c.hide_in_fullscreen)
+                        .unwrap_or(true);
+                    let fullscreen = if hide_in_fullscreen {
+                        is_other_app_fullscreen(own_hwnd)
                     } else {
-                        Duration::from_millis(100)
+                        false
                     };
-                    tokio::time::sleep(interval).await;
+                    if fullscreen != last_fullscreen {
+                        last_fullscreen = fullscreen;
+                        let _ = fs_window.emit(
+                            "lumen://fullscreen-changed",
+                            FullscreenChangedPayload { active: fullscreen },
+                        );
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             });
 
@@ -218,6 +221,7 @@ pub fn run() {
             get_island_snapshot,
             dispatch_island_event,
             sync_pill_bounds,
+            set_island_surface_mode,
             request_keyboard_focus
         ])
         .run(tauri::generate_context!())

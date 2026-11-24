@@ -3,7 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
-import { subscribeFullscreenChange, syncPillBounds } from "../lib/ipc";
+import {
+  setIslandSurfaceMode,
+  subscribeFullscreenChange,
+  subscribeTrayToggleExpand,
+  subscribeTrayToggleHide,
+  syncPillBounds,
+} from "../lib/ipc";
 import { useIslandStore } from "./stateMachine";
 
 export interface IslandShellProps {
@@ -92,14 +98,32 @@ export function IslandShell({
   }, []);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenFs: (() => void) | undefined;
+    let unlistenExpand: (() => void) | undefined;
+    let unlistenHide: (() => void) | undefined;
+
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
     }).then((fn) => {
-      unlisten = fn;
+      unlistenFs = fn;
     });
+
+    void subscribeTrayToggleExpand(() => {
+      dispatch({ type: "HOTKEY_TOGGLE_EXPAND" });
+    }).then((fn) => {
+      unlistenExpand = fn;
+    });
+
+    void subscribeTrayToggleHide(() => {
+      dispatch({ type: "HOTKEY_TOGGLE_HIDE" });
+    }).then((fn) => {
+      unlistenHide = fn;
+    });
+
     return () => {
-      unlisten?.();
+      unlistenFs?.();
+      unlistenExpand?.();
+      unlistenHide?.();
     };
   }, [dispatch]);
 
@@ -147,6 +171,17 @@ export function IslandShell({
       visible: state !== "hidden",
       hideInFullscreen,
     });
+
+    if (state === "expanded") {
+      void setIslandSurfaceMode(true, false);
+      return;
+    }
+
+    const delayMs = state === "hidden" ? 280 : 220;
+    const timer = window.setTimeout(() => {
+      void setIslandSurfaceMode(false, state === "hidden");
+    }, delayMs);
+    return () => window.clearTimeout(timer);
   }, [width, height, topOffset, state, hideInFullscreen]);
 
   const shapePath = useMemo(() => {
@@ -232,7 +267,7 @@ export function IslandShell({
           <motion.path
             d={shapePath}
             fill="var(--surface)"
-            stroke="var(--hairline-top)"
+            stroke="var(--hairline-strong)"
             strokeWidth={1.25}
             initial={false}
             animate={{ d: shapePath }}

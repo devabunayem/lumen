@@ -54,107 +54,28 @@ pub const fn compute_pill_screen_rect(
 
 #[cfg(windows)]
 mod win32 {
-    use windows::Win32::Foundation::{COLORREF, HWND, POINT, RECT};
+    use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     };
-    use windows::Win32::UI::Shell::{
-        QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
-    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GWL_EXSTYLE, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW,
-        GetWindowRect, HWND_TOPMOST, IsZoomed, LWA_ALPHA, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-        SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetLayeredWindowAttributes,
-        SetWindowLongPtrW, SetWindowPos, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+        GetClassNameW, GetForegroundWindow, GetWindowRect, IsWindowVisible, IsZoomed,
     };
 
-    const BASE_ISLAND_EX_STYLE: isize =
-        (WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOPMOST.0 | WS_EX_LAYERED.0) as isize;
-
-    /// Initializes the Tauri window as a visible, topmost, non-activating tool window (`FR-WIN-1`, `FR-WIN-3`).
+    /// Detects whether another visible foreground application covers the entire monitor (`FR-WIN-4`).
     ///
-    /// Explicitly invokes `SetLayeredWindowAttributes(..., 255, LWA_ALPHA)` so `WS_EX_LAYERED`
-    /// never defaults to master alpha `0` (invisible) on Windows 10/11.
-    pub fn init_island_window(raw_hwnd: isize, x: i32, y: i32) -> Result<(), String> {
-        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
-        // SAFETY: `hwnd` is a valid top-level window handle owned by the calling process.
-        unsafe {
-            let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let next = current | BASE_ISLAND_EX_STYLE | (WS_EX_TRANSPARENT.0 as isize);
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
-            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
-            let _ = SetWindowPos(
-                hwnd,
-                Some(HWND_TOPMOST),
-                x,
-                y,
-                0,
-                0,
-                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
-            );
-        }
-        Ok(())
-    }
-
-    /// Toggles `WS_EX_TRANSPARENT` directly while preserving `WS_EX_TOOLWINDOW | WS_EX_LAYERED`
-    /// and master `LWA_ALPHA = 255` (`FR-WIN-2`).
-    pub fn set_window_click_through(raw_hwnd: isize, ignore: bool) {
-        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
-        // SAFETY: `hwnd` is owned by the calling process.
-        unsafe {
-            let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let transparent_flag = WS_EX_TRANSPARENT.0 as isize;
-            let next = if ignore {
-                current | BASE_ISLAND_EX_STYLE | transparent_flag
-            } else {
-                (current | BASE_ISLAND_EX_STYLE) & !transparent_flag
-            };
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
-            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
-            let _ = SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
-            );
-        }
-    }
-
-    /// Toggles `WS_EX_NOACTIVATE` dynamically when a text input requests focus (`FR-WIN-3`).
-    pub fn set_no_activate(raw_hwnd: isize, no_activate: bool) {
-        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
-        // SAFETY: `hwnd` is owned by the calling process and updated on demand.
-        unsafe {
-            let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let flag = WS_EX_NOACTIVATE.0 as isize;
-            let next = if no_activate {
-                current | flag
-            } else {
-                current & !flag
-            };
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
-        }
-    }
-
-    /// Reads the current global cursor position in physical screen coordinates (`FR-WIN-2`).
-    #[must_use]
-    pub fn cursor_screen_pos() -> Option<(i32, i32)> {
-        let mut pt = POINT::default();
-        // SAFETY: `pt` points to valid stack-allocated `POINT`.
-        unsafe { GetCursorPos(&mut pt).ok() }.map(|()| (pt.x, pt.y))
-    }
-
-    /// Detects whether another application is running fullscreen on the monitor (`FR-WIN-4`).
+    /// Ignores desktop shell windows (`Progman`, `WorkerW`, `Shell_TrayWnd`) and normal
+    /// maximized windows (`IsZoomed`) so Focus Assist / maximized apps never hide the island.
     #[must_use]
     pub fn is_other_app_fullscreen(own_raw_hwnd: isize) -> bool {
         // SAFETY: Win32 read-only queries against foreground HWND and monitor geometry.
         unsafe {
             let fg = GetForegroundWindow();
-            if fg.0.is_null() || fg.0 as isize == own_raw_hwnd {
+            if fg.0.is_null() || fg.0 as isize == own_raw_hwnd || !IsWindowVisible(fg).as_bool() {
+                return false;
+            }
+
+            if IsZoomed(fg).as_bool() {
                 return false;
             }
 
@@ -185,50 +106,23 @@ mod win32 {
             }
 
             let mr = mon_info.rcMonitor;
-            let is_exact_fullscreen = !IsZoomed(fg).as_bool()
-                && win_rect.left == mr.left
+            win_rect.left == mr.left
                 && win_rect.top == mr.top
                 && win_rect.right == mr.right
-                && win_rect.bottom == mr.bottom;
-
-            if is_exact_fullscreen {
-                return true;
-            }
-
-            if let Ok(state) = SHQueryUserNotificationState() {
-                return matches!(state, QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE);
-            }
-
-            false
+                && win_rect.bottom == mr.bottom
         }
     }
 }
 
 #[cfg(not(windows))]
 mod win32 {
-    pub fn init_island_window(_raw_hwnd: isize, _x: i32, _y: i32) -> Result<(), String> {
-        Ok(())
-    }
-
-    pub fn set_window_click_through(_raw_hwnd: isize, _ignore: bool) {}
-
-    pub fn set_no_activate(_raw_hwnd: isize, _no_activate: bool) {}
-
-    #[must_use]
-    pub const fn cursor_screen_pos() -> Option<(i32, i32)> {
-        None
-    }
-
     #[must_use]
     pub const fn is_other_app_fullscreen(_own_raw_hwnd: isize) -> bool {
         false
     }
 }
 
-pub use win32::{
-    cursor_screen_pos, init_island_window, is_other_app_fullscreen, set_no_activate,
-    set_window_click_through,
-};
+pub use win32::is_other_app_fullscreen;
 
 #[cfg(test)]
 mod tests {
@@ -236,25 +130,24 @@ mod tests {
 
     #[test]
     fn centers_window_at_top_of_1920x1080_monitor() {
-        let (x, y) = compute_top_center_position(0, 0, 1920, 700);
-        assert_eq!(x, 610);
+        let (x, y) = compute_top_center_position(0, 0, 1920, 260);
+        assert_eq!(x, 830);
         assert_eq!(y, 0);
     }
 
     #[test]
     fn supports_secondary_monitor_offset() {
-        let (x, y) = compute_top_center_position(-1920, 0, 1920, 700);
-        assert_eq!(x, -1310);
+        let (x, y) = compute_top_center_position(-1920, 0, 1920, 260);
+        assert_eq!(x, -1090);
         assert_eq!(y, 0);
     }
 
     #[test]
     fn pill_hit_test_allows_clicks_outside_pill_over_browser_tabs() {
-        let rect = compute_pill_screen_rect(610, 0, 700, 200, 32, 0);
+        let rect = compute_pill_screen_rect(830, 0, 260, 200, 32, 0);
         assert_eq!(rect.x, 860);
         assert_eq!(rect.y, 0);
         assert!(rect.contains_point(960, 16, 4));
-        // Far left/right inside transparent 700px canvas must remain click-through
         assert!(!rect.contains_point(650, 16, 4));
         assert!(!rect.contains_point(1200, 16, 4));
         assert!(!rect.contains_point(960, 80, 4));
@@ -262,7 +155,7 @@ mod tests {
 
     #[test]
     fn handles_negative_secondary_monitor_pill_hit_test() {
-        let rect = compute_pill_screen_rect(-1310, 0, 700, 200, 32, 8);
+        let rect = compute_pill_screen_rect(-1090, 0, 260, 200, 32, 8);
         assert!(rect.contains_point(-960, 20, 2));
         assert!(!rect.contains_point(-960, 2, 2));
     }
