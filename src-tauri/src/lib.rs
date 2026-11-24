@@ -1,9 +1,11 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
 use lumen_core::{
-    IslandEvent, IslandMachine, IslandSnapshot, PomodoroController, PomodoroPhase, PomodoroSnapshot,
+    IslandEvent, IslandMachine, IslandSnapshot, LumenSettings, PomodoroController, PomodoroPhase,
+    PomodoroSnapshot,
 };
 use lumen_media::{
     LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_system_volume,
@@ -18,13 +20,17 @@ use lumen_prayer::{
 };
 use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{
-    HudEvent, battery_status, compute_top_center_position, is_caps_lock_on,
-    is_other_app_fullscreen, open_shell_target,
+    GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
+    compute_top_center_position, cursor_screen_pos, is_autostart_enabled, is_caps_lock_on,
+    is_other_app_fullscreen, open_shell_target, set_autostart_enabled,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow};
+use tauri::{
+    Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, State, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 const COLLAPSED_WIN_W: f64 = 260.0;
 const COLLAPSED_WIN_H: f64 = 52.0;
@@ -48,6 +54,23 @@ impl Default for IslandRuntimeConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct MonitorInfo {
+    index: usize,
+    name: String,
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+    is_primary: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SettingsUpdateResult {
+    settings: LumenSettings,
+    hotkey_warning: Option<String>,
+    autostart_warning: Option<String>,
+}
+
 struct AppState {
     machine: Mutex<IslandMachine>,
     config: Arc<Mutex<IslandRuntimeConfig>>,
@@ -57,6 +80,10 @@ struct AppState {
     pomodoro: Arc<Mutex<PomodoroController>>,
     notify_config: Mutex<NotificationPrivacyConfig>,
     notify_seq: Mutex<u64>,
+    settings: Mutex<LumenSettings>,
+    settings_path: PathBuf,
+    surface_mode: Mutex<(bool, bool, bool)>,
+    hotkeys: Mutex<Option<GlobalHotkeyManager>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,21 +91,68 @@ struct FullscreenChangedPayload {
     active: bool,
 }
 
-fn recenter_window(window: &WebviewWindow, logical_width: f64, logical_height: f64) {
-    let scale = window.scale_factor().unwrap_or(1.0);
+fn pick_target_monitor(window: &WebviewWindow, settings: &LumenSettings) -> Option<Monitor> {
+    let monitors = window.available_monitors().ok().unwrap_or_default();
+    if monitors.is_empty() {
+        return window.primary_monitor().ok().flatten();
+    }
+
+    match settings.monitor_mode.as_str() {
+        "index" => monitors
+            .get(settings.monitor_index)
+            .cloned()
+            .or_else(|| window.primary_monitor().ok().flatten())
+            .or_else(|| monitors.into_iter().next()),
+        "active" => {
+            if let Some((cx, cy)) = cursor_screen_pos()
+                && let Some(found) = monitors.iter().find(|m| {
+                    let pos = m.position();
+                    let size = m.size();
+                    cx >= pos.x
+                        && cx < pos.x + size.width as i32
+                        && cy >= pos.y
+                        && cy < pos.y + size.height as i32
+                })
+            {
+                return Some(found.clone());
+            }
+            window
+                .primary_monitor()
+                .ok()
+                .flatten()
+                .or_else(|| monitors.into_iter().next())
+        }
+        _ => window
+            .primary_monitor()
+            .ok()
+            .flatten()
+            .or_else(|| monitors.into_iter().next()),
+    }
+}
+
+fn recenter_window(
+    window: &WebviewWindow,
+    base_width: f64,
+    base_height: f64,
+    settings: &LumenSettings,
+) {
+    let mult = settings.scale_multiplier();
+    let logical_width = (base_width * mult).round();
+    let logical_height = (base_height * mult).round();
     let _ = window.set_size(LogicalSize::new(logical_width, logical_height));
 
-    if let Ok(Some(monitor)) = window.primary_monitor() {
+    if let Some(monitor) = pick_target_monitor(window, settings) {
         let monitor_pos = monitor.position();
         let monitor_size = monitor.size();
-        let phys_w = (logical_width * scale).round() as i32;
+        let dpi_scale = monitor.scale_factor();
+        let phys_w = (logical_width * dpi_scale).round() as i32;
         let (x, y) = compute_top_center_position(
             monitor_pos.x,
             monitor_pos.y,
             monitor_size.width as i32,
             phys_w,
         );
-        let _ = window.set_position(PhysicalPosition::new(x, y));
+        let _ = window.set_position(PhysicalPosition::new(x + settings.position_offset_x, y));
     }
 }
 
@@ -130,19 +204,26 @@ fn set_island_surface_mode(
     hidden: bool,
     hud: Option<bool>,
     app: tauri::AppHandle,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
+    let is_hud = hud.unwrap_or(false);
+    if let Ok(mut mode_guard) = state.surface_mode.lock() {
+        *mode_guard = (expanded, hidden, is_hud);
+    }
+    let settings = state.settings.lock().map(|s| s.clone()).unwrap_or_default();
+
     if let Some(window) = app.get_webview_window("island") {
         if hidden {
             let _ = window.hide();
         } else {
             let (w, h) = if expanded {
                 (EXPANDED_WIN_W, EXPANDED_WIN_H)
-            } else if hud.unwrap_or(false) {
+            } else if is_hud {
                 (HUD_WIN_W, HUD_WIN_H)
             } else {
                 (COLLAPSED_WIN_W, COLLAPSED_WIN_H)
             };
-            recenter_window(&window, w, h);
+            recenter_window(&window, w, h, &settings);
             let _ = window.show();
         }
     }
@@ -512,18 +593,166 @@ fn notify_push_test(
     Ok(filtered)
 }
 
+#[tauri::command]
+fn monitors_list(app: tauri::AppHandle) -> Vec<MonitorInfo> {
+    let Some(win) = app.get_webview_window("island") else {
+        return Vec::new();
+    };
+    let primary = win.primary_monitor().ok().flatten();
+    win.available_monitors()
+        .ok()
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .map(|(idx, m)| {
+            let is_primary = primary
+                .as_ref()
+                .is_some_and(|p| p.position() == m.position() && p.size() == m.size());
+            MonitorInfo {
+                index: idx,
+                name: m
+                    .name()
+                    .map_or_else(|| format!("Monitor {}", idx + 1), |n| n.to_string()),
+                width: m.size().width,
+                height: m.size().height,
+                scale_factor: m.scale_factor(),
+                is_primary,
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn settings_get(state: State<'_, AppState>) -> Result<LumenSettings, String> {
+    let guard = state
+        .settings
+        .lock()
+        .map_err(|_| "settings mutex poisoned".to_string())?;
+    Ok(guard.clone())
+}
+
+#[tauri::command]
+fn settings_update(
+    settings: LumenSettings,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SettingsUpdateResult, String> {
+    let mut clean = settings;
+    clean.normalize();
+
+    let prev = state
+        .settings
+        .lock()
+        .map_err(|_| "settings mutex poisoned".to_string())?
+        .clone();
+
+    let mut autostart_warning = None;
+    if clean.start_with_windows != prev.start_with_windows {
+        let exe_path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(ToOwned::to_owned))
+            .unwrap_or_default();
+        if exe_path.is_empty() {
+            autostart_warning = Some("Unable to resolve executable path for startup entry".into());
+        } else if let Err(err) = set_autostart_enabled(clean.start_with_windows, &exe_path) {
+            autostart_warning = Some(err);
+        }
+    }
+
+    let mut hotkey_warning = None;
+    if (clean.hotkey_hide != prev.hotkey_hide || clean.hotkey_expand != prev.hotkey_expand)
+        && let Ok(guard) = state.hotkeys.lock()
+        && let Some(ref mgr) = *guard
+    {
+        hotkey_warning = mgr.rebind(&clean.hotkey_hide, &clean.hotkey_expand);
+    }
+
+    clean.save_to_path(&state.settings_path)?;
+
+    if let Ok(mut cfg) = state.config.lock() {
+        cfg.hide_in_fullscreen = clean.hide_in_fullscreen;
+    }
+    if let Ok(mut machine) = state.machine.lock() {
+        machine.set_minimal_mode(clean.minimal_notch);
+    }
+    if let Ok(mut guard) = state.settings.lock() {
+        *guard = clean.clone();
+    }
+
+    if let Some(window) = app.get_webview_window("island") {
+        let (expanded, hidden, is_hud) = state.surface_mode.lock().map(|g| *g).unwrap_or_default();
+        if !hidden {
+            let (w, h) = if expanded {
+                (EXPANDED_WIN_W, EXPANDED_WIN_H)
+            } else if is_hud {
+                (HUD_WIN_W, HUD_WIN_H)
+            } else {
+                (COLLAPSED_WIN_W, COLLAPSED_WIN_H)
+            };
+            recenter_window(&window, w, h, &clean);
+        }
+    }
+
+    let _ = app.emit("lumen://settings-updated", &clean);
+
+    Ok(SettingsUpdateResult {
+        settings: clean,
+        hotkey_warning,
+        autostart_warning,
+    })
+}
+
+#[tauri::command]
+fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window("settings") {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "settings",
+        WebviewUrl::App("index.html?window=settings".into()),
+    )
+    .title("Lumen Settings")
+    .inner_size(900.0, 620.0)
+    .min_inner_size(760.0, 520.0)
+    .center()
+    .decorations(true)
+    .transparent(false)
+    .build()
+    .map_err(|e| format!("failed to open settings window: {e}"))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if !acquire_single_instance_mutex() {
+        return;
+    }
+
     let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
     let preferred_media_app = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
         .setup(move |app| {
-            let db_path = app
+            let data_dir = app
                 .path()
                 .app_data_dir()
-                .unwrap_or_else(|_| std::env::temp_dir().join("Lumen"))
-                .join("lumen.db");
+                .unwrap_or_else(|_| std::env::temp_dir().join("Lumen"));
+            let settings_path = data_dir.join("settings.json");
+            let mut initial_settings = LumenSettings::load_from_path(&settings_path);
+            if !settings_path.exists() {
+                initial_settings.start_with_windows = is_autostart_enabled();
+            }
+
+            if let Ok(mut cfg) = shared_config.lock() {
+                cfg.hide_in_fullscreen = initial_settings.hide_in_fullscreen;
+            }
+
+            let db_path = data_dir.join("lumen.db");
             let storage = Arc::new(
                 StorageRepo::open(&db_path)
                     .or_else(|_| StorageRepo::open_in_memory())
@@ -535,8 +764,27 @@ pub fn run() {
                 daily_mins,
             )));
 
+            let mut machine = IslandMachine::new();
+            machine.set_minimal_mode(initial_settings.minimal_notch);
+
+            let hotkey_app = app.handle().clone();
+            let hotkeys = GlobalHotkeyManager::start(
+                &initial_settings.hotkey_hide,
+                &initial_settings.hotkey_expand,
+                move |action| match action {
+                    HotkeyAction::ToggleHide => {
+                        let _ = hotkey_app.emit("lumen://tray-toggle-hide", ());
+                    }
+                    HotkeyAction::ToggleExpand => {
+                        let _ = hotkey_app.emit("lumen://tray-toggle-expand", ());
+                    }
+                },
+            )
+            .ok()
+            .map(|(mgr, _warn)| mgr);
+
             app.manage(AppState {
-                machine: Mutex::new(IslandMachine::new()),
+                machine: Mutex::new(machine),
                 config: Arc::clone(&shared_config),
                 preferred_media_app: Arc::clone(&preferred_media_app),
                 storage: Arc::clone(&storage),
@@ -544,13 +792,17 @@ pub fn run() {
                 pomodoro: Arc::clone(&pomodoro),
                 notify_config: Mutex::new(NotificationPrivacyConfig::default()),
                 notify_seq: Mutex::new(0),
+                settings: Mutex::new(initial_settings.clone()),
+                settings_path,
+                surface_mode: Mutex::new((false, false, false)),
+                hotkeys: Mutex::new(hotkeys),
             });
 
             let Some(window) = app.get_webview_window("island") else {
                 return Ok(());
             };
 
-            recenter_window(&window, COLLAPSED_WIN_W, COLLAPSED_WIN_H);
+            recenter_window(&window, COLLAPSED_WIN_W, COLLAPSED_WIN_H, &initial_settings);
             let _ = window.show();
 
             // System tray icon & menu (FR-WIN-7)
@@ -558,8 +810,11 @@ pub fn run() {
                 MenuItem::with_id(app, "toggle", "Open / Collapse Lumen", true, None::<&str>)?;
             let show_item =
                 MenuItem::with_id(app, "show_hide", "Show / Hide Island", true, None::<&str>)?;
+            let settings_item =
+                MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Lumen", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&toggle_item, &show_item, &quit_item])?;
+            let tray_menu =
+                Menu::with_items(app, &[&toggle_item, &show_item, &settings_item, &quit_item])?;
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
@@ -570,6 +825,9 @@ pub fn run() {
                     }
                     "show_hide" => {
                         let _ = app_handle.emit("lumen://tray-toggle-hide", ());
+                    }
+                    "settings" => {
+                        let _ = open_settings_window(app_handle.clone());
                     }
                     "quit" => {
                         app_handle.exit(0);
@@ -776,7 +1034,11 @@ pub fn run() {
             notify_get_config,
             notify_set_config,
             notify_listener_status,
-            notify_push_test
+            notify_push_test,
+            monitors_list,
+            settings_get,
+            settings_update,
+            open_settings_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

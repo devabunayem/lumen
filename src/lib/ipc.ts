@@ -1,6 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IslandState } from "../app/stateMachine";
+import type { LumenSettings } from "../settings";
+
+export interface MonitorInfo {
+  index: number;
+  name: string;
+  width: number;
+  height: number;
+  scale_factor: number;
+  is_primary: boolean;
+}
+
+export interface SettingsUpdateResult {
+  settings: LumenSettings;
+  hotkey_warning: string | null;
+  autostart_warning: string | null;
+}
 
 export interface IslandSnapshot {
   state: IslandState;
@@ -480,4 +496,50 @@ export async function subscribeTrayToggleHide(onToggle: () => void): Promise<Unl
     return () => {};
   }
   return listen("lumen://tray-toggle-hide", () => onToggle());
+}
+
+export async function settingsGet(): Promise<LumenSettings | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<LumenSettings>("settings_get");
+}
+
+export async function settingsUpdate(
+  settings: LumenSettings,
+): Promise<SettingsUpdateResult | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<SettingsUpdateResult>("settings_update", {
+    settings: {
+      ...settings,
+      scale: String(settings.scale),
+    },
+  });
+}
+
+export async function monitorsList(): Promise<MonitorInfo[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<MonitorInfo[]>("monitors_list");
+}
+
+export async function openSettingsWindow(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("open_settings_window");
+}
+
+export async function subscribeSettingsUpdated(
+  onUpdate: (settings: LumenSettings) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<LumenSettings>("lumen://settings-updated", (event) => {
+    onUpdate(event.payload);
+  });
 }

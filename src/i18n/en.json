@@ -1,10 +1,101 @@
 {
-  "app": {
-    "name": "Lumen",
-    "tagline": "A little island for your desktop."
+  "appName": "Lumen",
+  "pill": {
+    "clickToOpen": "Click to open",
+    "focus": "Focus",
+    "openSettings": "Open settings",
+    "collapse": "Collapse island",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "shapeNotch": "Notch",
+    "shapePill": "Pill"
   },
-  "states": {
-    "idle": "Ready",
-    "expanded": "Expanded"
+  "pages": {
+    "musicLead": "Now",
+    "musicAccent": "Playing",
+    "todoLead": "Todo",
+    "todoAccent": "List",
+    "waterLead": "Water",
+    "waterAccent": "Tracker",
+    "prayerLead": "Prayer",
+    "prayerAccent": "Times",
+    "pomodoroLead": "Focus",
+    "pomodoroAccent": "Timer",
+    "shelfLead": "File",
+    "shelfAccent": "Shelf",
+    "pluginLead": "Custom",
+    "pluginAccent": "Plugin"
+  },
+  "settings": {
+    "title": "Lumen Settings",
+    "subtitle": "All changes apply live to your desktop island.",
+    "saved": "Saved & applied live",
+    "sections": {
+      "general": "General",
+      "display": "Display",
+      "pages": "Pages",
+      "appearance": "Appearance",
+      "widgets": "Widgets",
+      "plugins": "Plugins",
+      "about": "About"
+    },
+    "general": {
+      "startWithWindows": "Start with Windows",
+      "startWithWindowsHint": "Launch Lumen automatically when you sign in.",
+      "language": "Interface Language",
+      "languageHint": "Switch Lumen UI between English and Bangla.",
+      "hotkeyHide": "Global Hotkey: Show / Hide",
+      "hotkeyExpand": "Global Hotkey: Open / Collapse",
+      "hotkeyHint": "Example chords: Ctrl+Alt+L, Ctrl+Alt+Space, Shift+Win+F9"
+    },
+    "display": {
+      "monitorMode": "Monitor Placement",
+      "primary": "Primary Monitor",
+      "active": "Active Cursor Monitor",
+      "index": "Specific Monitor",
+      "selectMonitor": "Choose Monitor",
+      "scale": "Island Scale",
+      "offsetX": "Horizontal Offset",
+      "hideFullscreen": "Auto-hide during fullscreen",
+      "hideFullscreenHint": "Automatically hides Lumen during fullscreen games and videos."
+    },
+    "pagesTab": {
+      "description": "Reorder expanded island pages and toggle visibility.",
+      "moveUp": "Up",
+      "moveDown": "Down",
+      "visible": "Visible",
+      "hidden": "Hidden"
+    },
+    "appearance": {
+      "shape": "Island Shape",
+      "notch": "Attached Notch",
+      "pill": "Floating Pill",
+      "minimalNotch": "Minimal Resting Mode",
+      "minimalNotchHint": "Shrinks the idle pill to a compact 120 px capsule.",
+      "mascot": "Show Lumi Mascot",
+      "mascotHint": "Calm vector companion that blinks, bobs to music, and celebrates milestones.",
+      "headerClock": "Show Full Date in Expanded Header",
+      "reduceMotion": "Reduce Motion Override",
+      "reduceMotionHint": "Use 120 ms crossfades regardless of Windows animation settings."
+    },
+    "widgetsTab": {
+      "waterGoal": "Daily Water Goal (mL)",
+      "mediaExclusions": "Exclude Media Apps / Titles (comma-separated)",
+      "notifyEnabled": "Notification Pill Popups",
+      "hidePreviews": "Hide Notification Body Previews",
+      "respectFocusAssist": "Respect Windows Focus Assist / DND",
+      "maskedKeywords": "Sensitive Keywords to Mask (comma-separated)",
+      "testNotify": "Send Test Notification"
+    },
+    "pluginsTab": {
+      "empty": "No third-party plugins installed yet.",
+      "folderHint": "Drop plugins into %APPDATA%\\Lumen\\plugins\\<name> with a manifest.json.",
+      "reload": "Reload Plugins"
+    },
+    "aboutTab": {
+      "tagline": "Free, open-source, zero-telemetry Dynamic Island for Windows 10 & 11.",
+      "author": "Created by Abu Nayem · Etarnity Global Innovation",
+      "license": "MIT License · Zero Analytics · Zero Cloud Lock-in"
+    }
   }
 }

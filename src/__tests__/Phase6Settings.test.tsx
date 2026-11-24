@@ -1,0 +1,38 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { LumenMascot } from "../app/LumenMascot";
+import { DEFAULT_SETTINGS } from "../settings";
+import { SettingsWindow } from "../settings/SettingsWindow";
+
+describe("Phase 6 Settings, Mascot & Bangla i18n", () => {
+  it("switches to Bangla labels and reorders pages cleanly", () => {
+    const onCommit = vi.fn();
+    render(<SettingsWindow initialSettings={DEFAULT_SETTINGS} onSettingsCommitted={onCommit} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "বাংলা" }));
+    expect(screen.getByText("লুমেন সেটিংস")).toBeInTheDocument();
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ language: "bn" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /পাতা সমূহ/ }));
+    expect(screen.getByText(/পাতার ক্রম পরিবর্তন করুন/)).toBeInTheDocument();
+
+    const downButtons = screen.getAllByRole("button", { name: "নিচে" });
+    fireEvent.click(downButtons[0]);
+    expect(onCommit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pageOrder: ["todo", "music", "water", "prayer", "pomodoro", "shelf"],
+      }),
+    );
+  });
+
+  it("renders Lumi mascot moods and hides when disabled", () => {
+    const { rerender } = render(<LumenMascot enabled musicPlaying />);
+    expect(screen.getByTestId("lumen-mascot")).toHaveAttribute("data-mood", "music");
+
+    rerender(<LumenMascot enabled celebrating />);
+    expect(screen.getByTestId("lumen-mascot")).toHaveAttribute("data-mood", "celebrate");
+
+    rerender(<LumenMascot enabled={false} />);
+    expect(screen.queryByTestId("lumen-mascot")).toBeNull();
+  });
+});

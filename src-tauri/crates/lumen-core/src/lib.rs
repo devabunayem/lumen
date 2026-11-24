@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 
 /// All seven deterministic states of the Lumen island (SRS Section 4 & 7.3).
@@ -99,6 +102,15 @@ impl IslandMachine {
             IslandState::Minimal
         } else {
             IslandState::Idle
+        }
+    }
+
+    pub fn set_minimal_mode(&mut self, minimal: bool) {
+        self.minimal_mode = minimal;
+        if matches!(self.state, IslandState::Idle | IslandState::Minimal) {
+            let resting = self.resting_state();
+            self.previous_non_hidden = resting;
+            self.state = resting;
         }
     }
 
@@ -341,6 +353,180 @@ impl PomodoroController {
     }
 }
 
+const BUILTIN_PAGE_ORDER: [&str; 6] = ["music", "todo", "water", "prayer", "pomodoro", "shelf"];
+
+fn default_version() -> u32 {
+    1
+}
+fn default_shape_style() -> String {
+    "notch".into()
+}
+fn default_scale() -> String {
+    "auto".into()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_monitor_mode() -> String {
+    "primary".into()
+}
+fn default_language() -> String {
+    "en".into()
+}
+fn default_hotkey_hide() -> String {
+    "Ctrl+Alt+L".into()
+}
+fn default_hotkey_expand() -> String {
+    "Ctrl+Alt+Space".into()
+}
+fn default_page_order() -> Vec<String> {
+    BUILTIN_PAGE_ORDER
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect()
+}
+fn default_water_goal_ml() -> i64 {
+    1500
+}
+
+/// Versioned user preferences persisted in `%APPDATA%/Lumen/settings.json` (`NFR-REL-2`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LumenSettings {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    #[serde(default = "default_shape_style")]
+    pub shape_style: String,
+    #[serde(default = "default_scale")]
+    pub scale: String,
+    pub minimal_notch: bool,
+    #[serde(default = "default_true")]
+    pub mascot_enabled: bool,
+    #[serde(default = "default_true")]
+    pub show_header_clock: bool,
+    #[serde(default = "default_true")]
+    pub hide_in_fullscreen: bool,
+    #[serde(default = "default_monitor_mode")]
+    pub monitor_mode: String,
+    pub monitor_index: usize,
+    pub position_offset_x: i32,
+    #[serde(default = "default_language")]
+    pub language: String,
+    pub reduced_motion_override: bool,
+    pub start_with_windows: bool,
+    #[serde(default = "default_hotkey_hide")]
+    pub hotkey_hide: String,
+    #[serde(default = "default_hotkey_expand")]
+    pub hotkey_expand: String,
+    #[serde(default = "default_page_order")]
+    pub page_order: Vec<String>,
+    pub hidden_pages: Vec<String>,
+    #[serde(default = "default_water_goal_ml")]
+    pub water_goal_ml: i64,
+    pub media_exclusions: Vec<String>,
+}
+
+impl Default for LumenSettings {
+    fn default() -> Self {
+        Self {
+            version: default_version(),
+            shape_style: default_shape_style(),
+            scale: default_scale(),
+            minimal_notch: false,
+            mascot_enabled: true,
+            show_header_clock: true,
+            hide_in_fullscreen: true,
+            monitor_mode: default_monitor_mode(),
+            monitor_index: 0,
+            position_offset_x: 0,
+            language: default_language(),
+            reduced_motion_override: false,
+            start_with_windows: false,
+            hotkey_hide: default_hotkey_hide(),
+            hotkey_expand: default_hotkey_expand(),
+            page_order: default_page_order(),
+            hidden_pages: Vec::new(),
+            water_goal_ml: default_water_goal_ml(),
+            media_exclusions: Vec::new(),
+        }
+    }
+}
+
+impl LumenSettings {
+    /// Parses settings JSON, safely migrating older schemas or malformed payloads to v1.
+    #[must_use]
+    pub fn load_or_migrate(raw_json: &str) -> Self {
+        let mut settings = serde_json::from_str::<Self>(raw_json).unwrap_or_default();
+        settings.normalize();
+        settings
+    }
+
+    pub fn normalize(&mut self) {
+        self.version = 1;
+        if !matches!(self.shape_style.as_str(), "notch" | "pill") {
+            self.shape_style = default_shape_style();
+        }
+        if !matches!(self.scale.as_str(), "auto" | "100" | "115" | "130" | "150") {
+            self.scale = default_scale();
+        }
+        if !matches!(self.monitor_mode.as_str(), "primary" | "active" | "index") {
+            self.monitor_mode = default_monitor_mode();
+        }
+        if !matches!(self.language.as_str(), "en" | "bn") {
+            self.language = default_language();
+        }
+        self.position_offset_x = self.position_offset_x.clamp(-400, 400);
+        self.water_goal_ml = self.water_goal_ml.clamp(250, 10_000);
+        if self.hotkey_hide.trim().is_empty() {
+            self.hotkey_hide = default_hotkey_hide();
+        }
+        if self.hotkey_expand.trim().is_empty() {
+            self.hotkey_expand = default_hotkey_expand();
+        }
+
+        let mut deduped = Vec::new();
+        for id in &self.page_order {
+            if !id.trim().is_empty() && !deduped.contains(id) {
+                deduped.push(id.clone());
+            }
+        }
+        for builtin in BUILTIN_PAGE_ORDER {
+            if !deduped.iter().any(|p| p == builtin) {
+                deduped.push(builtin.to_string());
+            }
+        }
+        self.page_order = deduped;
+    }
+
+    #[must_use]
+    pub fn scale_multiplier(&self) -> f64 {
+        match self.scale.as_str() {
+            "115" => 1.15,
+            "130" => 1.30,
+            "150" => 1.50,
+            _ => 1.0,
+        }
+    }
+
+    pub fn load_from_path(path: &Path) -> Self {
+        match fs::read_to_string(path) {
+            Ok(raw) => Self::load_or_migrate(&raw),
+            Err(_) => Self::default(),
+        }
+    }
+
+    pub fn save_to_path(&self, path: &Path) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create settings dir failed: {e}"))?;
+        }
+        let mut clean = self.clone();
+        clean.normalize();
+        let json = serde_json::to_string_pretty(&clean)
+            .map_err(|e| format!("serialize settings failed: {e}"))?;
+        fs::write(path, json).map_err(|e| format!("write settings failed: {e}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,5 +579,26 @@ mod tests {
         let done2 = ctrl.tick();
         assert_eq!(done2, Some((PomodoroPhase::Focus, 2)));
         assert_eq!(ctrl.snapshot().phase, PomodoroPhase::LongBreak);
+    }
+
+    #[test]
+    fn settings_roundtrip_and_v0_migration() {
+        let migrated = LumenSettings::load_or_migrate(
+            r#"{"version":0,"shapeStyle":"pill","language":"bn","waterGoalMl":99999,"positionOffsetX":-900,"scale":"bad"}"#,
+        );
+        assert_eq!(migrated.version, 1);
+        assert_eq!(migrated.shape_style, "pill");
+        assert_eq!(migrated.language, "bn");
+        assert_eq!(migrated.water_goal_ml, 10_000);
+        assert_eq!(migrated.position_offset_x, -400);
+        assert_eq!(migrated.scale, "auto");
+        assert_eq!(migrated.page_order.len(), 6);
+
+        let fallback = LumenSettings::load_or_migrate("{invalid json");
+        assert_eq!(fallback, LumenSettings::default());
+
+        let mut machine = IslandMachine::new();
+        machine.set_minimal_mode(true);
+        assert_eq!(machine.snapshot().state, IslandState::Minimal);
     }
 }

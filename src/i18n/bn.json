@@ -1,10 +1,101 @@
 {
-  "app": {
-    "name": "লুমেন",
-    "tagline": "আপনার ডেস্কটপের জন্য ছোট্ট একটি আইল্যান্ড।"
+  "appName": "লুমেন",
+  "pill": {
+    "clickToOpen": "খুলতে ক্লিক করুন",
+    "focus": "ফোকাস",
+    "openSettings": "সেটিংস খুলুন",
+    "collapse": "আইল্যান্ড ছোট করুন",
+    "prevPage": "আগের পাতা",
+    "nextPage": "পরের পাতা",
+    "shapeNotch": "নচ",
+    "shapePill": "পিল"
   },
-  "states": {
-    "idle": "প্রস্তুত",
-    "expanded": "বিস্তারিত"
+  "pages": {
+    "musicLead": "এখন",
+    "musicAccent": "চলছে",
+    "todoLead": "কাজের",
+    "todoAccent": "তালিকা",
+    "waterLead": "পানি",
+    "waterAccent": "ট্র্যাকার",
+    "prayerLead": "নামাজের",
+    "prayerAccent": "সময়",
+    "pomodoroLead": "ফোকাস",
+    "pomodoroAccent": "টাইমার",
+    "shelfLead": "ফাইল",
+    "shelfAccent": "শেলফ",
+    "pluginLead": "কাস্টম",
+    "pluginAccent": "প্লাগইন"
+  },
+  "settings": {
+    "title": "লুমেন সেটিংস",
+    "subtitle": "সব পরিবর্তন সাথে সাথে ডেস্কটপ আইল্যান্ডে কার্যকর হয়।",
+    "saved": "সেভ হয়েছে ও সাথে সাথে প্রয়োগ হয়েছে",
+    "sections": {
+      "general": "সাধারণ",
+      "display": "ডিসপ্লে",
+      "pages": "পাতা সমূহ",
+      "appearance": "চেহারা",
+      "widgets": "উইজেট",
+      "plugins": "প্লাগইন",
+      "about": "সম্পর্কে"
+    },
+    "general": {
+      "startWithWindows": "Windows এর সাথে চালু করুন",
+      "startWithWindowsHint": "সাইন-ইন করার পর স্বয়ংক্রিয়ভাবে লুমেন চালু হবে।",
+      "language": "অ্যাপের ভাষা",
+      "languageHint": "ইংরেজি এবং বাংলার মধ্যে ভাষা পরিবর্তন করুন।",
+      "hotkeyHide": "গ্লোবাল হটকি: দেখান / লুকান",
+      "hotkeyExpand": "গ্লোবাল হটকি: খুলুন / বন্ধ করুন",
+      "hotkeyHint": "উদাহরণ: Ctrl+Alt+L, Ctrl+Alt+Space, Shift+Win+F9"
+    },
+    "display": {
+      "monitorMode": "মনিটর অবস্থান",
+      "primary": "প্রাইমারি মনিটর",
+      "active": "সক্রিয় কার্সর মনিটর",
+      "index": "নির্দিষ্ট মনিটর",
+      "selectMonitor": "মনিটর বেছে নিন",
+      "scale": "আইল্যান্ড স্কেল",
+      "offsetX": "অনুভূমিক অবস্থান (Offset)",
+      "hideFullscreen": "ফুলস্ক্রিনে স্বয়ংক্রিয়ভাবে লুকান",
+      "hideFullscreenHint": "গেম বা ফুলস্ক্রিন ভিডিওর সময় লুমেন লুকিয়ে রাখবে।"
+    },
+    "pagesTab": {
+      "description": "পাতার ক্রম পরিবর্তন করুন এবং যেগুলো চান লুকান।",
+      "moveUp": "উপরে",
+      "moveDown": "নিচে",
+      "visible": "দৃশ্যমান",
+      "hidden": "লুকানো"
+    },
+    "appearance": {
+      "shape": "আইল্যান্ড আকৃতি",
+      "notch": "নচ (Notch)",
+      "pill": "ভাসমান পিল (Pill)",
+      "minimalNotch": "মিনিমাল রেস্টিং মোড",
+      "minimalNotchHint": "নিষ্ক্রিয় অবস্থায় পিলটি মাত্র 120 px আকারে থাকবে।",
+      "mascot": "লুমি ম্যাসকট দেখান",
+      "mascotHint": "নচের ভেতরে শান্ত ভেক্টর চরিত্র যা গানের তালে নড়ে ও মাইলস্টোনে আনন্দ করে।",
+      "headerClock": "হেডারে সম্পূর্ণ তারিখ দেখান",
+      "reduceMotion": "মোশন কমানোর অপশন",
+      "reduceMotionHint": "সবসময় 120 ms স্মুথ ফেড ব্যবহার করবে।"
+    },
+    "widgetsTab": {
+      "waterGoal": "দৈনিক পানির লক্ষ্য (mL)",
+      "mediaExclusions": "বাদ দেওয়া মিডিয়া অ্যাপ/শিরোনাম (কমা দিয়ে)",
+      "notifyEnabled": "পিল নোটিফিকেশন পপআপ",
+      "hidePreviews": "নোটিফিকেশন বিস্তারিত লুকান",
+      "respectFocusAssist": "Windows Focus Assist মেনে চলুন",
+      "maskedKeywords": "গোপনীয় শব্দ মাস্ক করুন (কমা দিয়ে)",
+      "testNotify": "টেস্ট নোটিফিকেশন পাঠান"
+    },
+    "pluginsTab": {
+      "empty": "এখনো কোনো থার্ড-পার্টি প্লাগইন ইনস্টল করা নেই।",
+      "folderHint": "%APPDATA%\\Lumen\\plugins\\<name> ফোল্ডারে manifest.json সহ রাখুন।",
+      "reload": "প্লাগইন রিলোড"
+    },
+    "aboutTab": {
+      "tagline": "Windows 10 ও 11-এর জন্য সম্পূর্ণ ফ্রি, ওপেন-সোর্স এবং জিরো-টেলিমেট্রি Dynamic Island।",
+      "author": "নির্মাতা: আবু নায়েম · Etarnity Global Innovation",
+      "license": "MIT লাইসেন্স · কোনো ট্র্যাকিং বা ক্লাউড নির্ভরতা নেই"
+    }
   }
 }

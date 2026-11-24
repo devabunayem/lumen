@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
+import { type AppLanguage, getMessages } from "../i18n";
 import {
   getMediaState,
   type HudEvent,
@@ -11,6 +12,7 @@ import {
   mediaGetLyrics,
   type MediaStateSnapshot,
   type NotificationPopup,
+  openSettingsWindow,
   pomodoroGetState,
   pomodoroReset,
   pomodoroSkip,
@@ -50,6 +52,7 @@ import {
   type WaterSummary,
   waterUndo,
 } from "../lib/ipc";
+import { DEFAULT_SETTINGS } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { MusicWidget } from "../widgets/music/MusicWidget";
 import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
@@ -58,6 +61,7 @@ import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
 import { HudOverlay } from "./HudOverlay";
+import { LumenMascot } from "./LumenMascot";
 import { NotificationToast } from "./NotificationToast";
 import { useIslandStore } from "./stateMachine";
 
@@ -65,8 +69,17 @@ export interface IslandShellProps {
   shapeStyle?: ShapeStyle;
   scaleFactor?: number;
   hideInFullscreen?: boolean;
+  minimalNotch?: boolean;
+  mascotEnabled?: boolean;
+  showHeaderClockSetting?: boolean;
+  language?: AppLanguage;
+  reducedMotionOverride?: boolean;
+  pageOrder?: string[];
+  hiddenPages?: string[];
+  initialWaterGoalMl?: number;
   mediaExclusions?: string[];
   onShapeChange?: (next: ShapeStyle) => void;
+  onOpenSettings?: () => void;
 }
 
 function formatClockParts(now: Date): { dateText: string; timeText: string } {
@@ -102,13 +115,26 @@ export function IslandShell({
   shapeStyle = "notch",
   scaleFactor = 1,
   hideInFullscreen = true,
+  minimalNotch = false,
+  mascotEnabled = true,
+  showHeaderClockSetting = true,
+  language = "en",
+  reducedMotionOverride = false,
+  pageOrder = DEFAULT_SETTINGS.pageOrder,
+  hiddenPages = DEFAULT_SETTINGS.hiddenPages,
+  initialWaterGoalMl = 1500,
   mediaExclusions = [],
   onShapeChange,
+  onOpenSettings,
 }: IslandShellProps) {
   const { state, dispatch } = useIslandStore();
-  const prefersReducedMotion = useReducedMotion() ?? false;
+  const osReducedMotion = useReducedMotion() ?? false;
+  const prefersReducedMotion = osReducedMotion || reducedMotionOverride;
+  const msg = getMessages(language);
+
   const [clock, setClock] = useState(() => formatClockParts(new Date()));
-  const [showHeaderClock, setShowHeaderClock] = useState(true);
+  const [clockDateOverride, setClockDateOverride] = useState<boolean | null>(null);
+  const showHeaderClock = clockDateOverride ?? showHeaderClockSetting;
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
 
@@ -116,12 +142,14 @@ export function IslandShell({
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [waterGoalMl, setWaterGoalMl] = useState(1500);
+  const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
+  const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
   const [waterSummary, setWaterSummary] = useState<WaterSummary | null>(null);
   const [waterReminders, setWaterReminders] = useState(true);
   const [prayerSchedule, setPrayerSchedule] = useState<PrayerSchedule | null>(null);
   const [prayerCities, setPrayerCities] = useState<PrayerCityPreset[]>([]);
-  const [prayerLang, setPrayerLang] = useState<"en" | "bn">("en");
+  const [prayerLangOverride, setPrayerLangOverride] = useState<"en" | "bn" | null>(null);
+  const prayerLang = prayerLangOverride ?? language;
   const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
@@ -130,47 +158,74 @@ export function IslandShell({
   const lastTrackKeyRef = useRef<string>("");
   const hudTimerRef = useRef<number | null>(null);
 
-  const pages = useMemo(
-    () => [
-      {
-        id: "music",
-        titleLead: "Now",
-        titleAccent: "Playing",
-        accentVar: media?.active?.accent_hex || "var(--accent-blue)",
-      },
-      {
-        id: "todo",
-        titleLead: "Todo",
-        titleAccent: "List",
-        accentVar: "var(--accent-green)",
-      },
-      {
-        id: "water",
-        titleLead: "Water",
-        titleAccent: "Tracker",
-        accentVar: "var(--accent-blue)",
-      },
-      {
-        id: "prayer",
-        titleLead: "Prayer",
-        titleAccent: "Times",
-        accentVar: "var(--accent-cyan)",
-      },
-      {
-        id: "pomodoro",
-        titleLead: "Focus",
-        titleAccent: "Timer",
-        accentVar: "var(--accent-orange)",
-      },
-      {
-        id: "shelf",
-        titleLead: "File",
-        titleAccent: "Shelf",
-        accentVar: "var(--accent-purple)",
-      },
-    ],
-    [media?.active?.accent_hex],
-  );
+  const pages = useMemo(() => {
+    const catalog = new Map([
+      [
+        "music",
+        {
+          id: "music",
+          titleLead: msg.pages.musicLead,
+          titleAccent: msg.pages.musicAccent,
+          accentVar: media?.active?.accent_hex || "var(--accent-blue)",
+        },
+      ],
+      [
+        "todo",
+        {
+          id: "todo",
+          titleLead: msg.pages.todoLead,
+          titleAccent: msg.pages.todoAccent,
+          accentVar: "var(--accent-green)",
+        },
+      ],
+      [
+        "water",
+        {
+          id: "water",
+          titleLead: msg.pages.waterLead,
+          titleAccent: msg.pages.waterAccent,
+          accentVar: "var(--accent-blue)",
+        },
+      ],
+      [
+        "prayer",
+        {
+          id: "prayer",
+          titleLead: msg.pages.prayerLead,
+          titleAccent: msg.pages.prayerAccent,
+          accentVar: "var(--accent-cyan)",
+        },
+      ],
+      [
+        "pomodoro",
+        {
+          id: "pomodoro",
+          titleLead: msg.pages.pomodoroLead,
+          titleAccent: msg.pages.pomodoroAccent,
+          accentVar: "var(--accent-orange)",
+        },
+      ],
+      [
+        "shelf",
+        {
+          id: "shelf",
+          titleLead: msg.pages.shelfLead,
+          titleAccent: msg.pages.shelfAccent,
+          accentVar: "var(--accent-purple)",
+        },
+      ],
+    ]);
+
+    const visible = pageOrder
+      .filter((id) => !hiddenPages.includes(id))
+      .map((id) => catalog.get(id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+    if (visible.length > 0) {
+      return visible;
+    }
+    return [catalog.get("music")!];
+  }, [media?.active?.accent_hex, msg.pages, pageOrder, hiddenPages]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -324,8 +379,10 @@ export function IslandShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [dispatch, state, pages.length]);
 
+  const effectiveState = state === "idle" && minimalNotch ? "minimal" : state;
+
   const dimensions = useMemo(() => {
-    switch (state) {
+    switch (effectiveState) {
       case "minimal":
         return BASE_GEOMETRY.minimal;
       case "live":
@@ -339,7 +396,7 @@ export function IslandShell({
       default:
         return BASE_GEOMETRY.collapsed;
     }
-  }, [state]);
+  }, [effectiveState]);
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
@@ -383,13 +440,17 @@ export function IslandShell({
     });
   }, [isFloatingPill, width, height, state]);
 
-  const activePage = pages[activePageIndex] ?? pages[0];
-  const isExpanded = state === "expanded";
-  const isHidden = state === "hidden";
-  const isHud = state === "hud" && activeHud !== null;
-  const isNotify = state === "hud" && activeNotification !== null;
+  const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
+  const activePage = pages[safePageIndex] ?? pages[0];
+  const isExpanded = effectiveState === "expanded";
+  const isHidden = effectiveState === "hidden";
+  const isHud = effectiveState === "hud" && activeHud !== null;
+  const isNotify = effectiveState === "hud" && activeNotification !== null;
   const liveTrack = media?.active ?? null;
   const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
+  const celebratingMascot = Boolean(
+    waterSummary?.goal_reached || (pomodoro && pomodoro.chime_tick > 0 && !pomodoro.running),
+  );
   const activeLyricsLines = useMemo(
     () => (liveTrack?.title ? lyricsLines : []),
     [liveTrack?.title, lyricsLines],
@@ -423,10 +484,17 @@ export function IslandShell({
         aria-label="Lumen Dynamic Island"
         aria-hidden={isHidden}
         data-testid="lumen-island-pill"
-        data-state={state}
+        data-state={effectiveState}
         data-shape={shapeStyle}
         data-target-width={width}
         data-target-height={height}
+        tabIndex={isHidden ? -1 : 0}
+        onKeyDown={(event) => {
+          if (!isExpanded && !isHidden && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            dispatch({ type: "CLICK" });
+          }
+        }}
         className={`relative select-none ${isHidden ? "pointer-events-none" : "pointer-events-auto cursor-pointer"}`}
         style={{
           width: `${width}px`,
@@ -448,7 +516,10 @@ export function IslandShell({
         transition={sizeTransition}
         onDragEnter={(event) => {
           event.preventDefault();
-          setActivePageIndex(pages.findIndex((p) => p.id === "shelf"));
+          const shelfIdx = pages.findIndex((p) => p.id === "shelf");
+          if (shelfIdx >= 0) {
+            setActivePageIndex(shelfIdx);
+          }
           dispatch({ type: "DRAG_ENTER" });
         }}
         onMouseEnter={() => {
@@ -541,7 +612,7 @@ export function IslandShell({
                         style={{ backgroundColor: "var(--accent-orange)" }}
                       />
                       <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                        Focus
+                        {msg.pill.focus}
                       </span>
                     </div>
                     <span
@@ -559,6 +630,13 @@ export function IslandShell({
                           src={liveTrack.album_art_data_url}
                           alt=""
                           className="h-5 w-5 shrink-0 rounded-md object-cover"
+                        />
+                      ) : mascotEnabled ? (
+                        <LumenMascot
+                          enabled
+                          musicPlaying={liveTrack.is_playing}
+                          celebrating={celebratingMascot}
+                          accentColor={mediaAccent}
                         />
                       ) : (
                         <span
@@ -579,17 +657,27 @@ export function IslandShell({
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: "var(--accent-blue)" }}
-                      />
-                      <span
-                        className="type-caption tracking-wide"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        {state === "peek" ? "Click to open" : "Lumen"}
-                      </span>
+                      {mascotEnabled ? (
+                        <LumenMascot
+                          enabled
+                          celebrating={celebratingMascot}
+                          accentColor="var(--accent-blue)"
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: "var(--accent-blue)" }}
+                        />
+                      )}
+                      {effectiveState !== "minimal" && (
+                        <span
+                          className="type-caption tracking-wide"
+                          style={{ color: "var(--text-secondary)" }}
+                        >
+                          {effectiveState === "peek" ? msg.pill.clickToOpen : msg.appName}
+                        </span>
+                      )}
                     </div>
 
                     <span
@@ -633,7 +721,7 @@ export function IslandShell({
 
                   <button
                     type="button"
-                    onClick={() => setShowHeaderClock((v) => !v)}
+                    onClick={() => setClockDateOverride(!showHeaderClock)}
                     className="type-header-clock cursor-pointer border-0 bg-transparent p-0 tabular-nums"
                     style={{ color: "var(--text-secondary)" }}
                     title="Toggle date and time"
@@ -659,12 +747,31 @@ export function IslandShell({
                         color: "var(--text-primary)",
                       }}
                     >
-                      {isFloatingPill ? "Notch" : "Pill"}
+                      {isFloatingPill ? msg.pill.shapeNotch : msg.pill.shapePill}
                     </button>
 
                     <button
                       type="button"
-                      aria-label="Collapse island"
+                      aria-label={msg.pill.openSettings}
+                      onClick={() => {
+                        if (onOpenSettings) {
+                          onOpenSettings();
+                        } else {
+                          void openSettingsWindow();
+                        }
+                      }}
+                      className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
+                      style={{
+                        backgroundColor: "var(--surface-button)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      ⚙
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-label={msg.pill.collapse}
                       onClick={() => dispatch({ type: "CLICK" })}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
                       style={{
@@ -688,7 +795,7 @@ export function IslandShell({
                   {isHeaderHovered && (
                     <button
                       type="button"
-                      aria-label="Previous page"
+                      aria-label={msg.pill.prevPage}
                       onClick={() =>
                         setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length)
                       }
@@ -797,7 +904,7 @@ export function IslandShell({
                       }}
                       onToggleReminders={() => setWaterReminders((v) => !v)}
                       onChangeGoal={(goal) => {
-                        setWaterGoalMl(goal);
+                        setWaterGoalOverride(goal);
                         void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
                       }}
                     />
@@ -811,7 +918,9 @@ export function IslandShell({
                       onSelectCity={(cityId) => {
                         void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
                       }}
-                      onToggleLanguage={() => setPrayerLang((l) => (l === "en" ? "bn" : "en"))}
+                      onToggleLanguage={() =>
+                        setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
+                      }
                     />
                   )}
 
@@ -873,7 +982,7 @@ export function IslandShell({
                   {isHeaderHovered && (
                     <button
                       type="button"
-                      aria-label="Next page"
+                      aria-label={msg.pill.nextPage}
                       onClick={() => setActivePageIndex((idx) => (idx + 1) % pages.length)}
                       className="type-caption absolute -right-4 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
                       style={{
@@ -888,7 +997,7 @@ export function IslandShell({
 
                 <div className="flex items-center justify-center gap-1.5">
                   {pages.map((page, index) => {
-                    const active = index === activePageIndex;
+                    const active = index === safePageIndex;
                     return (
                       <button
                         key={page.id}
