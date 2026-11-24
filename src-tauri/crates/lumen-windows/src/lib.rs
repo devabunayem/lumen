@@ -54,7 +54,7 @@ pub const fn compute_pill_screen_rect(
 
 #[cfg(windows)]
 mod win32 {
-    use windows::Win32::Foundation::{HWND, POINT, RECT};
+    use windows::Win32::Foundation::{COLORREF, HWND, POINT, RECT};
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     };
@@ -63,19 +63,65 @@ mod win32 {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GWL_EXSTYLE, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW,
-        GetWindowRect, IsZoomed, SetWindowLongPtrW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        GetWindowRect, HWND_TOPMOST, IsZoomed, LWA_ALPHA, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetLayeredWindowAttributes,
+        SetWindowLongPtrW, SetWindowPos, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_EX_TRANSPARENT,
     };
 
-    /// Configures the Tauri window as a non-activating tool window (`FR-WIN-1`, `FR-WIN-3`).
-    pub fn apply_tool_window_no_activate(raw_hwnd: isize) -> Result<(), String> {
+    const BASE_ISLAND_EX_STYLE: isize =
+        (WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOPMOST.0 | WS_EX_LAYERED.0) as isize;
+
+    /// Initializes the Tauri window as a visible, topmost, non-activating tool window (`FR-WIN-1`, `FR-WIN-3`).
+    ///
+    /// Explicitly invokes `SetLayeredWindowAttributes(..., 255, LWA_ALPHA)` so `WS_EX_LAYERED`
+    /// never defaults to master alpha `0` (invisible) on Windows 10/11.
+    pub fn init_island_window(raw_hwnd: isize, x: i32, y: i32) -> Result<(), String> {
         let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
         // SAFETY: `hwnd` is a valid top-level window handle owned by the calling process.
         unsafe {
             let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let next = current | (WS_EX_TOOLWINDOW.0 as isize) | (WS_EX_NOACTIVATE.0 as isize);
+            let next = current | BASE_ISLAND_EX_STYLE | (WS_EX_TRANSPARENT.0 as isize);
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
+            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                x,
+                y,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+            );
         }
         Ok(())
+    }
+
+    /// Toggles `WS_EX_TRANSPARENT` directly while preserving `WS_EX_TOOLWINDOW | WS_EX_LAYERED`
+    /// and master `LWA_ALPHA = 255` (`FR-WIN-2`).
+    pub fn set_window_click_through(raw_hwnd: isize, ignore: bool) {
+        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
+        // SAFETY: `hwnd` is owned by the calling process.
+        unsafe {
+            let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let transparent_flag = WS_EX_TRANSPARENT.0 as isize;
+            let next = if ignore {
+                current | BASE_ISLAND_EX_STYLE | transparent_flag
+            } else {
+                (current | BASE_ISLAND_EX_STYLE) & !transparent_flag
+            };
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
+            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+        }
     }
 
     /// Toggles `WS_EX_NOACTIVATE` dynamically when a text input requests focus (`FR-WIN-3`).
@@ -160,9 +206,11 @@ mod win32 {
 
 #[cfg(not(windows))]
 mod win32 {
-    pub fn apply_tool_window_no_activate(_raw_hwnd: isize) -> Result<(), String> {
+    pub fn init_island_window(_raw_hwnd: isize, _x: i32, _y: i32) -> Result<(), String> {
         Ok(())
     }
+
+    pub fn set_window_click_through(_raw_hwnd: isize, _ignore: bool) {}
 
     pub fn set_no_activate(_raw_hwnd: isize, _no_activate: bool) {}
 
@@ -178,7 +226,8 @@ mod win32 {
 }
 
 pub use win32::{
-    apply_tool_window_no_activate, cursor_screen_pos, is_other_app_fullscreen, set_no_activate,
+    cursor_screen_pos, init_island_window, is_other_app_fullscreen, set_no_activate,
+    set_window_click_through,
 };
 
 #[cfg(test)]

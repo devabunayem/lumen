@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use lumen_core::{IslandEvent, IslandMachine, IslandSnapshot};
 use lumen_windows::{
-    apply_tool_window_no_activate, compute_pill_screen_rect, compute_top_center_position,
-    cursor_screen_pos, is_other_app_fullscreen, set_no_activate,
+    compute_pill_screen_rect, compute_top_center_position, cursor_screen_pos, init_island_window,
+    is_other_app_fullscreen, set_no_activate, set_window_click_through,
 };
 use serde::Serialize;
 use tauri::{Emitter, Manager, PhysicalPosition, State};
@@ -113,6 +113,7 @@ pub fn run() {
                 return Ok(());
             };
 
+            let (mut target_x, mut target_y) = (0, 0);
             if let Ok(Some(monitor)) = window.primary_monitor() {
                 let monitor_pos = monitor.position();
                 let monitor_size = monitor.size();
@@ -126,6 +127,8 @@ pub fn run() {
                     monitor_size.width as i32,
                     window_size.width as i32,
                 );
+                target_x = x;
+                target_y = y;
                 let _ = window.set_position(PhysicalPosition::new(x, y));
             }
 
@@ -135,10 +138,9 @@ pub fn run() {
             let own_hwnd = 0isize;
 
             if own_hwnd != 0 {
-                let _ = apply_tool_window_no_activate(own_hwnd);
+                let _ = init_island_window(own_hwnd, target_x, target_y);
             }
-
-            let _ = window.set_ignore_cursor_events(true);
+            let _ = window.show();
 
             let hit_window = window.clone();
             let hit_bounds = Arc::clone(&shared_bounds);
@@ -175,8 +177,8 @@ pub fn run() {
                         should_ignore = !pill_rect.contains_point(cx, cy, margin);
                     }
 
-                    if should_ignore != last_ignore {
-                        let _ = hit_window.set_ignore_cursor_events(should_ignore);
+                    if should_ignore != last_ignore && own_hwnd != 0 {
+                        set_window_click_through(own_hwnd, should_ignore);
                         last_ignore = should_ignore;
                     }
 
@@ -193,8 +195,8 @@ pub fn run() {
                                 "lumen://fullscreen-changed",
                                 FullscreenChangedPayload { active: fullscreen },
                             );
-                            if fullscreen && !last_ignore {
-                                let _ = hit_window.set_ignore_cursor_events(true);
+                            if fullscreen && !last_ignore && own_hwnd != 0 {
+                                set_window_click_through(own_hwnd, true);
                                 last_ignore = true;
                             }
                         }

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
@@ -79,7 +79,6 @@ export function IslandShell({
 }: IslandShellProps) {
   const { state, dispatch } = useIslandStore();
   const prefersReducedMotion = useReducedMotion() ?? false;
-  const clipId = useId();
   const [clock, setClock] = useState(() => formatClockParts(new Date()));
   const [showHeaderClock, setShowHeaderClock] = useState(true);
   const [activePageIndex, setActivePageIndex] = useState(0);
@@ -230,21 +229,11 @@ export function IslandShell({
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
         >
-          <defs>
-            <clipPath id={clipId}>
-              <motion.path
-                d={shapePath}
-                initial={false}
-                animate={{ d: shapePath }}
-                transition={getMotionTransition("shapeMorph", prefersReducedMotion)}
-              />
-            </clipPath>
-          </defs>
           <motion.path
             d={shapePath}
             fill="var(--surface)"
-            stroke="var(--hairline)"
-            strokeWidth={1}
+            stroke="var(--hairline-top)"
+            strokeWidth={1.25}
             initial={false}
             animate={{ d: shapePath }}
             transition={getMotionTransition("shapeMorph", prefersReducedMotion)}
@@ -258,11 +247,8 @@ export function IslandShell({
           style={{ backgroundColor: "var(--hairline-top)" }}
         />
 
-        {/* Inner clipped content */}
-        <div
-          className="relative h-full w-full overflow-hidden"
-          style={{ clipPath: `url(#${clipId})` }}
-        >
+        {/* Inner content */}
+        <div className="relative h-full w-full overflow-hidden">
           <AnimatePresence initial={false}>
             {!isExpanded ? (
               <motion.div
