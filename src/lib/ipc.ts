@@ -16,6 +16,32 @@ export interface PillBoundsPayload {
   hideInFullscreen: boolean;
 }
 
+export interface MediaSessionSummary {
+  app_id: string;
+  title: string;
+  artist: string;
+  is_playing: boolean;
+}
+
+export interface MediaSessionInfo {
+  app_id: string;
+  title: string;
+  artist: string;
+  album_title: string;
+  is_playing: boolean;
+  position_ms: number;
+  duration_ms: number;
+  album_art_data_url: string | null;
+  accent_hex: string;
+}
+
+export interface MediaStateSnapshot {
+  active: MediaSessionInfo | null;
+  sessions: MediaSessionSummary[];
+  volume_percent: number;
+  muted: boolean;
+}
+
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -61,6 +87,43 @@ export async function requestKeyboardFocus(focused: boolean): Promise<void> {
   await invoke("request_keyboard_focus", { focused });
 }
 
+export async function getMediaState(): Promise<MediaStateSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<MediaStateSnapshot>("media_get_state");
+}
+
+export async function sendMediaCommand(
+  command: "play_pause" | "next" | "previous" | "toggle_mute",
+): Promise<MediaStateSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<MediaStateSnapshot>("media_control", { command });
+}
+
+export async function seekMedia(positionMs: number): Promise<MediaStateSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<MediaStateSnapshot>("media_seek", { positionMs });
+}
+
+export async function setSystemVolume(volumePercent: number): Promise<MediaStateSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<MediaStateSnapshot>("media_set_volume", { volumePercent });
+}
+
+export async function selectMediaSession(appId: string): Promise<MediaStateSnapshot | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<MediaStateSnapshot>("media_select_session", { appId });
+}
+
 export async function subscribeFullscreenChange(
   onChange: (active: boolean) => void,
 ): Promise<UnlistenFn> {
@@ -69,6 +132,17 @@ export async function subscribeFullscreenChange(
   }
   return listen<{ active: boolean }>("lumen://fullscreen-changed", (event) => {
     onChange(event.payload.active);
+  });
+}
+
+export async function subscribeMediaUpdated(
+  onUpdate: (snapshot: MediaStateSnapshot) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<MediaStateSnapshot>("lumen://media-updated", (event) => {
+    onUpdate(event.payload);
   });
 }
 

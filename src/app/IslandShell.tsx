@@ -1,68 +1,34 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { generateNotchPath, generatePillPath } from "../design/shapes";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import {
+  getMediaState,
   isTauriRuntime,
+  type MediaStateSnapshot,
+  seekMedia,
+  selectMediaSession,
+  sendMediaCommand,
   setIslandSurfaceMode,
+  setSystemVolume,
   subscribeFullscreenChange,
+  subscribeMediaUpdated,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
 } from "../lib/ipc";
+import { LiveWaveform } from "../widgets/music/LiveWaveform";
+import { MusicWidget } from "../widgets/music/MusicWidget";
 import { useIslandStore } from "./stateMachine";
 
 export interface IslandShellProps {
   shapeStyle?: ShapeStyle;
   scaleFactor?: number;
   hideInFullscreen?: boolean;
+  mediaExclusions?: string[];
   onShapeChange?: (next: ShapeStyle) => void;
 }
-
-interface PreviewPage {
-  id: string;
-  titleLead: string;
-  titleAccent: string;
-  accentVar: string;
-  headline: string;
-  subline: string;
-  metricValue: string;
-  metricLabel: string;
-}
-
-const PHASE1_PREVIEW_PAGES: readonly PreviewPage[] = [
-  {
-    id: "overview",
-    titleLead: "Lumen",
-    titleAccent: "Island",
-    accentVar: "var(--accent-blue)",
-    headline: "Window engine active",
-    subline: "Click-through hit-testing, no focus stealing & fullscreen auto-hide.",
-    metricValue: "10 Hz",
-    metricLabel: "Idle Hit-Test",
-  },
-  {
-    id: "motion",
-    titleLead: "Spring",
-    titleAccent: "Motion",
-    accentVar: "var(--accent-green)",
-    headline: "Interruptible squircle morph",
-    subline: "Switch between Notch and Floating Pill anytime with 450 ms spring physics.",
-    metricValue: "60+",
-    metricLabel: "FPS Target",
-  },
-  {
-    id: "roadmap",
-    titleLead: "Phase",
-    titleAccent: "Ready",
-    accentVar: "var(--accent-orange)",
-    headline: "Next: Music & SMTC",
-    subline: "Core island shell, state machine & Windows bounds sync verified.",
-    metricValue: "7",
-    metricLabel: "Island States",
-  },
-];
 
 function formatClockParts(now: Date): { dateText: string; timeText: string } {
   const dateText = now.toLocaleDateString("en-GB", {
@@ -78,10 +44,20 @@ function formatClockParts(now: Date): { dateText: string; timeText: string } {
   return { dateText, timeText };
 }
 
+function isMediaExcluded(appId: string, title: string, exclusions: string[]): boolean {
+  const a = appId.toLowerCase();
+  const t = title.toLowerCase();
+  return exclusions.some((item) => {
+    const q = item.trim().toLowerCase();
+    return q.length > 0 && (a.includes(q) || t.includes(q));
+  });
+}
+
 export function IslandShell({
   shapeStyle = "notch",
   scaleFactor = 1,
   hideInFullscreen = true,
+  mediaExclusions = [],
   onShapeChange,
 }: IslandShellProps) {
   const { state, dispatch } = useIslandStore();
@@ -90,6 +66,27 @@ export function IslandShell({
   const [showHeaderClock, setShowHeaderClock] = useState(true);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+  const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const lastTrackKeyRef = useRef<string>("");
+
+  const pages = useMemo(
+    () => [
+      {
+        id: "music",
+        titleLead: "Now",
+        titleAccent: "Playing",
+        accentVar: media?.active?.accent_hex || "var(--accent-blue)",
+      },
+      {
+        id: "overview",
+        titleLead: "Lumen",
+        titleAccent: "Island",
+        accentVar: "var(--accent-green)",
+      },
+    ],
+    [media?.active?.accent_hex],
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -113,6 +110,38 @@ export function IslandShell({
     let unlistenFs: (() => void) | undefined;
     let unlistenExpand: (() => void) | undefined;
     let unlistenHide: (() => void) | undefined;
+    let unlistenMedia: (() => void) | undefined;
+
+    const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
+      if (!snapshot) {
+        return;
+      }
+      setMedia(snapshot);
+      const isPlaying = Boolean(snapshot.active?.is_playing);
+      dispatch({ type: "MEDIA_CHANGE", active: isPlaying });
+
+      if (snapshot.active) {
+        const key = `${snapshot.active.app_id}:${snapshot.active.title}`;
+        if (
+          lastTrackKeyRef.current &&
+          lastTrackKeyRef.current !== key &&
+          isPlaying &&
+          !isMediaExcluded(snapshot.active.app_id, snapshot.active.title, mediaExclusions)
+        ) {
+          dispatch({ type: "HOVER" });
+          window.setTimeout(() => dispatch({ type: "LEAVE" }), 1800);
+        }
+        lastTrackKeyRef.current = key;
+      }
+    };
+
+    void getMediaState().then(handleMediaSnapshot);
+
+    void subscribeMediaUpdated((snapshot) => {
+      handleMediaSnapshot(snapshot);
+    }).then((fn) => {
+      unlistenMedia = fn;
+    });
 
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
@@ -136,31 +165,32 @@ export function IslandShell({
       unlistenFs?.();
       unlistenExpand?.();
       unlistenHide?.();
+      unlistenMedia?.();
     };
-  }, [dispatch]);
+  }, [dispatch, mediaExclusions]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         dispatch({ type: "ESCAPE" });
       } else if (state === "expanded" && event.key === "ArrowRight") {
-        setActivePageIndex((idx) => (idx + 1) % PHASE1_PREVIEW_PAGES.length);
+        setActivePageIndex((idx) => (idx + 1) % pages.length);
       } else if (state === "expanded" && event.key === "ArrowLeft") {
-        setActivePageIndex(
-          (idx) => (idx - 1 + PHASE1_PREVIEW_PAGES.length) % PHASE1_PREVIEW_PAGES.length,
-        );
+        setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dispatch, state]);
+  }, [dispatch, state, pages.length]);
 
   const dimensions = useMemo(() => {
     switch (state) {
       case "minimal":
         return BASE_GEOMETRY.minimal;
+      case "live":
+        return { width: 244, height: 34 };
       case "peek":
-        return { width: 236, height: 36 };
+        return { width: 248, height: 38 };
       case "expanded":
         return BASE_GEOMETRY.expanded;
       case "hud":
@@ -208,9 +238,11 @@ export function IslandShell({
     });
   }, [isFloatingPill, width, height, state]);
 
-  const activePage = PHASE1_PREVIEW_PAGES[activePageIndex] ?? PHASE1_PREVIEW_PAGES[0];
+  const activePage = pages[activePageIndex] ?? pages[0];
   const isExpanded = state === "expanded";
   const isHidden = state === "hidden";
+  const liveTrack = media?.active ?? null;
+  const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
 
   const sizeTransition = isHidden
     ? getMotionTransition("hideFullscreen", prefersReducedMotion)
@@ -267,7 +299,6 @@ export function IslandShell({
           }
         }}
       >
-        {/* Pure black SVG continuous-curvature body + 1 px top highlight */}
         <svg
           width="100%"
           height="100%"
@@ -287,14 +318,12 @@ export function IslandShell({
           />
         </svg>
 
-        {/* Top 1 px inner hairline highlight (SRS Section 3.7) */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-4 top-0 h-px"
           style={{ backgroundColor: "var(--hairline-top)" }}
         />
 
-        {/* Inner content */}
         <div className="relative h-full w-full overflow-hidden">
           <AnimatePresence initial={false}>
             {!isExpanded ? (
@@ -309,26 +338,55 @@ export function IslandShell({
                 transition={{ duration: 0.14 }}
                 className="flex h-full w-full items-center justify-between px-5"
               >
-                <div className="flex items-center gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ backgroundColor: "var(--accent-blue)" }}
-                  />
-                  <span
-                    className="type-caption tracking-wide"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    {state === "peek" ? "Click to open" : "Lumen"}
-                  </span>
-                </div>
+                {liveTrack ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {liveTrack.album_art_data_url ? (
+                        <img
+                          src={liveTrack.album_art_data_url}
+                          alt=""
+                          className="h-5 w-5 shrink-0 rounded-md object-cover"
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: mediaAccent }}
+                        />
+                      )}
+                      <span
+                        className="type-caption max-w-[118px] truncate"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {liveTrack.title}
+                      </span>
+                    </div>
+                    <LiveWaveform playing={liveTrack.is_playing} accentColor={mediaAccent} />
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: "var(--accent-blue)" }}
+                      />
+                      <span
+                        className="type-caption tracking-wide"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        {state === "peek" ? "Click to open" : "Lumen"}
+                      </span>
+                    </div>
 
-                <span
-                  className="type-header-clock tabular-nums"
-                  style={{ color: "var(--text-primary)" }}
-                >
-                  {clock.timeText}
-                </span>
+                    <span
+                      className="type-header-clock tabular-nums"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {clock.timeText}
+                    </span>
+                  </>
+                )}
               </motion.div>
             ) : (
               <motion.div
@@ -354,7 +412,6 @@ export function IslandShell({
                 }}
                 onClick={(event) => event.stopPropagation()}
               >
-                {/* Header layout (SRS Section 3.5) */}
                 <div className="flex items-center justify-between">
                   <h1 className="type-title m-0 flex items-center gap-1.5">
                     <span style={{ color: "var(--text-primary)" }}>{activePage.titleLead}</span>
@@ -402,25 +459,25 @@ export function IslandShell({
                         border: "1px solid var(--hairline)",
                       }}
                     >
-                      <span
-                        className="block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: activePage.accentVar }}
-                      />
+                      {liveTrack?.is_playing ? (
+                        <LiveWaveform playing accentColor={mediaAccent} />
+                      ) : (
+                        <span
+                          className="block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: activePage.accentVar }}
+                        />
+                      )}
                     </button>
                   </div>
                 </div>
 
-                {/* Body card (SRS Section 3.1 & 3.4) */}
-                <div className="relative flex flex-1 items-center">
+                <div className="relative flex min-h-0 flex-1 items-center">
                   {isHeaderHovered && (
                     <button
                       type="button"
                       aria-label="Previous page"
                       onClick={() =>
-                        setActivePageIndex(
-                          (idx) =>
-                            (idx - 1 + PHASE1_PREVIEW_PAGES.length) % PHASE1_PREVIEW_PAGES.length,
-                        )
+                        setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length)
                       }
                       className="type-caption absolute -left-4 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
                       style={{
@@ -432,43 +489,55 @@ export function IslandShell({
                     </button>
                   )}
 
-                  <div
-                    className="flex h-full w-full items-center justify-between px-4 py-2.5"
-                    style={{
-                      backgroundColor: "var(--surface-raised)",
-                      borderRadius: "var(--card-radius)",
-                      border: "1px solid var(--hairline)",
-                    }}
-                  >
-                    <div className="flex max-w-[70%] flex-col gap-0.5">
-                      <span className="type-body" style={{ color: "var(--text-primary)" }}>
-                        {activePage.headline}
-                      </span>
-                      <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                        {activePage.subline}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-end">
+                  {activePage.id === "music" ? (
+                    <MusicWidget
+                      media={media}
+                      lyricsOpen={lyricsOpen}
+                      onToggleLyrics={() => setLyricsOpen((v) => !v)}
+                      onCommand={(cmd) => {
+                        void sendMediaCommand(cmd).then((next) => next && setMedia(next));
+                      }}
+                      onSeek={(pos) => {
+                        void seekMedia(pos).then((next) => next && setMedia(next));
+                      }}
+                      onVolumeChange={(vol) => {
+                        void setSystemVolume(vol).then((next) => next && setMedia(next));
+                      }}
+                      onSelectSession={(appId) => {
+                        void selectMediaSession(appId).then((next) => next && setMedia(next));
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="flex h-full w-full items-center justify-between px-4 py-2.5"
+                      style={{
+                        backgroundColor: "var(--surface-raised)",
+                        borderRadius: "var(--card-radius)",
+                        border: "1px solid var(--hairline)",
+                      }}
+                    >
+                      <div className="flex max-w-[70%] flex-col gap-0.5">
+                        <span className="type-body" style={{ color: "var(--text-primary)" }}>
+                          Lumen Desktop Island
+                        </span>
+                        <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
+                          SMTC Media Bridge active · Click-through &amp; fullscreen auto-hide ready.
+                        </span>
+                      </div>
                       <span
-                        className="tabular-nums text-3xl font-bold leading-none"
+                        className="tabular-nums text-3xl font-bold"
                         style={{ color: activePage.accentVar }}
                       >
-                        {activePage.metricValue}
-                      </span>
-                      <span className="type-caption mt-1" style={{ color: "var(--text-tertiary)" }}>
-                        {activePage.metricLabel}
+                        100%
                       </span>
                     </div>
-                  </div>
+                  )}
 
                   {isHeaderHovered && (
                     <button
                       type="button"
                       aria-label="Next page"
-                      onClick={() =>
-                        setActivePageIndex((idx) => (idx + 1) % PHASE1_PREVIEW_PAGES.length)
-                      }
+                      onClick={() => setActivePageIndex((idx) => (idx + 1) % pages.length)}
                       className="type-caption absolute -right-4 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
                       style={{
                         backgroundColor: "var(--surface-button)",
@@ -480,9 +549,8 @@ export function IslandShell({
                   )}
                 </div>
 
-                {/* Bottom centre page dots (active dot stretches into a capsule) */}
                 <div className="flex items-center justify-center gap-1.5">
-                  {PHASE1_PREVIEW_PAGES.map((page, index) => {
+                  {pages.map((page, index) => {
                     const active = index === activePageIndex;
                     return (
                       <button

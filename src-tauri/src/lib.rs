@@ -2,6 +2,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use lumen_core::{IslandEvent, IslandMachine, IslandSnapshot};
+use lumen_media::{
+    MediaCommand, MediaStateSnapshot, read_media_state, seek_media, send_media_command,
+    set_system_volume,
+};
 use lumen_windows::{compute_top_center_position, is_other_app_fullscreen};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -31,6 +35,7 @@ impl Default for IslandRuntimeConfig {
 struct AppState {
     machine: Mutex<IslandMachine>,
     config: Arc<Mutex<IslandRuntimeConfig>>,
+    preferred_media_app: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,14 +133,106 @@ fn request_keyboard_focus(focused: bool, app: tauri::AppHandle) -> Result<(), St
     Ok(())
 }
 
+#[tauri::command]
+async fn media_get_state(state: State<'_, AppState>) -> Result<MediaStateSnapshot, String> {
+    let preferred = state
+        .preferred_media_app
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    tokio::task::spawn_blocking(move || read_media_state(preferred.as_deref()))
+        .await
+        .map_err(|e| format!("media task error: {e}"))
+}
+
+#[tauri::command]
+async fn media_control(
+    command: String,
+    state: State<'_, AppState>,
+) -> Result<MediaStateSnapshot, String> {
+    let cmd = MediaCommand::from_name(&command)
+        .ok_or_else(|| format!("unknown media command: {command}"))?;
+    let preferred = state
+        .preferred_media_app
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    tokio::task::spawn_blocking(move || {
+        send_media_command(cmd, preferred.as_deref())?;
+        Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
+    })
+    .await
+    .map_err(|e| format!("media control join error: {e}"))?
+}
+
+#[tauri::command]
+async fn media_seek(
+    position_ms: u64,
+    state: State<'_, AppState>,
+) -> Result<MediaStateSnapshot, String> {
+    let preferred = state
+        .preferred_media_app
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    tokio::task::spawn_blocking(move || {
+        seek_media(position_ms, preferred.as_deref())?;
+        Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
+    })
+    .await
+    .map_err(|e| format!("media seek join error: {e}"))?
+}
+
+#[tauri::command]
+async fn media_set_volume(
+    volume_percent: u8,
+    state: State<'_, AppState>,
+) -> Result<MediaStateSnapshot, String> {
+    let preferred = state
+        .preferred_media_app
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    tokio::task::spawn_blocking(move || {
+        set_system_volume(volume_percent)?;
+        Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
+    })
+    .await
+    .map_err(|e| format!("volume task join error: {e}"))?
+}
+
+#[tauri::command]
+async fn media_select_session(
+    app_id: String,
+    state: State<'_, AppState>,
+) -> Result<MediaStateSnapshot, String> {
+    if let Ok(mut guard) = state.preferred_media_app.lock() {
+        *guard = if app_id.is_empty() {
+            None
+        } else {
+            Some(app_id)
+        };
+    }
+    let preferred = state
+        .preferred_media_app
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    tokio::task::spawn_blocking(move || read_media_state(preferred.as_deref()))
+        .await
+        .map_err(|e| format!("session select join error: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
+    let preferred_media_app = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
         .manage(AppState {
             machine: Mutex::new(IslandMachine::new()),
             config: Arc::clone(&shared_config),
+            preferred_media_app: Arc::clone(&preferred_media_app),
         })
         .setup(move |app| {
             let Some(window) = app.get_webview_window("island") else {
@@ -215,6 +312,24 @@ pub fn run() {
                 }
             });
 
+            // Background SMTC watcher at 1 Hz (FR-MUS-1, NFR-PERF-3 compliant)
+            let media_window = window.clone();
+            let media_pref = Arc::clone(&preferred_media_app);
+            tauri::async_runtime::spawn(async move {
+                let mut last_snapshot: Option<MediaStateSnapshot> = None;
+                loop {
+                    let pref = media_pref.lock().ok().and_then(|g| g.clone());
+                    if let Ok(snapshot) =
+                        tokio::task::spawn_blocking(move || read_media_state(pref.as_deref())).await
+                        && last_snapshot.as_ref() != Some(&snapshot)
+                    {
+                        last_snapshot = Some(snapshot.clone());
+                        let _ = media_window.emit("lumen://media-updated", snapshot);
+                    }
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -222,7 +337,12 @@ pub fn run() {
             dispatch_island_event,
             sync_pill_bounds,
             set_island_surface_mode,
-            request_keyboard_focus
+            request_keyboard_focus,
+            media_get_state,
+            media_control,
+            media_seek,
+            media_set_volume,
+            media_select_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");
