@@ -7,15 +7,31 @@
 **A little island for your desktop.**  
 Free, open-source, privacy-first Dynamic Island & notch overlay for **Windows 10 (1809+)** and **Windows 11** — built with **Rust**, **Tauri v2**, and **React 19**.
 
+[![Download v1.0.0 (.exe)](<https://img.shields.io/badge/Download-v1.0.0%20(.exe)-30D158?style=for-the-badge&logo=windows>)](https://github.com/devabunayem/lumen/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg?style=for-the-badge)](./LICENSE)
 [![Platform: Windows 10 & 11](<https://img.shields.io/badge/Windows-10%20%7C%2011%20(x64%20%26%20ARM64)-0A84FF?style=for-the-badge&logo=windows>)](https://github.com/devabunayem/lumen)
 [![Built with Tauri v2](https://img.shields.io/badge/Tauri-v2-FF9F0A?style=for-the-badge&logo=tauri)](https://tauri.app/)
 [![React 19](https://img.shields.io/badge/React-19-5AC8FA?style=for-the-badge&logo=react)](https://react.dev/)
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero-30D158?style=for-the-badge)](./SECURITY.md)
 
-[Features](#features) · [Architecture](#architecture) · [Build from Source](#getting-started) · [Roadmap](#delivery-roadmap) · [Contributing](./CONTRIBUTING.md)
+[Download](#download) · [Features](#features) · [Architecture](#architecture) · [Build from Source](#getting-started) · [Roadmap](#delivery-roadmap) · [Contributing](./CONTRIBUTING.md)
 
 </div>
+
+---
+
+## Download
+
+Download prebuilt **Windows 10 / 11 (x64)** binaries directly from **[GitHub Releases](https://github.com/devabunayem/lumen/releases/latest)**:
+
+| Package                               | Best For                                          | Direct Download                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Windows Installer (`*-setup.exe`)** | Standard installation & Start Menu shortcut       | [Download `Lumen_1.0.0_x64-setup.exe`](https://github.com/devabunayem/lumen/releases/latest/download/Lumen_1.0.0_x64-setup.exe) |
+| **Portable Executable (`lumen.exe`)** | Double-click & run immediately without installing | [Download `lumen.exe`](https://github.com/devabunayem/lumen/releases/latest/download/lumen.exe)                                 |
+| **Portable Archive (`.zip`)**         | Compressed standalone portable download           | [Download `Lumen-portable-x64.zip`](https://github.com/devabunayem/lumen/releases/latest/download/Lumen-portable-x64.zip)       |
+| **Checksums & MSI**                   | Enterprise `.msi` installer & `SHA256SUMS.txt`    | [Browse All Release Assets](https://github.com/devabunayem/lumen/releases/latest)                                               |
+
+> **Notes:** Requires Microsoft Edge WebView2 Runtime (pre-installed on Windows 11 and modern Windows 10). Because open-source builds are currently unsigned, Windows SmartScreen may ask for confirmation on first launch — choose **More info → Run anyway** (you can verify integrity anytime against `SHA256SUMS.txt`).
 
 ---
 

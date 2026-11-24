@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release-windows:
-    name: Build Signed / Packaged Windows Installers
+    name: Build & Publish Windows Release (.exe / .msi / .zip)
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -38,36 +38,57 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run quality gates before packaging
-        run: |
-          pnpm lint
-          pnpm format:check
-          pnpm typecheck
-          pnpm test
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-          cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings
-          cargo test --manifest-path src-tauri/Cargo.toml --workspace
+      - name: Frontend lint
+        run: pnpm lint
+
+      - name: Frontend format check
+        run: pnpm format:check
+
+      - name: TypeScript typecheck
+        run: pnpm typecheck
+
+      - name: Frontend unit tests
+        run: pnpm test
+
+      - name: Frontend production build
+        run: pnpm build
+
+      - name: Rust format check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --workspace
 
       - name: Build Tauri release bundles (MSI + NSIS)
         run: pnpm tauri build
 
-      - name: Package portable binary and generate SHA256SUMS.txt
+      - name: Package installers, standalone exe, zip, and SHA256SUMS.txt
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           Copy-Item src-tauri/target/release/bundle/msi/*.msi release-assets/ -ErrorAction SilentlyContinue
           Copy-Item src-tauri/target/release/bundle/nsis/*.exe release-assets/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/release/lumen.exe release-assets/lumen.exe -Force
           Compress-Archive -Path src-tauri/target/release/lumen.exe -DestinationPath release-assets/Lumen-portable-x64.zip -Force
+          if ((Get-ChildItem release-assets).Count -eq 0) {
+            throw "No release assets were generated."
+          }
           Get-FileHash release-assets/* -Algorithm SHA256 | ForEach-Object {
             "$($_.Hash.ToLowerInvariant())  $(Split-Path $_.Path -Leaf)"
           } | Out-File -FilePath release-assets/SHA256SUMS.txt -Encoding utf8
 
-      - name: Upload GitHub Release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release-assets/*.msi
-            release-assets/*.exe
-            release-assets/*.zip
-            release-assets/SHA256SUMS.txt
-          generate_release_notes: true
+      - name: Publish GitHub Release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag release-assets/* --clobber
+          } else {
+            gh release create $tag release-assets/* --title "Lumen $tag" --generate-notes --latest
+          }
