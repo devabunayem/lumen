@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Strict minimal capabilities for Lumen island window (NFR-SEC-1)",
   "windows": ["island"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:event:default"]
 }
