@@ -1,34 +1,23 @@
 import { motion, useReducedMotion } from "motion/react";
+import { useState } from "react";
 import { getMotionTransition } from "../../design/motion";
 import type { PrayerCityPreset, PrayerSchedule } from "../../lib/ipc";
 
 export interface PrayerWidgetProps {
   schedule: PrayerSchedule | null;
-  cities: PrayerCityPreset[];
+  cities?: PrayerCityPreset[];
   language: "en" | "bn";
-  onSelectCity: (cityId: string) => void;
-  onToggleLanguage: () => void;
+  onSelectCity?: (cityId: string) => void;
+  onToggleLanguage?: () => void;
 }
 
-export function PrayerWidget({
-  schedule,
-  cities,
-  language,
-  onSelectCity,
-  onToggleLanguage,
-}: PrayerWidgetProps) {
+export function PrayerWidget({ schedule, language }: PrayerWidgetProps) {
   const prefersReducedMotion = useReducedMotion() ?? false;
+  const [hoveredSlotId, setHoveredSlotId] = useState<string | null>(null);
 
   if (!schedule) {
     return (
-      <div
-        className="flex h-full w-full items-center justify-center px-4"
-        style={{
-          backgroundColor: "var(--surface-raised)",
-          borderRadius: "var(--card-radius)",
-          border: "1px solid var(--hairline)",
-        }}
-      >
+      <div className="flex h-full w-full items-center justify-center px-4">
         <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
           Calculating offline prayer times
         </span>
@@ -39,53 +28,27 @@ export function PrayerWidget({
   const nextName = language === "bn" ? schedule.next_name_bn : schedule.next_name_en;
   const sunAngle = Math.PI * (1 - schedule.sun_arc_ratio);
   const arcCx = 110;
-  const arcCy = 74;
-  const arcR = 64;
+  const arcCy = 70;
+  const arcR = 60;
   const sunX = arcCx + arcR * Math.cos(sunAngle);
   const sunY = arcCy - arcR * Math.sin(sunAngle);
 
+  const activeSlot =
+    schedule.slots.find((s) => s.id === hoveredSlotId) ??
+    schedule.slots.find((s) => s.name_en === schedule.next_name_en) ??
+    schedule.slots[0];
+
   return (
-    <div className="flex h-full w-full items-stretch justify-between gap-3 overflow-hidden">
-      {/* Left block: Next, today/tomorrow, large prayer name, countdown, progress bar (FR-PR-3) */}
+    <div className="flex h-full w-full items-stretch justify-between gap-3 overflow-hidden pb-1.5">
+      {/* Left block: Next, large prayer name, countdown, progress bar */}
       <div className="flex min-w-0 flex-1 flex-col justify-between">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className="type-caption font-semibold" style={{ color: "var(--accent-cyan)" }}>
-              Next · {schedule.next_is_tomorrow ? "tomorrow" : "today"}
-            </span>
-            <button
-              type="button"
-              onClick={onToggleLanguage}
-              className="type-caption cursor-pointer rounded-full border-0 px-2 py-0.5"
-              style={{
-                backgroundColor: "var(--surface-button)",
-                color: "var(--text-secondary)",
-              }}
-            >
-              {language === "bn" ? "বাংলা" : "EN"}
-            </button>
-          </div>
-
-          {cities.length > 0 && (
-            <select
-              aria-label="Select prayer city"
-              value={
-                cities.find((c) => c.name_en === schedule.city_name)?.id ?? cities[0]?.id ?? "dhaka"
-              }
-              onChange={(e) => onSelectCity(e.target.value)}
-              className="type-caption cursor-pointer rounded-full border-0 px-2 py-0.5"
-              style={{
-                backgroundColor: "var(--surface-button)",
-                color: "var(--text-primary)",
-              }}
-            >
-              {cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {language === "bn" ? c.name_bn : c.name_en}
-                </option>
-              ))}
-            </select>
-          )}
+          <span className="type-caption font-semibold" style={{ color: "var(--accent-cyan)" }}>
+            {schedule.next_is_tomorrow ? "Next · Tomorrow" : "Next"}
+          </span>
+          <span className="type-caption truncate" style={{ color: "var(--text-tertiary)" }}>
+            {schedule.city_name}
+          </span>
         </div>
 
         <div className="flex items-baseline justify-between gap-2">
@@ -104,9 +67,11 @@ export function PrayerWidget({
           <span className="type-caption tabular-nums" style={{ color: "var(--text-secondary)" }}>
             {schedule.countdown_text}
           </span>
-          <span className="type-caption truncate" style={{ color: "var(--text-tertiary)" }}>
-            {schedule.sehri_iftar_label}
-          </span>
+          {schedule.sehri_iftar_label ? (
+            <span className="type-caption truncate" style={{ color: "var(--text-tertiary)" }}>
+              {schedule.sehri_iftar_label}
+            </span>
+          ) : null}
         </div>
 
         <div
@@ -123,16 +88,9 @@ export function PrayerWidget({
         </div>
       </div>
 
-      {/* Right block: Sun-arc chart with 5 prayer markers and glowing sun (FR-PR-3) */}
-      <div
-        className="flex w-[210px] shrink-0 flex-col items-center justify-between px-2 py-1"
-        style={{
-          backgroundColor: "var(--surface-raised)",
-          borderRadius: "var(--card-radius)",
-          border: "1px solid var(--hairline)",
-        }}
-      >
-        <svg width="196" height="62" viewBox="0 0 220 86" aria-label="Prayer sun-arc timeline">
+      {/* Right block: Free-floating sun-arc chart (no box/border) + full names + active/hover time */}
+      <div className="flex w-[215px] shrink-0 flex-col items-center justify-between px-1">
+        <svg width="205" height="54" viewBox="0 0 220 80" aria-label="Prayer sun-arc timeline">
           <path
             d={`M ${arcCx - arcR} ${arcCy} A ${arcR} ${arcR} 0 0 1 ${arcCx + arcR} ${arcCy}`}
             fill="none"
@@ -154,24 +112,44 @@ export function PrayerWidget({
               />
             );
           })}
-          {/* Glowing sun at current time */}
           <circle cx={sunX} cy={sunY} r="7" fill="var(--accent-cyan)" opacity="0.28" />
           <circle cx={sunX} cy={sunY} r="4" fill="var(--text-primary)" />
         </svg>
 
-        <div className="flex w-full items-center justify-between px-1">
-          {schedule.slots.map((slot) => (
-            <span
-              key={slot.id}
-              className="text-[10px] font-medium"
-              style={{
-                color: slot.passed ? "var(--accent-cyan)" : "var(--text-secondary)",
-              }}
-            >
-              {(language === "bn" ? slot.name_bn : slot.name_en).slice(0, 3)}
-            </span>
-          ))}
+        <div className="flex w-full items-center justify-between gap-0.5">
+          {schedule.slots.map((slot) => {
+            const isHighlighted = hoveredSlotId
+              ? slot.id === hoveredSlotId
+              : slot.name_en === schedule.next_name_en;
+            return (
+              <button
+                key={slot.id}
+                type="button"
+                onMouseEnter={() => setHoveredSlotId(slot.id)}
+                onMouseLeave={() => setHoveredSlotId(null)}
+                onFocus={() => setHoveredSlotId(slot.id)}
+                onBlur={() => setHoveredSlotId(null)}
+                className="cursor-pointer border-0 bg-transparent p-0 text-[10px] font-medium transition-colors"
+                style={{
+                  color: isHighlighted
+                    ? "var(--text-primary)"
+                    : slot.passed
+                      ? "var(--accent-cyan)"
+                      : "var(--text-secondary)",
+                }}
+                title={`${language === "bn" ? slot.name_bn : slot.name_en}: ${slot.time_12h}`}
+              >
+                {language === "bn" ? slot.name_bn : slot.name_en}
+              </button>
+            );
+          })}
         </div>
+
+        {activeSlot && (
+          <div className="text-[10px] tabular-nums" style={{ color: "var(--text-secondary)" }}>
+            {language === "bn" ? activeSlot.name_bn : activeSlot.name_en} · {activeSlot.time_12h}
+          </div>
+        )}
       </div>
     </div>
   );

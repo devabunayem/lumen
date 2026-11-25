@@ -988,9 +988,7 @@ export function IslandShell({
                   ) : (
                     <h1 className="type-title m-0 flex items-center gap-1.5">
                       <span style={{ color: "var(--text-primary)" }}>{activePage.titleLead}</span>
-                      <span style={{ color: "var(--text-title-accent)" }}>
-                        {activePage.titleAccent}
-                      </span>
+                      <span style={{ color: activePage.accentVar }}>{activePage.titleAccent}</span>
                     </h1>
                   )}
 
@@ -1002,7 +1000,7 @@ export function IslandShell({
                       onShapeChange?.(nextShape);
                     }}
                     className="type-header-clock cursor-pointer rounded-full border-0 bg-transparent px-2 py-1 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                    style={{ color: "var(--text-secondary)" }}
+                    style={{ color: "var(--text-title-accent)" }}
                     title={isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"}
                   >
                     {showHeaderClock ? (
@@ -1015,9 +1013,9 @@ export function IslandShell({
                     )}
                   </button>
 
-                  <div className="flex items-center justify-self-end gap-1.5">
+                  <div className="flex items-center justify-self-end gap-1">
                     <div
-                      className={`flex items-center gap-1.5 transition-opacity duration-150 ${
+                      className={`flex items-center gap-1 transition-opacity duration-150 ${
                         activePage.id === "control"
                           ? "opacity-100"
                           : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
@@ -1037,15 +1035,15 @@ export function IslandShell({
                             leaveTimerRef.current = null;
                           }
                         }}
-                        className="type-caption flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                        className={`type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+                          isPinned ? "" : "bg-transparent hover:bg-[var(--surface-button)]"
+                        }`}
                         style={{
-                          backgroundColor: isPinned
-                            ? "var(--accent-orange)"
-                            : "var(--surface-button)",
-                          color: isPinned ? "#000000" : "var(--text-primary)",
+                          backgroundColor: isPinned ? "var(--accent-orange)" : undefined,
+                          color: isPinned ? "#000000" : "var(--text-secondary)",
                         }}
                       >
-                        <PinIcon size={14} />
+                        <PinIcon size={13} />
                       </button>
 
                       <button
@@ -1059,13 +1057,12 @@ export function IslandShell({
                             void openSettingsWindow();
                           }
                         }}
-                        className="type-caption flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                        className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                         style={{
-                          backgroundColor: "var(--surface-button)",
-                          color: "var(--text-primary)",
+                          color: "var(--text-secondary)",
                         }}
                       >
-                        <SettingsIcon size={14} />
+                        <SettingsIcon size={13} />
                       </button>
                     </div>
 
@@ -1081,22 +1078,14 @@ export function IslandShell({
                         setPageGalleryOpen(false);
                         dispatch({ type: "CLICK" });
                       }}
-                      className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+                      className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
                         activePage.id === "control" ||
                         (activePage.id === "music" && Boolean(liveTrack?.is_playing))
                           ? "opacity-100"
                           : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
                       }`}
                       style={{
-                        backgroundColor:
-                          activePage.id === "music" && liveTrack?.is_playing
-                            ? "transparent"
-                            : "var(--surface-raised)",
-                        border:
-                          activePage.id === "music" && liveTrack?.is_playing
-                            ? "1px solid transparent"
-                            : "1px solid var(--hairline)",
-                        color: "var(--text-primary)",
+                        color: "var(--text-secondary)",
                       }}
                     >
                       {liveTrack?.is_playing ? (

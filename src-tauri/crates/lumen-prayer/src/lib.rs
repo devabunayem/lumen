@@ -213,7 +213,7 @@ fn format_countdown(mins: i32) -> String {
     }
 }
 
-fn approximate_hijri_date(date: NaiveDate) -> String {
+fn approximate_hijri_date(date: NaiveDate) -> (i32, String) {
     // Tabular Civil Islamic date approximation (Kuwaiti algorithm).
     let y = date.year();
     let m = date.month() as i32;
@@ -245,7 +245,7 @@ fn approximate_hijri_date(date: NaiveDate) -> String {
         "Dhu al-Hijjah",
     ];
     let month_name = MONTHS[(h_month - 1) as usize];
-    format!("{h_day} {month_name} {h_year} AH")
+    (h_month, format!("{h_day} {month_name} {h_year} AH"))
 }
 
 /// Computes the offline prayer schedule for `now_utc` and `config` (`FR-PR-1..6`).
@@ -348,12 +348,17 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
     let progress_pct = (((now_min - prev_min) as f64) / interval_span * 100.0).clamp(0.0, 100.0);
     let sun_arc_ratio = (((now_min - fajr) as f64) / arc_span).clamp(0.0, 1.0);
 
-    let sehri_iftar_label = if now_min < fajr {
-        format!("Sehri ends {}", format_countdown(fajr - now_min))
-    } else if now_min < maghrib {
-        format!("Iftar {}", format_countdown(maghrib - now_min))
+    let (hijri_month, hijri_date) = approximate_hijri_date(date);
+    let sehri_iftar_label = if hijri_month == 9 {
+        if now_min < fajr {
+            format!("Sehri ends {}", format_countdown(fajr - now_min))
+        } else if now_min < maghrib {
+            format!("Iftar {}", format_countdown(maghrib - now_min))
+        } else {
+            format!("Sehri {}", format_12h(fajr))
+        }
     } else {
-        format!("Sehri {}", format_12h(fajr))
+        String::new()
     };
 
     PrayerSchedule {
@@ -365,7 +370,7 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
         countdown_text: format_countdown(diff_mins),
         progress_pct,
         sun_arc_ratio,
-        hijri_date: approximate_hijri_date(date),
+        hijri_date,
         sehri_iftar_label,
         slots,
     }
