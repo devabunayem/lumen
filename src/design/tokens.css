@@ -24,14 +24,14 @@
 
   /* Geometry tokens at 100% scale (SRS Section 3.4) */
   --island-scale: 1;
-  --pill-collapsed-w: 214px;
-  --pill-collapsed-h: 36px;
-  --pill-minimal-w: 110px;
-  --pill-minimal-h: 26px;
-  --island-expanded-w: 472px;
-  --island-expanded-h: 172px;
-  --hud-w: 340px;
-  --hud-h: 60px;
+  --pill-collapsed-w: 144px;
+  --pill-collapsed-h: 42px;
+  --pill-minimal-w: 80px;
+  --pill-minimal-h: 32px;
+  --island-expanded-w: 320px;
+  --island-expanded-h: 184px;
+  --hud-w: 240px;
+  --hud-h: 56px;
 
   --island-padding: 12px;
   --island-gap: 6px;

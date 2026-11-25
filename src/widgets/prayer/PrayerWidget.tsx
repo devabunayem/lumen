@@ -89,8 +89,8 @@ export function PrayerWidget({ schedule, language }: PrayerWidgetProps) {
       </div>
 
       {/* Right block: Free-floating sun-arc chart (no box/border) + full names + active/hover time */}
-      <div className="flex w-[215px] shrink-0 flex-col items-center justify-between px-1">
-        <svg width="205" height="54" viewBox="0 0 220 80" aria-label="Prayer sun-arc timeline">
+      <div className="flex w-[132px] shrink-0 flex-col items-center justify-between px-0.5">
+        <svg width="124" height="44" viewBox="0 0 220 80" aria-label="Prayer sun-arc timeline">
           <path
             d={`M ${arcCx - arcR} ${arcCy} A ${arcR} ${arcR} 0 0 1 ${arcCx + arcR} ${arcCy}`}
             fill="none"
@@ -129,7 +129,7 @@ export function PrayerWidget({ schedule, language }: PrayerWidgetProps) {
                 onMouseLeave={() => setHoveredSlotId(null)}
                 onFocus={() => setHoveredSlotId(slot.id)}
                 onBlur={() => setHoveredSlotId(null)}
-                className="cursor-pointer border-0 bg-transparent p-0 text-[10px] font-medium transition-colors"
+                className="cursor-pointer border-0 bg-transparent p-0 text-[9px] font-medium transition-colors"
                 style={{
                   color: isHighlighted
                     ? "var(--text-primary)"

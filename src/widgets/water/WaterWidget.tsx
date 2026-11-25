@@ -76,7 +76,7 @@ export function WaterWidget({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-1.5">
             <span
-              className="text-[28px] font-bold leading-none tracking-tight tabular-nums"
+              className="text-[24px] font-bold leading-none tracking-tight tabular-nums"
               style={{ color: "var(--text-primary)" }}
             >
               {(todayMl / 1000).toFixed(1)}
@@ -265,9 +265,9 @@ export function WaterWidget({
         aria-label={`Log +${activeServing} ml water`}
         title={`Tap to add +${activeServing} ml`}
         onClick={() => triggerDrink(activeServing)}
-        className="relative flex w-[38%] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0"
+        className="relative flex w-[34%] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0"
       >
-        <svg width="84" height="84" viewBox="0 0 82 82" aria-hidden="true">
+        <svg width="70" height="70" viewBox="0 0 82 82" aria-hidden="true">
           <circle
             cx="41"
             cy="41"

@@ -533,7 +533,7 @@ export function IslandShell({
       case "minimal":
         return BASE_GEOMETRY.minimal;
       case "live":
-        return { width: 268, height: 38 };
+        return { width: 180, height: 42 };
       case "expanded":
         return BASE_GEOMETRY.expanded;
       case "hud":
@@ -965,8 +965,8 @@ export function IslandShell({
                   width: `${expandedW}px`,
                   height: `${expandedH}px`,
                   padding: "var(--island-padding)",
-                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "20px",
-                  paddingRight: isFloatingPill ? "var(--island-padding)" : "20px",
+                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
+                  paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
                   gap: "var(--island-gap)",
                 }}
                 onClick={(event) => event.stopPropagation()}
@@ -986,9 +986,13 @@ export function IslandShell({
                       <div />
                     </>
                   ) : (
-                    <h1 className="type-title m-0 flex items-center gap-1.5">
-                      <span style={{ color: "var(--text-primary)" }}>{activePage.titleLead}</span>
-                      <span style={{ color: activePage.accentVar }}>{activePage.titleAccent}</span>
+                    <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
+                      <span className="truncate" style={{ color: "var(--text-primary)" }}>
+                        {activePage.titleLead}
+                      </span>
+                      <span className="truncate" style={{ color: activePage.accentVar }}>
+                        {activePage.titleAccent}
+                      </span>
                     </h1>
                   )}
 
@@ -999,13 +1003,13 @@ export function IslandShell({
                       e.preventDefault();
                       onShapeChange?.(nextShape);
                     }}
-                    className="type-header-clock cursor-pointer rounded-full border-0 bg-transparent px-2 py-1 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                    className="type-header-clock min-w-0 shrink cursor-pointer truncate rounded-full border-0 bg-transparent px-1.5 py-0.5 text-[11px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                     style={{ color: "var(--text-title-accent)" }}
                     title={isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"}
                   >
                     {showHeaderClock ? (
                       <>
-                        {clock.dateText}{" "}
+                        {clock.dateText.replace(/,\s*\d{4}$/, "")}{" "}
                         <strong style={{ color: "var(--text-primary)" }}>{clock.timeText}</strong>
                       </>
                     ) : (

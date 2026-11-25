@@ -27,7 +27,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(70);
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
-    expect(pill).toHaveAttribute("data-target-width", "472");
+    expect(pill).toHaveAttribute("data-target-width", "320");
 
     fireEvent.mouseLeave(pill);
     act(() => {
@@ -35,8 +35,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "minimal");
     expect(pill).toHaveAttribute("data-slim", "true");
-    expect(pill).toHaveAttribute("data-target-width", "84");
-    expect(pill).toHaveAttribute("data-target-height", "12");
+    expect(pill).toHaveAttribute("data-target-width", "72");
+    expect(pill).toHaveAttribute("data-target-height", "14");
     expect(screen.getByTestId("lumen-slim-indicator")).toBeInTheDocument();
 
     act(() => {
@@ -44,8 +44,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "idle");
     expect(pill).toHaveAttribute("data-slim", "false");
-    expect(pill).toHaveAttribute("data-target-width", "214");
-    expect(pill).toHaveAttribute("data-target-height", "36");
+    expect(pill).toHaveAttribute("data-target-width", "144");
+    expect(pill).toHaveAttribute("data-target-height", "42");
   });
 
   it("stays expanded on mouse leave when pinned or while typing inside an input", () => {

@@ -49,7 +49,7 @@ export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: Pomodoro
         </span>
 
         <span
-          className="text-[30px] font-bold leading-none tracking-tight tabular-nums"
+          className="text-[24px] font-bold leading-none tracking-tight tabular-nums"
           style={{ color: "var(--text-primary)" }}
         >
           {formatTimer(snap.remaining_secs)}
@@ -88,7 +88,7 @@ export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: Pomodoro
             <button
               type="button"
               onClick={onToggle}
-              className="type-caption cursor-pointer rounded-full border-0 px-4 font-semibold text-white transition-transform active:scale-95"
+              className="type-caption cursor-pointer rounded-full border-0 px-2.5 font-semibold text-white transition-transform active:scale-95"
               style={{
                 height: "26px",
                 backgroundColor: "var(--accent-purple)",
