@@ -84,12 +84,12 @@ export function MusicWidget({
   }, -1);
 
   return (
-    <div className="flex h-full w-full flex-col justify-between px-1 py-0.5">
+    <div className="flex h-full w-full flex-col justify-between overflow-hidden px-1">
       {/* Top row: Artwork on Left, Song Title & Controls on Right */}
-      <div className="flex items-center gap-3.5">
+      <div className="flex items-center gap-3">
         {/* Album Artwork */}
         <div
-          className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl"
+          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
           style={{
             backgroundColor: "var(--surface-raised)",
             border: "1px solid var(--hairline)",
@@ -146,7 +146,7 @@ export function MusicWidget({
 
       {/* Synced Lyrics drawer if enabled */}
       {lyricsOpen && (
-        <div className="flex h-10 flex-col justify-center overflow-hidden px-1">
+        <div className="flex h-5 flex-col justify-center overflow-hidden px-1">
           {lyricsLines.length === 0 ? (
             <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
               No synced lyrics available.

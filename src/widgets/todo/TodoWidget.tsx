@@ -33,9 +33,9 @@ export function TodoWidget({ tasks, onAdd, onToggle, onDelete }: TodoWidgetProps
   };
 
   return (
-    <div className="flex h-full w-full items-stretch gap-3">
+    <div className="flex h-full w-full items-stretch gap-3 overflow-hidden">
       {/* Left summary block (FR-TD-1, FR-TD-2) */}
-      <div className="flex w-[44%] flex-col justify-between py-0.5">
+      <div className="flex w-[44%] flex-col justify-between">
         <div className="flex items-start justify-between">
           <div>
             <div className="type-display tabular-nums" style={{ color: "var(--text-primary)" }}>

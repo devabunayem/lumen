@@ -35,7 +35,7 @@
   --island-padding: 12px;
   --island-gap: 6px;
   --card-radius: 18px;
-  --capsule-height: 32px;
+  --capsule-height: 28px;
   --pill-float-offset: 8px;
 }
 
@@ -80,9 +80,9 @@ a:focus-visible,
 }
 
 .type-display {
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 600;
-  line-height: 1.08;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 

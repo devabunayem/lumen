@@ -42,9 +42,9 @@ export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: Pomodoro
   const dashOffset = circumference * (1 - Math.min(1, Math.max(0, ratio)));
 
   return (
-    <div className="flex h-full w-full items-center justify-between gap-3">
+    <div className="flex h-full w-full items-center justify-between gap-3 overflow-hidden">
       {/* Left block: big timer, session dots & controls (FR-PO-1..3) */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
+      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
         <div className="flex items-center justify-between">
           <span className="type-caption font-semibold" style={{ color: "var(--accent-orange)" }}>
             {phaseLabel(snap.phase)}
@@ -115,14 +115,14 @@ export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: Pomodoro
 
       {/* Right ring */}
       <div
-        className="relative flex h-24 w-24 shrink-0 items-center justify-center"
+        className="relative flex h-[86px] w-[86px] shrink-0 items-center justify-center"
         style={{
           backgroundColor: "var(--surface-raised)",
           borderRadius: "var(--card-radius)",
           border: "1px solid var(--hairline)",
         }}
       >
-        <svg width="82" height="82" viewBox="0 0 82 82" aria-hidden="true">
+        <svg width="74" height="74" viewBox="0 0 82 82" aria-hidden="true">
           <circle
             cx="41"
             cy="41"

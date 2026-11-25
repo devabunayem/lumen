@@ -45,9 +45,9 @@ export function PrayerWidget({
   const sunY = arcCy - arcR * Math.sin(sunAngle);
 
   return (
-    <div className="flex h-full w-full items-stretch justify-between gap-3">
+    <div className="flex h-full w-full items-stretch justify-between gap-3 overflow-hidden">
       {/* Left block: Next, today/tomorrow, large prayer name, countdown, progress bar (FR-PR-3) */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <span className="type-caption font-semibold" style={{ color: "var(--accent-cyan)" }}>
@@ -125,14 +125,14 @@ export function PrayerWidget({
 
       {/* Right block: Sun-arc chart with 5 prayer markers and glowing sun (FR-PR-3) */}
       <div
-        className="flex w-[225px] shrink-0 flex-col items-center justify-between px-2 py-1.5"
+        className="flex w-[210px] shrink-0 flex-col items-center justify-between px-2 py-1"
         style={{
           backgroundColor: "var(--surface-raised)",
           borderRadius: "var(--card-radius)",
           border: "1px solid var(--hairline)",
         }}
       >
-        <svg width="210" height="84" viewBox="0 0 220 86" aria-label="Prayer sun-arc timeline">
+        <svg width="196" height="62" viewBox="0 0 220 86" aria-label="Prayer sun-arc timeline">
           <path
             d={`M ${arcCx - arcR} ${arcCy} A ${arcR} ${arcR} 0 0 1 ${arcCx + arcR} ${arcCy}`}
             fill="none"

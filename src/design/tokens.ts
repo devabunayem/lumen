@@ -30,7 +30,7 @@ export const BASE_GEOMETRY = {
   innerPadding: 12,
   blockGap: 6,
   innerCardRadius: 18,
-  capsuleButtonHeight: 32,
+  capsuleButtonHeight: 28,
 } as const;
 
 /**
