@@ -742,7 +742,7 @@ fn settings_update(
 }
 
 #[tauri::command]
-fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("settings") {
         let _ = existing.show();
         let _ = existing.set_focus();
@@ -884,7 +884,10 @@ pub fn run() {
                         let _ = app_handle.emit("lumen://tray-toggle-hide", ());
                     }
                     "settings" => {
-                        let _ = open_settings_window(app_handle.clone());
+                        let handle = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = open_settings_window(handle).await;
+                        });
                     }
                     "quit" => {
                         app_handle.exit(0);
