@@ -10,7 +10,7 @@ import {
   VolumeOnIcon,
 } from "../../design/icons";
 import { getMotionTransition } from "../../design/motion";
-import type { LyricLine, MediaStateSnapshot } from "../../lib/ipc";
+import { type LyricLine, type MediaStateSnapshot, shelfOpen } from "../../lib/ipc";
 
 export interface MusicWidgetProps {
   media: MediaStateSnapshot | null;
@@ -45,31 +45,73 @@ export function MusicWidget({
   const accent = active?.accent_hex || "var(--accent-blue)";
 
   if (!active) {
+    const lastSession = media?.sessions?.[0] ?? null;
     return (
       <div
-        className="flex h-full w-full items-center gap-3.5 px-4"
+        role="region"
+        aria-label="No media playing"
+        className="flex h-full w-full items-center justify-between gap-3 px-2"
         style={{
           borderRadius: "var(--card-radius)",
         }}
       >
-        <div
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl"
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            style={{
+              background:
+                "radial-gradient(circle at 30% 30%, rgba(10, 132, 255, 0.22), rgba(28, 28, 30, 0.95))",
+              border: "1px solid var(--hairline)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <MusicNoteIcon size={18} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span
+              className="type-body truncate font-semibold"
+              style={{ color: "var(--text-primary)" }}
+            >
+              Not Playing
+            </span>
+            {lastSession ? (
+              <span className="type-caption truncate" style={{ color: "var(--text-secondary)" }}>
+                {lastSession.title} · {lastSession.artist}
+              </span>
+            ) : (
+              <span className="type-caption truncate" style={{ color: "var(--text-secondary)" }}>
+                Nothing playing
+              </span>
+            )}
+          </div>
+        </div>
+
+        <motion.button
+          type="button"
+          whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+          transition={{ type: "spring", stiffness: 500, damping: 28 }}
+          onClick={() => {
+            if (lastSession) {
+              onSelectSession(lastSession.app_id);
+              onCommand("play_pause");
+            } else {
+              void shelfOpen("spotify:").catch(() => {
+                window.open("spotify:", "_self");
+              });
+            }
+          }}
+          aria-label={lastSession ? `Resume ${lastSession.title}` : "Open Spotify"}
+          className="type-caption flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-0 px-3 font-semibold transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
           style={{
-            backgroundColor: "var(--surface-raised)",
-            border: "1px solid var(--hairline)",
-            color: "var(--text-tertiary)",
+            height: "var(--capsule-height)",
+            backgroundColor: "var(--surface-button)",
+            border: "1px solid var(--hairline-strong)",
+            color: "var(--text-primary)",
           }}
         >
-          <MusicNoteIcon size={24} />
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="type-body font-semibold" style={{ color: "var(--text-primary)" }}>
-            Not Playing
-          </span>
-          <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-            Play Spotify, YouTube, or any media player
-          </span>
-        </div>
+          <PlayIcon size={12} />
+          <span>{lastSession ? "Resume" : "Open Spotify"}</span>
+        </motion.button>
       </div>
     );
   }
