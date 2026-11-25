@@ -601,9 +601,44 @@ export async function systemCaptureScreenshot(): Promise<string | null> {
   return invoke<string>("system_capture_screenshot");
 }
 
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  start_at: string;
+  created_at: string;
+}
+
 export async function systemOcrScreen(): Promise<string> {
   if (!isTauriRuntime()) {
     return "";
   }
   return invoke<string>("system_ocr_screen");
+}
+
+export async function systemPrivacyIndicators(): Promise<[boolean, boolean]> {
+  if (!isTauriRuntime()) {
+    return [false, false];
+  }
+  return invoke<[boolean, boolean]>("system_privacy_indicators");
+}
+
+export async function calendarList(): Promise<CalendarEvent[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<CalendarEvent[]>("calendar_list");
+}
+
+export async function calendarAdd(title: string, startAt: string): Promise<CalendarEvent[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<CalendarEvent[]>("calendar_add", { title, startAt });
+}
+
+export async function calendarDelete(id: number): Promise<CalendarEvent[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<CalendarEvent[]>("calendar_delete", { id });
 }

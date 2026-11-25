@@ -481,6 +481,127 @@ mod win32 {
         Ok(())
     }
 
+    /// Checks Windows CapabilityAccessManager ConsentStore in HKCU to detect if any app
+    /// is currently using the webcam or microphone (`LastUsedTimeStop == 0`).
+    #[must_use]
+    pub fn privacy_device_status() -> (bool, bool) {
+        (
+            is_consent_device_active(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam",
+            ),
+            is_consent_device_active(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone",
+            ),
+        )
+    }
+
+    fn is_consent_device_active(base_subkey: &str) -> bool {
+        use windows::Win32::System::Registry::{REG_QWORD, REG_VALUE_TYPE, RegEnumKeyExW};
+
+        fn check_key(hkey: HKEY, depth: u8) -> bool {
+            let mut stop_val = 0u64;
+            let mut stop_size = core::mem::size_of::<u64>() as u32;
+            let mut val_type = REG_VALUE_TYPE::default();
+            let stop_name = HSTRING::from("LastUsedTimeStop");
+            // SAFETY: Standard read-only registry query on open HKEY.
+            let has_stop = unsafe {
+                RegQueryValueExW(
+                    hkey,
+                    PCWSTR(stop_name.as_ptr()),
+                    None,
+                    Some(&mut val_type),
+                    Some((&mut stop_val as *mut u64).cast::<u8>()),
+                    Some(&mut stop_size),
+                ) == ERROR_SUCCESS
+                    && val_type == REG_QWORD
+            };
+            if has_stop && stop_val == 0 {
+                let mut start_val = 0u64;
+                let mut start_size = core::mem::size_of::<u64>() as u32;
+                let start_name = HSTRING::from("LastUsedTimeStart");
+                let has_start = unsafe {
+                    RegQueryValueExW(
+                        hkey,
+                        PCWSTR(start_name.as_ptr()),
+                        None,
+                        None,
+                        Some((&mut start_val as *mut u64).cast::<u8>()),
+                        Some(&mut start_size),
+                    ) == ERROR_SUCCESS
+                };
+                if has_start && start_val > 0 {
+                    return true;
+                }
+            }
+
+            if depth >= 2 {
+                return false;
+            }
+
+            let mut idx = 0u32;
+            loop {
+                let mut buf = [0u16; 256];
+                let mut len = buf.len() as u32;
+                // SAFETY: Enumerating subkeys of an open HKCU key.
+                let err = unsafe {
+                    RegEnumKeyExW(
+                        hkey,
+                        idx,
+                        Some(windows::core::PWSTR(buf.as_mut_ptr())),
+                        &mut len,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                };
+                if err != ERROR_SUCCESS {
+                    break;
+                }
+                idx += 1;
+                let mut sub = HKEY::default();
+                // SAFETY: `buf[..len]` is valid UTF-16 subkey name.
+                let sub_wide: Vec<u16> = buf[..len as usize].iter().copied().chain([0]).collect();
+                if unsafe {
+                    RegOpenKeyExW(
+                        hkey,
+                        PCWSTR(sub_wide.as_ptr()),
+                        Some(0),
+                        KEY_QUERY_VALUE,
+                        &mut sub,
+                    )
+                } == ERROR_SUCCESS
+                {
+                    let active = check_key(sub, depth + 1);
+                    let _ = unsafe { RegCloseKey(sub) };
+                    if active {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        let subkey = HSTRING::from(base_subkey);
+        let mut root = HKEY::default();
+        // SAFETY: Read-only open under HKCU.
+        if unsafe {
+            RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                Some(0),
+                KEY_QUERY_VALUE,
+                &mut root,
+            )
+        } != ERROR_SUCCESS
+        {
+            return false;
+        }
+        let active = check_key(root, 0);
+        let _ = unsafe { RegCloseKey(root) };
+        active
+    }
+
     /// Locks the active Windows workstation session (`LockWorkStation`).
     pub fn lock_workstation() -> Result<(), String> {
         // SAFETY: Standard Win32 user-session lock call with no pointer arguments.
@@ -818,13 +939,18 @@ mod win32 {
     pub fn ocr_screen_to_clipboard() -> Result<String, String> {
         Ok(String::new())
     }
+
+    #[must_use]
+    pub const fn privacy_device_status() -> (bool, bool) {
+        (false, false)
+    }
 }
 
 pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, capture_screen_to_png,
     cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
-    lock_workstation, ocr_screen_to_clipboard, open_shell_target, set_autostart_enabled,
-    set_click_through, set_window_bounds_atomic,
+    lock_workstation, ocr_screen_to_clipboard, open_shell_target, privacy_device_status,
+    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
 };
 
 #[cfg(test)]

@@ -41,7 +41,21 @@ CREATE TABLE IF NOT EXISTS pomodoro_sessions (
     duration_s INTEGER NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    start_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 ";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarEvent {
+    pub id: i64,
+    pub title: String,
+    pub start_at: String,
+    pub created_at: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskItem {
@@ -487,6 +501,60 @@ impl StorageRepo {
         )
         .map_err(|e| format!("record pomodoro failed: {e}"))?;
         Ok(())
+    }
+
+    pub fn list_calendar_events(&self) -> Result<Vec<CalendarEvent>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, title, start_at, created_at FROM calendar_events ORDER BY start_at ASC",
+            )
+            .map_err(|e| format!("prepare calendar failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(CalendarEvent {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    start_at: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            })
+            .map_err(|e| format!("query calendar failed: {e}"))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| format!("calendar row error: {e}"))?);
+        }
+        Ok(out)
+    }
+
+    pub fn add_calendar_event(
+        &self,
+        title: &str,
+        start_at: &str,
+    ) -> Result<Vec<CalendarEvent>, String> {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err("event title cannot be empty".into());
+        }
+        let now = Utc::now().to_rfc3339();
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute(
+                "INSERT INTO calendar_events (title, start_at, created_at) VALUES (?1, ?2, ?3)",
+                params![trimmed, start_at.trim(), now],
+            )
+            .map_err(|e| format!("insert calendar failed: {e}"))?;
+        }
+        self.list_calendar_events()
+    }
+
+    pub fn delete_calendar_event(&self, id: i64) -> Result<Vec<CalendarEvent>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute("DELETE FROM calendar_events WHERE id = ?1", params![id])
+                .map_err(|e| format!("delete calendar failed: {e}"))?;
+        }
+        self.list_calendar_events()
     }
 
     pub fn daily_focus_minutes(&self, now_utc: DateTime<Utc>) -> Result<i64, String> {
