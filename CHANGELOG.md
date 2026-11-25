@@ -6,6 +6,8 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Responsive Fit Across All Notch Panels (`560×172`):** Adjusted `.type-display` (`28px`), `--capsule-height` (`28px`), and inner card/SVG heights across `MusicWidget`, `TodoWidget`, `WaterWidget`, `PomodoroWidget`, `PrayerWidget`, `ShelfWidget`, and `CalendarWidget` so all 7 panels fit cleanly inside the fixed `560×172` notch without vertical clipping.
+
 - **Responsive Notch Inner Spacing, Icon-First Control Panel & Borderless Settings:**
   - Removed ugly native scrollbars globally (`scrollbar-width: none` / `::-webkit-scrollbar { display: none }`) while preserving smooth wheel scrolling.
   - Removed the duplicate Windows titlebar (`decorations(false)`) on the Settings window so only the custom Apple Traffic Light controls (`Close` / `Minimize` + `data-tauri-drag-region`) appear.

@@ -44,7 +44,7 @@ export function ShelfWidget({ items, onAdd, onOpen, onRemove, onClear }: ShelfWi
     <div
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
-      className="flex h-full w-full flex-col justify-between gap-2 px-3 py-2"
+      className="flex h-full w-full flex-col justify-between gap-1.5 overflow-hidden px-3 py-1.5"
       style={{
         backgroundColor: "var(--surface-raised)",
         borderRadius: "var(--card-radius)",

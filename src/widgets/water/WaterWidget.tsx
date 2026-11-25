@@ -46,9 +46,9 @@ export function WaterWidget({
   const dashOffset = circumference * (1 - clampedGaugePct / 100);
 
   return (
-    <div className="flex h-full w-full items-center justify-between gap-3">
+    <div className="flex h-full w-full items-center justify-between gap-3 overflow-hidden">
       {/* Left block: amount, progress, Drink / Undo / Settings capsules (FR-WT-1, FR-WT-3) */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
+      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
         <div className="flex items-baseline gap-2">
           <span className="type-display tabular-nums" style={{ color: "var(--text-primary)" }}>
             {(todayMl / 1000).toFixed(2)}
@@ -173,14 +173,14 @@ export function WaterWidget({
 
       {/* Right block: circular solid-accent gauge (FR-WT-2) */}
       <div
-        className="relative flex h-24 w-24 shrink-0 items-center justify-center"
+        className="relative flex h-[86px] w-[86px] shrink-0 items-center justify-center"
         style={{
           backgroundColor: "var(--surface-raised)",
           borderRadius: "var(--card-radius)",
           border: "1px solid var(--hairline)",
         }}
       >
-        <svg width="82" height="82" viewBox="0 0 82 82" aria-hidden="true">
+        <svg width="74" height="74" viewBox="0 0 82 82" aria-hidden="true">
           <circle
             cx="41"
             cy="41"
