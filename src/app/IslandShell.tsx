@@ -169,6 +169,7 @@ export function IslandShell({
   const isBn = language === "bn";
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
+  const [hasStableMedia, setHasStableMedia] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -355,7 +356,7 @@ export function IslandShell({
       hiddenPages,
     );
 
-    if (!media?.active && pageOrder.length === 0) {
+    if (!hasStableMedia && pageOrder.length === 0) {
       const idx = orderedIds.indexOf("music");
       if (idx >= 0) {
         orderedIds.splice(idx, 1);
@@ -366,7 +367,17 @@ export function IslandShell({
     return orderedIds
       .map((id) => catalog.get(id))
       .filter((item): item is IslandPageMeta => Boolean(item));
-  }, [isBn, media?.active, msg.pages, pageOrder, hiddenPages, plugins]);
+  }, [hasStableMedia, isBn, media?.active, msg.pages, pageOrder, hiddenPages, plugins]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => {
+        setHasStableMedia(Boolean(media?.active));
+      },
+      media?.active ? 0 : 1500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [media?.active]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
