@@ -872,8 +872,10 @@ mod win32 {
         }
         let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
         unsafe {
+            use windows::Win32::Foundation::POINT;
             use windows::Win32::Graphics::Gdi::{
-                CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
+                CombineRgn, CreatePolygonRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject,
+                RGN_OR, SetWindowRgn, WINDING,
             };
             let hrgn = if !visible || width <= 0 || height <= 0 {
                 CreateRectRgn(0, 0, 0, 0)
@@ -881,8 +883,9 @@ mod win32 {
                 let diam = corner_radius_px * 2;
                 let rgn_round =
                     CreateRoundRectRgn(rel_x, rel_y, rel_x + width, rel_y + height, diam, diam);
-                // In flush-top Notch mode (rel_y <= 0), keep the top corners & concave ears
-                // square to the top screen edge instead of rounding them like a floating Pill.
+                // In flush-top Notch mode (rel_y <= 0), keep the top corners square and use
+                // tight curved polygons for the concave top ears so no rectangular corner
+                // artifacts ever appear when clicking/focusing the island.
                 if rel_y <= 0 && !rgn_round.is_invalid() {
                     let top_strip_h = corner_radius_px.min(height);
                     let rgn_top = CreateRectRgn(rel_x, rel_y, rel_x + width, rel_y + top_strip_h);
@@ -890,24 +893,69 @@ mod win32 {
                         let _ = CombineRgn(Some(rgn_round), Some(rgn_round), Some(rgn_top), RGN_OR);
                         let _ = DeleteObject(rgn_top.into());
                     }
-                    let ear_px = (corner_radius_px * 3 / 4).clamp(16, 28);
-                    let rgn_ears = CreateRectRgn(
-                        rel_x - ear_px,
-                        rel_y,
-                        rel_x + width + ear_px,
-                        rel_y + ear_px.min(height),
-                    );
-                    if !rgn_ears.is_invalid() {
-                        let _ =
-                            CombineRgn(Some(rgn_round), Some(rgn_round), Some(rgn_ears), RGN_OR);
-                        let _ = DeleteObject(rgn_ears.into());
+                    let ear = (corner_radius_px * 3 / 4).clamp(16, 24).min(height);
+                    let left_pts = [
+                        POINT {
+                            x: rel_x - ear,
+                            y: rel_y,
+                        },
+                        POINT {
+                            x: rel_x + 2,
+                            y: rel_y,
+                        },
+                        POINT {
+                            x: rel_x + 2,
+                            y: rel_y + ear,
+                        },
+                        POINT {
+                            x: rel_x - ear / 4,
+                            y: rel_y + ear / 2,
+                        },
+                    ];
+                    let rgn_left_ear = CreatePolygonRgn(&left_pts, WINDING);
+                    if !rgn_left_ear.is_invalid() {
+                        let _ = CombineRgn(
+                            Some(rgn_round),
+                            Some(rgn_round),
+                            Some(rgn_left_ear),
+                            RGN_OR,
+                        );
+                        let _ = DeleteObject(rgn_left_ear.into());
+                    }
+                    let right_pts = [
+                        POINT {
+                            x: rel_x + width - 2,
+                            y: rel_y,
+                        },
+                        POINT {
+                            x: rel_x + width + ear,
+                            y: rel_y,
+                        },
+                        POINT {
+                            x: rel_x + width + ear / 4,
+                            y: rel_y + ear / 2,
+                        },
+                        POINT {
+                            x: rel_x + width - 2,
+                            y: rel_y + ear,
+                        },
+                    ];
+                    let rgn_right_ear = CreatePolygonRgn(&right_pts, WINDING);
+                    if !rgn_right_ear.is_invalid() {
+                        let _ = CombineRgn(
+                            Some(rgn_round),
+                            Some(rgn_round),
+                            Some(rgn_right_ear),
+                            RGN_OR,
+                        );
+                        let _ = DeleteObject(rgn_right_ear.into());
                     }
                 }
                 rgn_round
             } else {
                 CreateRectRgn(rel_x, rel_y, rel_x + width, rel_y + height)
             };
-            if !hrgn.is_invalid() && SetWindowRgn(hwnd, Some(hrgn), true) == 0 {
+            if !hrgn.is_invalid() && SetWindowRgn(hwnd, Some(hrgn), false) == 0 {
                 let _ = DeleteObject(hrgn.into());
             }
         }
