@@ -1,6 +1,19 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronUpIcon, GridIcon, PinIcon, SettingsIcon } from "../design/icons";
+import {
+  BoltIcon,
+  CalendarIcon,
+  CheckListIcon,
+  ChevronUpIcon,
+  DropletIcon,
+  GridIcon,
+  InboxIcon,
+  MoonIcon,
+  MusicNoteIcon,
+  PinIcon,
+  SettingsIcon,
+  TimerIcon,
+} from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import { type AppLanguage, getMessages } from "../i18n";
@@ -166,6 +179,7 @@ export function IslandShell({
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [slideDirection, setSlideDirection] = useState<1 | -1>(1);
   const [pageGalleryOpen, setPageGalleryOpen] = useState(false);
+  const [dockHovered, setDockHovered] = useState(false);
   const isBn = language === "bn";
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
@@ -1372,53 +1386,144 @@ export function IslandShell({
                   )}
                 </div>
 
-                <div className="flex items-center justify-center gap-1.5">
-                  {(pages.length <= 6
-                    ? pages.map((page, index) => ({ page, index }))
-                    : (() => {
-                        const maxDots = 5;
-                        const start = Math.min(
-                          Math.max(0, safePageIndex - 2),
-                          Math.max(0, pages.length - maxDots),
-                        );
-                        return pages
-                          .slice(start, start + maxDots)
-                          .map((page, offset) => ({ page, index: start + offset }));
-                      })()
-                  ).map(({ page, index }) => {
-                    const active = index === safePageIndex && !pageGalleryOpen;
-                    return (
-                      <button
-                        key={page.id}
-                        type="button"
-                        aria-label={`Page ${index + 1}`}
-                        onClick={() => {
-                          setPageGalleryOpen(false);
-                          setActivePageIndex(index);
-                        }}
-                        className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                        style={{
-                          width: active ? "18px" : "6px",
-                          backgroundColor: active ? activePage.accentVar : "var(--text-tertiary)",
-                        }}
-                      />
-                    );
-                  })}
-                  {pages.length > 6 && (
-                    <button
-                      type="button"
-                      aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
-                      title={isBn ? "সব পেজ দেখুন" : "All pages"}
-                      aria-expanded={pageGalleryOpen}
-                      onClick={() => setPageGalleryOpen((v) => !v)}
-                      className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                <div
+                  onMouseEnter={() => setDockHovered(true)}
+                  onMouseLeave={() => setDockHovered(false)}
+                  className="relative flex min-h-[24px] items-center justify-center px-6"
+                >
+                  {dockHovered ? (
+                    <motion.div
+                      key="shortcut-dock"
+                      initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={
+                        prefersReducedMotion
+                          ? { duration: 0.08 }
+                          : { type: "spring", stiffness: 480, damping: 30 }
+                      }
+                      role="navigation"
+                      aria-label={isBn ? "কুইক পেজ শর্টকাট" : "Quick page shortcuts"}
+                      className="flex items-center gap-1 rounded-full px-2.5 py-1 shadow-lg"
                       style={{
-                        backgroundColor: "transparent",
-                        color: pageGalleryOpen ? "var(--text-primary)" : "var(--text-secondary)",
+                        backgroundColor: "var(--surface-raised)",
+                        border: "1px solid var(--hairline-top)",
                       }}
                     >
-                      <GridIcon size={10} />
-                    </button>
+                      {pages.map((page, index) => {
+                        const active = index === safePageIndex && !pageGalleryOpen;
+                        const icon =
+                          page.id === "control" ? (
+                            <GridIcon size={13} />
+                          ) : page.id === "music" ? (
+                            <MusicNoteIcon size={13} />
+                          ) : page.id === "calendar" ? (
+                            <CalendarIcon size={13} />
+                          ) : page.id === "todo" ? (
+                            <CheckListIcon size={13} />
+                          ) : page.id === "water" ? (
+                            <DropletIcon size={13} />
+                          ) : page.id === "prayer" ? (
+                            <MoonIcon size={13} />
+                          ) : page.id === "pomodoro" ? (
+                            <TimerIcon size={13} />
+                          ) : page.id === "shelf" ? (
+                            <InboxIcon size={13} />
+                          ) : (
+                            <BoltIcon size={13} />
+                          );
+                        return (
+                          <button
+                            key={page.id}
+                            type="button"
+                            aria-label={`${page.titleLead} ${page.titleAccent}`.trim()}
+                            title={`${page.titleLead} ${page.titleAccent}`.trim()}
+                            onClick={() => {
+                              setPageGalleryOpen(false);
+                              setSlideDirection(index >= safePageIndex ? 1 : -1);
+                              setActivePageIndex(index);
+                            }}
+                            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                            style={{
+                              backgroundColor: active ? "rgba(255,255,255,0.08)" : "transparent",
+                              color: active ? page.accentVar : "var(--text-secondary)",
+                            }}
+                          >
+                            {icon}
+                          </button>
+                        );
+                      })}
+                      <span className="mx-0.5 h-3.5 w-px bg-white/15" aria-hidden="true" />
+                      <button
+                        type="button"
+                        aria-label={msg.pill.openSettings}
+                        title={msg.pill.openSettings}
+                        onClick={() => {
+                          if (onOpenSettings) {
+                            onOpenSettings();
+                          } else {
+                            void openSettingsWindow();
+                          }
+                        }}
+                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        <SettingsIcon size={13} />
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-1.5">
+                      {(pages.length <= 6
+                        ? pages.map((page, index) => ({ page, index }))
+                        : (() => {
+                            const maxDots = 5;
+                            const start = Math.min(
+                              Math.max(0, safePageIndex - 2),
+                              Math.max(0, pages.length - maxDots),
+                            );
+                            return pages
+                              .slice(start, start + maxDots)
+                              .map((page, offset) => ({ page, index: start + offset }));
+                          })()
+                      ).map(({ page, index }) => {
+                        const active = index === safePageIndex && !pageGalleryOpen;
+                        return (
+                          <button
+                            key={page.id}
+                            type="button"
+                            aria-label={`Page ${index + 1}`}
+                            onClick={() => {
+                              setPageGalleryOpen(false);
+                              setActivePageIndex(index);
+                            }}
+                            className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                            style={{
+                              width: active ? "18px" : "6px",
+                              backgroundColor: active
+                                ? activePage.accentVar
+                                : "var(--text-tertiary)",
+                            }}
+                          />
+                        );
+                      })}
+                      {pages.length > 6 && (
+                        <button
+                          type="button"
+                          aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
+                          title={isBn ? "সব পেজ দেখুন" : "All pages"}
+                          aria-expanded={pageGalleryOpen}
+                          onClick={() => setPageGalleryOpen((v) => !v)}
+                          className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                          style={{
+                            backgroundColor: "transparent",
+                            color: pageGalleryOpen
+                              ? "var(--text-primary)"
+                              : "var(--text-secondary)",
+                          }}
+                        >
+                          <GridIcon size={10} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </motion.div>
