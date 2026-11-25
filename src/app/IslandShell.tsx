@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PinIcon, SettingsIcon } from "../design/icons";
+import { ChevronUpIcon, GridIcon, PinIcon, SettingsIcon } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import { type AppLanguage, getMessages } from "../i18n";
@@ -165,6 +165,8 @@ export function IslandShell({
   const showHeaderClock = clockDateOverride ?? showHeaderClockSetting;
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [slideDirection, setSlideDirection] = useState<1 | -1>(1);
+  const [pageGalleryOpen, setPageGalleryOpen] = useState(false);
+  const isBn = language === "bn";
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
@@ -947,15 +949,21 @@ export function IslandShell({
                 <div className="flex items-center justify-between">
                   <h1 className="type-title m-0 flex items-center gap-1.5">
                     <span style={{ color: "var(--text-primary)" }}>{activePage.titleLead}</span>
-                    <span style={{ color: "var(--text-secondary)" }}>{activePage.titleAccent}</span>
+                    <span style={{ color: "var(--text-title-accent)" }}>
+                      {activePage.titleAccent}
+                    </span>
                   </h1>
 
                   <button
                     type="button"
                     onClick={() => setClockDateOverride(!showHeaderClock)}
-                    className="type-header-clock cursor-pointer border-0 bg-transparent p-0 tabular-nums"
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      onShapeChange?.(nextShape);
+                    }}
+                    className="type-header-clock cursor-pointer rounded-full border-0 bg-transparent px-2 py-1 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                     style={{ color: "var(--text-secondary)" }}
-                    title="Toggle date and time"
+                    title={isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"}
                   >
                     {showHeaderClock ? (
                       <>
@@ -967,23 +975,11 @@ export function IslandShell({
                     )}
                   </button>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onShapeChange?.(nextShape)}
-                      className="type-caption cursor-pointer rounded-full border-0 px-3 font-semibold"
-                      style={{
-                        height: "28px",
-                        backgroundColor: "var(--surface-button)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      {isFloatingPill ? msg.pill.shapeNotch : msg.pill.shapePill}
-                    </button>
-
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
+                      title={isPinned ? msg.pill.unpin : msg.pill.pin}
                       aria-pressed={isPinned}
                       onClick={() => {
                         const next = !isPinned;
@@ -994,7 +990,7 @@ export function IslandShell({
                           leaveTimerRef.current = null;
                         }
                       }}
-                      className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
+                      className="type-caption flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                       style={{
                         backgroundColor: isPinned
                           ? "var(--accent-orange)"
@@ -1002,12 +998,13 @@ export function IslandShell({
                         color: isPinned ? "#000000" : "var(--text-primary)",
                       }}
                     >
-                      <PinIcon size={13} />
+                      <PinIcon size={14} />
                     </button>
 
                     <button
                       type="button"
                       aria-label={msg.pill.openSettings}
+                      title={msg.pill.openSettings}
                       onClick={() => {
                         if (onOpenSettings) {
                           onOpenSettings();
@@ -1015,38 +1012,38 @@ export function IslandShell({
                           void openSettingsWindow();
                         }
                       }}
-                      className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
+                      className="type-caption flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                       style={{
                         backgroundColor: "var(--surface-button)",
                         color: "var(--text-primary)",
                       }}
                     >
-                      <SettingsIcon size={13} />
+                      <SettingsIcon size={14} />
                     </button>
 
                     <button
                       type="button"
                       aria-label={msg.pill.collapse}
+                      title={msg.pill.collapse}
                       onClick={() => {
                         clearHoverTimers();
                         isPinnedRef.current = false;
                         setIsPinned(false);
                         setSlimReturnActive(false);
+                        setPageGalleryOpen(false);
                         dispatch({ type: "CLICK" });
                       }}
-                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                       style={{
                         backgroundColor: "var(--surface-raised)",
                         border: "1px solid var(--hairline)",
+                        color: "var(--text-primary)",
                       }}
                     >
                       {liveTrack?.is_playing ? (
                         <LiveWaveform playing accentColor={mediaAccent} />
                       ) : (
-                        <span
-                          className="block h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: activePage.accentVar }}
-                        />
+                        <ChevronUpIcon size={14} />
                       )}
                     </button>
                   </div>
@@ -1088,9 +1085,11 @@ export function IslandShell({
                           cameraActive={privacyDevices[0]}
                           micActive={privacyDevices[1]}
                           language={language}
+                          onPomodoroChange={(nextPom) => setPomodoro(nextPom)}
                           onNavigatePage={(targetId) => {
                             const targetIndex = pages.findIndex((p) => p.id === targetId);
                             if (targetIndex >= 0) {
+                              setPageGalleryOpen(false);
                               setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
                               setActivePageIndex(targetIndex);
                             }
@@ -1271,18 +1270,76 @@ export function IslandShell({
                       {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
                     </motion.div>
                   </AnimatePresence>
+
+                  {pageGalleryOpen && (
+                    <div
+                      role="region"
+                      aria-label={isBn ? "সব পেজ গ্যালারি" : "All Pages Gallery"}
+                      className="absolute inset-0 z-30 grid grid-cols-4 gap-1.5 p-0.5"
+                      style={{ backgroundColor: "var(--surface)" }}
+                    >
+                      {pages.map((page, index) => {
+                        const active = index === safePageIndex;
+                        return (
+                          <button
+                            key={page.id}
+                            type="button"
+                            onClick={() => {
+                              setSlideDirection(index >= safePageIndex ? 1 : -1);
+                              setActivePageIndex(index);
+                              setPageGalleryOpen(false);
+                            }}
+                            className="flex cursor-pointer items-center gap-1.5 overflow-hidden border-0 px-2.5 py-1.5 text-left transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                            style={{
+                              backgroundColor: active
+                                ? "var(--surface-button)"
+                                : "var(--surface-raised)",
+                              borderRadius: "12px",
+                              border: active
+                                ? `1px solid ${page.accentVar}`
+                                : "1px solid var(--hairline)",
+                              color: "var(--text-primary)",
+                            }}
+                          >
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: page.accentVar }}
+                            />
+                            <span className="type-caption truncate font-medium">
+                              {page.titleLead}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-center gap-1.5">
-                  {pages.map((page, index) => {
-                    const active = index === safePageIndex;
+                  {(pages.length <= 6
+                    ? pages.map((page, index) => ({ page, index }))
+                    : (() => {
+                        const maxDots = 5;
+                        const start = Math.min(
+                          Math.max(0, safePageIndex - 2),
+                          Math.max(0, pages.length - maxDots),
+                        );
+                        return pages
+                          .slice(start, start + maxDots)
+                          .map((page, offset) => ({ page, index: start + offset }));
+                      })()
+                  ).map(({ page, index }) => {
+                    const active = index === safePageIndex && !pageGalleryOpen;
                     return (
                       <button
                         key={page.id}
                         type="button"
                         aria-label={`Page ${index + 1}`}
-                        onClick={() => setActivePageIndex(index)}
-                        className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200"
+                        onClick={() => {
+                          setPageGalleryOpen(false);
+                          setActivePageIndex(index);
+                        }}
+                        className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                         style={{
                           width: active ? "18px" : "6px",
                           backgroundColor: active ? activePage.accentVar : "var(--text-tertiary)",
@@ -1290,6 +1347,22 @@ export function IslandShell({
                       />
                     );
                   })}
+                  {pages.length > 6 && (
+                    <button
+                      type="button"
+                      aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
+                      title={isBn ? "সব পেজ দেখুন" : "All pages"}
+                      aria-expanded={pageGalleryOpen}
+                      onClick={() => setPageGalleryOpen((v) => !v)}
+                      className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                      style={{
+                        backgroundColor: "transparent",
+                        color: pageGalleryOpen ? "var(--text-primary)" : "var(--text-secondary)",
+                      }}
+                    >
+                      <GridIcon size={10} />
+                    </button>
+                  )}
                 </div>
               </motion.div>
             )}

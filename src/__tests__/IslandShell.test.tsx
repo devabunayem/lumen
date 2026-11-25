@@ -29,13 +29,13 @@ describe("IslandShell", () => {
     expect(pill).toHaveAttribute("data-state", "idle");
   });
 
-  it("supports live Notch <-> Pill morph toggle inside expanded header", async () => {
+  it("supports live Notch <-> Pill morph toggle via header clock context menu", async () => {
     render(<App />);
     const pill = screen.getByTestId("lumen-island-pill");
     expect(pill).toHaveAttribute("data-shape", "notch");
 
     fireEvent.click(pill);
-    fireEvent.click(await screen.findByRole("button", { name: "Pill" }));
+    fireEvent.contextMenu(await screen.findByTitle(/Toggle date & time/i));
     expect(pill).toHaveAttribute("data-shape", "pill");
   });
 
