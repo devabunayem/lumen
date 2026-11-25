@@ -593,3 +593,17 @@ export async function systemLockWorkstation(): Promise<void> {
   }
   await invoke("system_lock_workstation");
 }
+
+export async function systemCaptureScreenshot(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<string>("system_capture_screenshot");
+}
+
+export async function systemOcrScreen(): Promise<string> {
+  if (!isTauriRuntime()) {
+    return "";
+  }
+  return invoke<string>("system_ocr_screen");
+}
