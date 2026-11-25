@@ -873,13 +873,25 @@ mod win32 {
         let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
         unsafe {
             use windows::Win32::Graphics::Gdi::{
-                CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn,
+                CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
             };
             let hrgn = if !visible || width <= 0 || height <= 0 {
                 CreateRectRgn(0, 0, 0, 0)
             } else if corner_radius_px > 0 {
                 let diam = corner_radius_px * 2;
-                CreateRoundRectRgn(rel_x, rel_y, rel_x + width, rel_y + height, diam, diam)
+                let rgn_round =
+                    CreateRoundRectRgn(rel_x, rel_y, rel_x + width, rel_y + height, diam, diam);
+                // In flush-top Notch mode (rel_y <= 0), keep the top corners & concave ears
+                // square to the top screen edge instead of rounding them like a floating Pill.
+                if rel_y <= 0 && !rgn_round.is_invalid() {
+                    let top_strip_h = corner_radius_px.min(height);
+                    let rgn_top = CreateRectRgn(rel_x, rel_y, rel_x + width, rel_y + top_strip_h);
+                    if !rgn_top.is_invalid() {
+                        let _ = CombineRgn(Some(rgn_round), Some(rgn_round), Some(rgn_top), RGN_OR);
+                        let _ = DeleteObject(rgn_top.into());
+                    }
+                }
+                rgn_round
             } else {
                 CreateRectRgn(rel_x, rel_y, rel_x + width, rel_y + height)
             };
