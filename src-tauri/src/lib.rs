@@ -24,9 +24,10 @@ use lumen_prayer::{
 use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{
     GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
-    compute_pill_screen_rect, compute_top_center_position, cursor_screen_pos, is_autostart_enabled,
-    is_caps_lock_on, is_other_app_fullscreen, lock_workstation, open_shell_target,
-    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
+    capture_screen_to_png, compute_pill_screen_rect, compute_top_center_position,
+    cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
+    lock_workstation, ocr_screen_to_clipboard, open_shell_target, set_autostart_enabled,
+    set_click_through, set_window_bounds_atomic,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -795,6 +796,48 @@ fn system_lock_workstation() -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn system_capture_screenshot(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let captures_dir = state
+        .settings_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("captures");
+    let filename = format!("screenshot-{}.png", Utc::now().format("%Y%m%d-%H%M%S"));
+    let out_path = captures_dir.join(filename);
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.hide();
+        tokio::time::sleep(Duration::from_millis(80)).await;
+    }
+    let saved_res = tokio::task::spawn_blocking(move || capture_screen_to_png(&out_path))
+        .await
+        .map_err(|e| format!("screenshot task error: {e}"))?;
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.show();
+    }
+    let saved = saved_res?;
+    let _ = state.storage.add_shelf_item("file", &saved, 50);
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn system_ocr_screen(app: tauri::AppHandle) -> Result<String, String> {
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.hide();
+        tokio::time::sleep(Duration::from_millis(80)).await;
+    }
+    let ocr_res = tokio::task::spawn_blocking(ocr_screen_to_clipboard)
+        .await
+        .map_err(|e| format!("ocr task error: {e}"))?;
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.show();
+    }
+    ocr_res
+}
+
+#[tauri::command]
 fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
     discover_plugins(&state.plugins_dir)
 }
@@ -1175,6 +1218,8 @@ pub fn run() {
             system_get_mic_muted,
             system_toggle_mic_mute,
             system_lock_workstation,
+            system_capture_screenshot,
+            system_ocr_screen,
             plugins_list
         ])
         .run(tauri::generate_context!())

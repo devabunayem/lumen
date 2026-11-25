@@ -490,6 +490,192 @@ mod win32 {
         }
     }
 
+    fn capture_primary_bgra() -> Result<(i32, i32, Vec<u8>), String> {
+        use windows::Win32::Graphics::Gdi::{
+            BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleBitmap,
+            CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits,
+            ReleaseDC, SRCCOPY, SelectObject,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+
+        // SAFETY: Standard Win32 GDI screen capture of primary display into a top-down BGRA buffer.
+        unsafe {
+            let w = GetSystemMetrics(SM_CXSCREEN);
+            let h = GetSystemMetrics(SM_CYSCREEN);
+            if w <= 0 || h <= 0 {
+                return Err("invalid screen dimensions".into());
+            }
+            let screen_dc = GetDC(None);
+            let mem_dc = CreateCompatibleDC(Some(screen_dc));
+            let bmp = CreateCompatibleBitmap(screen_dc, w, h);
+            let old = SelectObject(mem_dc, bmp.into());
+            let blit_ok = BitBlt(mem_dc, 0, 0, w, h, Some(screen_dc), 0, 0, SRCCOPY).is_ok();
+
+            let mut bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: core::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: w,
+                    biHeight: -h,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
+            let lines = if blit_ok {
+                GetDIBits(
+                    mem_dc,
+                    bmp,
+                    0,
+                    h as u32,
+                    Some(pixels.as_mut_ptr().cast()),
+                    &mut bmi,
+                    DIB_RGB_COLORS,
+                )
+            } else {
+                0
+            };
+
+            SelectObject(mem_dc, old);
+            let _ = DeleteObject(bmp.into());
+            let _ = DeleteDC(mem_dc);
+            let _ = ReleaseDC(None, screen_dc);
+
+            if lines == 0 {
+                return Err("screen capture failed".into());
+            }
+            Ok((w, h, pixels))
+        }
+    }
+
+    fn copy_unicode_to_clipboard(text: &str) -> Result<(), String> {
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::DataExchange::{
+            CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+        };
+        use windows::Win32::System::Memory::{
+            GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock,
+        };
+
+        const CF_UNICODETEXT: u32 = 13;
+        let mut wide: Vec<u16> = text.encode_utf16().collect();
+        wide.push(0);
+        let byte_len = wide.len() * 2;
+
+        // SAFETY: Standard Win32 clipboard allocation and ownership transfer on success.
+        unsafe {
+            OpenClipboard(None).map_err(|e| format!("OpenClipboard failed: {e}"))?;
+            let _ = EmptyClipboard();
+            let Ok(hmem) = GlobalAlloc(GMEM_MOVEABLE, byte_len) else {
+                let _ = CloseClipboard();
+                return Err("GlobalAlloc failed".into());
+            };
+            let ptr = GlobalLock(hmem);
+            if ptr.is_null() {
+                let _ = CloseClipboard();
+                return Err("GlobalLock failed".into());
+            }
+            core::ptr::copy_nonoverlapping(wide.as_ptr().cast::<u8>(), ptr.cast::<u8>(), byte_len);
+            let _ = GlobalUnlock(hmem);
+            if SetClipboardData(CF_UNICODETEXT, Some(HANDLE(hmem.0))).is_err() {
+                let _ = CloseClipboard();
+                return Err("SetClipboardData failed".into());
+            }
+            let _ = CloseClipboard();
+        }
+        Ok(())
+    }
+
+    /// Captures the primary screen, writes a PNG file to `output_path`, and copies its path.
+    pub fn capture_screen_to_png(output_path: &std::path::Path) -> Result<String, String> {
+        use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapEncoder, BitmapPixelFormat};
+        use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
+
+        let (w, h, pixels) = capture_primary_bgra()?;
+        if let Some(parent) = output_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let stream =
+            InMemoryRandomAccessStream::new().map_err(|e| format!("create stream failed: {e}"))?;
+        let encoder = BitmapEncoder::CreateAsync(
+            BitmapEncoder::PngEncoderId().map_err(|e| e.to_string())?,
+            &stream,
+        )
+        .map_err(|e| format!("BitmapEncoder::CreateAsync failed: {e}"))?
+        .join()
+        .map_err(|e| format!("BitmapEncoder join failed: {e}"))?;
+        encoder
+            .SetPixelData(
+                BitmapPixelFormat::Bgra8,
+                BitmapAlphaMode::Ignore,
+                w as u32,
+                h as u32,
+                96.0,
+                96.0,
+                &pixels,
+            )
+            .map_err(|e| format!("SetPixelData failed: {e}"))?;
+        encoder
+            .FlushAsync()
+            .map_err(|e| format!("FlushAsync failed: {e}"))?
+            .join()
+            .map_err(|e| format!("FlushAsync join failed: {e}"))?;
+
+        let size = stream.Size().map_err(|e| e.to_string())? as usize;
+        let _ = stream.Seek(0);
+        let reader = windows::Storage::Streams::DataReader::CreateDataReader(&stream)
+            .map_err(|e| e.to_string())?;
+        reader
+            .LoadAsync(size as u32)
+            .map_err(|e| e.to_string())?
+            .join()
+            .map_err(|e| e.to_string())?;
+        let mut png_bytes = vec![0u8; size];
+        reader
+            .ReadBytes(&mut png_bytes)
+            .map_err(|e| e.to_string())?;
+        drop(DataWriter::new());
+        std::fs::write(output_path, &png_bytes).map_err(|e| format!("write png failed: {e}"))?;
+        Ok(output_path.to_string_lossy().to_string())
+    }
+
+    /// Runs offline Windows WinRT OCR (`Windows.Media.Ocr`) on the current screen and copies text to clipboard.
+    pub fn ocr_screen_to_clipboard() -> Result<String, String> {
+        use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
+        use windows::Media::Ocr::OcrEngine;
+        use windows::Storage::Streams::DataWriter;
+
+        let (w, h, pixels) = capture_primary_bgra()?;
+        let writer = DataWriter::new().map_err(|e| format!("DataWriter failed: {e}"))?;
+        writer
+            .WriteBytes(&pixels)
+            .map_err(|e| format!("WriteBytes failed: {e}"))?;
+        let buffer = writer
+            .DetachBuffer()
+            .map_err(|e| format!("DetachBuffer failed: {e}"))?;
+        let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, w, h)
+            .map_err(|e| format!("SoftwareBitmap failed: {e}"))?;
+
+        let engine = OcrEngine::TryCreateFromUserProfileLanguages()
+            .map_err(|e| format!("OCR engine unavailable: {e}"))?;
+        let result = engine
+            .RecognizeAsync(&bitmap)
+            .map_err(|e| format!("RecognizeAsync failed: {e}"))?
+            .join()
+            .map_err(|e| format!("OCR join failed: {e}"))?;
+        let text = result
+            .Text()
+            .map(|t| t.to_string_lossy().trim().to_string())
+            .unwrap_or_default();
+        if !text.is_empty() {
+            let _ = copy_unicode_to_clipboard(&text);
+        }
+        Ok(text)
+    }
+
     /// Atomically moves and resizes an overlay HWND in a single DWM frame without cursor flicker.
     pub fn set_window_bounds_atomic(raw_hwnd: isize, x: i32, y: i32, width: i32, height: i32) {
         if raw_hwnd == 0 {
@@ -624,12 +810,21 @@ mod win32 {
     pub fn lock_workstation() -> Result<(), String> {
         Ok(())
     }
+
+    pub fn capture_screen_to_png(output_path: &std::path::Path) -> Result<String, String> {
+        Ok(output_path.to_string_lossy().to_string())
+    }
+
+    pub fn ocr_screen_to_clipboard() -> Result<String, String> {
+        Ok(String::new())
+    }
 }
 
 pub use win32::{
-    GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, cursor_screen_pos,
-    is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen, lock_workstation,
-    open_shell_target, set_autostart_enabled, set_click_through, set_window_bounds_atomic,
+    GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, capture_screen_to_png,
+    cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
+    lock_workstation, ocr_screen_to_clipboard, open_shell_target, set_autostart_enabled,
+    set_click_through, set_window_bounds_atomic,
 };
 
 #[cfg(test)]

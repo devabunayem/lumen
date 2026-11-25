@@ -261,3 +261,25 @@ export function BellOffIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function CameraIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+      <circle cx="12" cy="13" r="3" />
+    </svg>
+  );
+}
+
+export function ScanTextIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <path d="M7 9h10" />
+      <path d="M12 9v7" />
+    </svg>
+  );
+}
