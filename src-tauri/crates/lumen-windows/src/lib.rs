@@ -890,6 +890,18 @@ mod win32 {
                         let _ = CombineRgn(Some(rgn_round), Some(rgn_round), Some(rgn_top), RGN_OR);
                         let _ = DeleteObject(rgn_top.into());
                     }
+                    let ear_px = (corner_radius_px / 2).clamp(10, 18);
+                    let rgn_ears = CreateRectRgn(
+                        rel_x - ear_px,
+                        rel_y,
+                        rel_x + width + ear_px,
+                        rel_y + ear_px.min(height),
+                    );
+                    if !rgn_ears.is_invalid() {
+                        let _ =
+                            CombineRgn(Some(rgn_round), Some(rgn_round), Some(rgn_ears), RGN_OR);
+                        let _ = DeleteObject(rgn_ears.into());
+                    }
                 }
                 rgn_round
             } else {
