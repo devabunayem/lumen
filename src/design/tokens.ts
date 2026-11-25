@@ -20,7 +20,7 @@ export const COLOR_TOKENS = {
 } as const;
 
 export const BASE_GEOMETRY = {
-  collapsed: { width: 184, height: 30 },
+  collapsed: { width: 214, height: 36 },
   minimal: { width: 110, height: 26 },
   slim: { width: 84, height: 12 },
   expanded: { width: 472, height: 172 },

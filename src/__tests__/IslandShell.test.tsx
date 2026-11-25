@@ -13,8 +13,8 @@ describe("IslandShell", () => {
     render(<IslandShell shapeStyle="notch" scaleFactor={1} />);
     const pill = screen.getByTestId("lumen-island-pill");
     expect(pill).toHaveAttribute("data-state", "idle");
-    expect(pill).toHaveAttribute("data-target-width", "184");
-    expect(pill).toHaveAttribute("data-target-height", "30");
+    expect(pill).toHaveAttribute("data-target-width", "214");
+    expect(pill).toHaveAttribute("data-target-height", "36");
   });
 
   it("expands to 472x172 when clicked and collapses on Escape", () => {
