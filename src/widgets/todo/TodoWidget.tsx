@@ -99,11 +99,11 @@ export function TodoWidget({ tasks, onAdd, onToggle, onDelete }: TodoWidgetProps
             />
           </div>
         ) : (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="type-caption flex cursor-pointer items-center gap-1 rounded-full border-0 px-2.5 font-medium"
+              className="type-caption flex cursor-pointer items-center gap-1 rounded-full border-0 px-2 font-medium"
               style={{
                 height: "var(--capsule-height)",
                 backgroundColor: "var(--surface-button)",
@@ -122,7 +122,7 @@ export function TodoWidget({ tasks, onAdd, onToggle, onDelete }: TodoWidgetProps
             <button
               type="button"
               onClick={() => setEditing((v) => !v)}
-              className="type-caption flex cursor-pointer items-center gap-1 rounded-full border-0 px-2.5 font-medium"
+              className="type-caption flex cursor-pointer items-center gap-1 rounded-full border-0 px-2 font-medium"
               style={{
                 height: "var(--capsule-height)",
                 backgroundColor: "var(--surface-button)",

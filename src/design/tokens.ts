@@ -20,11 +20,11 @@ export const COLOR_TOKENS = {
 } as const;
 
 export const BASE_GEOMETRY = {
-  collapsed: { width: 214, height: 36 },
-  minimal: { width: 110, height: 26 },
-  slim: { width: 84, height: 12 },
-  expanded: { width: 472, height: 172 },
-  hud: { width: 340, height: 60 },
+  collapsed: { width: 144, height: 42 },
+  minimal: { width: 80, height: 32 },
+  slim: { width: 72, height: 14 },
+  expanded: { width: 320, height: 184 },
+  hud: { width: 240, height: 56 },
   notchBottomRadius: 24,
   pillFloatOffset: 8,
   innerPadding: 12,
