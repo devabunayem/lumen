@@ -247,12 +247,17 @@ export function IslandShell({
         if (isHoveredRef.current || isPinnedRef.current || isTypingInContainer(pillRef.current)) {
           return;
         }
+        if (hoverReturnSeconds <= 0) {
+          setSlimReturnActive(false);
+          dispatch({ type: "RESTORE_NORMAL" });
+          return;
+        }
         setSlimReturnActive(true);
         dispatch({ type: "HOVER_COLLAPSE_SLIM" });
         if (returnNormalTimerRef.current !== null) {
           window.clearTimeout(returnNormalTimerRef.current);
         }
-        const delayMs = Math.max(1, hoverReturnSeconds) * 1000;
+        const delayMs = hoverReturnSeconds * 1000;
         returnNormalTimerRef.current = window.setTimeout(() => {
           returnNormalTimerRef.current = null;
           setSlimReturnActive(false);
