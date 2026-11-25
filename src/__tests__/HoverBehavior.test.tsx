@@ -44,7 +44,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "idle");
     expect(pill).toHaveAttribute("data-slim", "false");
-    expect(pill).toHaveAttribute("data-target-width", "144");
+    expect(pill).toHaveAttribute("data-target-width", "180");
     expect(pill).toHaveAttribute("data-target-height", "42");
   });
 

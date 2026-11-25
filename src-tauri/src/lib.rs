@@ -54,7 +54,7 @@ impl Default for IslandRuntimeConfig {
         Self {
             hide_in_fullscreen: true,
             visible: true,
-            width_logical: 144.0,
+            width_logical: 180.0,
             height_logical: 42.0,
             top_offset_logical: 0.0,
         }
