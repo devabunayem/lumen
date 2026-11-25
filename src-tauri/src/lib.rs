@@ -755,14 +755,22 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html?window=settings".into()),
     )
     .title("Lumen Settings")
-    .inner_size(900.0, 620.0)
-    .min_inner_size(760.0, 520.0)
+    .inner_size(920.0, 640.0)
+    .min_inner_size(780.0, 540.0)
     .center()
     .decorations(true)
     .transparent(false)
     .build()
     .map_err(|e| format!("failed to open settings window: {e}"))?;
 
+    Ok(())
+}
+
+#[tauri::command]
+fn close_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window("settings") {
+        let _ = existing.close();
+    }
     Ok(())
 }
 
@@ -1140,6 +1148,7 @@ pub fn run() {
             settings_get,
             settings_update,
             open_settings_window,
+            close_settings_window,
             plugins_list
         ])
         .run(tauri::generate_context!())

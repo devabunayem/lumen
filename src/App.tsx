@@ -9,7 +9,11 @@ export function App() {
   const [settings, setSettings] = useState<LumenSettings>(DEFAULT_SETTINGS);
   const isSettingsWindow =
     typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("window") === "settings";
+    (new URLSearchParams(window.location.search).get("window") === "settings" ||
+      window.location.hash.includes("settings") ||
+      (typeof window !== "undefined" &&
+        (window as unknown as { __TAURI_METADATA__?: { currentWindow?: { label?: string } } })
+          .__TAURI_METADATA__?.currentWindow?.label === "settings"));
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;

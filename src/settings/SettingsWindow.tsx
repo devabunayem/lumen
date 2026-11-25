@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
+import {
+  BellIcon,
+  CapsIcon,
+  DropletIcon,
+  FileIcon,
+  MusicNoteIcon,
+  SettingsIcon,
+} from "../design/icons";
 import { getMessages } from "../i18n";
 import {
+  closeSettingsWindow,
   type LoadedPlugin,
   type MonitorInfo,
   monitorsList,
@@ -14,25 +23,30 @@ import {
 } from "../lib/ipc";
 import { DEFAULT_SETTINGS, type LumenSettings } from "./index";
 
-type SettingsSection =
-  "general" | "display" | "pages" | "appearance" | "widgets" | "plugins" | "about";
+export type SettingsSection =
+  | "general"
+  | "display"
+  | "pages"
+  | "appearance"
+  | "music"
+  | "notifications"
+  | "widgets"
+  | "todo"
+  | "pomodoro"
+  | "water"
+  | "prayer"
+  | "shelf"
+  | "hud"
+  | "plugins"
+  | "about";
 
-interface SectionDef {
+interface SidebarItem {
   id: SettingsSection;
-  labelKey: keyof ReturnType<typeof getMessages>["settings"]["sections"];
-  accent: string;
-  glyph: string;
+  label: string;
+  badge?: string;
+  iconBg: string;
+  icon: (props: { size?: number }) => React.ReactNode;
 }
-
-const SECTIONS: SectionDef[] = [
-  { id: "general", labelKey: "general", accent: "var(--accent-blue)", glyph: "⚙" },
-  { id: "display", labelKey: "display", accent: "var(--accent-cyan)", glyph: "▣" },
-  { id: "pages", labelKey: "pages", accent: "var(--accent-green)", glyph: "☰" },
-  { id: "appearance", labelKey: "appearance", accent: "var(--accent-purple)", glyph: "✦" },
-  { id: "widgets", labelKey: "widgets", accent: "var(--accent-orange)", glyph: "◈" },
-  { id: "plugins", labelKey: "plugins", accent: "var(--accent-red)", glyph: "⌘" },
-  { id: "about", labelKey: "about", accent: "var(--accent-blue)", glyph: "ⓘ" },
-];
 
 export interface SettingsWindowProps {
   initialSettings?: LumenSettings;
@@ -65,10 +79,12 @@ export function SettingsWindow({
   const [discoveredPlugins, setDiscoveredPlugins] = useState<LoadedPlugin[]>([]);
 
   const msg = getMessages(settings.language);
-  const activeDef = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
 
   useEffect(() => {
-    document.body.style.background = "#000000";
+    // Explicit background to eliminate white flashes
+    document.documentElement.style.background = "#141415";
+    document.body.style.background = "#141415";
+
     if (!initialSettings) {
       void settingsGet().then((loaded) => {
         if (loaded) {
@@ -102,6 +118,8 @@ export function SettingsWindow({
       setWarningBanner(warns.length > 0 ? warns.join(" · ") : null);
     }
     setStatusBanner(msg.settings.saved);
+    const timer = setTimeout(() => setStatusBanner(null), 2500);
+    return () => clearTimeout(timer);
   };
 
   const commitNotify = async (next: NotificationPrivacyConfig) => {
@@ -111,6 +129,12 @@ export function SettingsWindow({
       setNotifyCfg(saved);
     }
     setStatusBanner(msg.settings.saved);
+    const timer = setTimeout(() => setStatusBanner(null), 2500);
+    return () => clearTimeout(timer);
+  };
+
+  const handleClose = () => {
+    void closeSettingsWindow();
   };
 
   const movePage = (idx: number, delta: -1 | 1) => {
@@ -131,633 +155,921 @@ export function SettingsWindow({
     void commit({ ...settings, hiddenPages: hidden });
   };
 
+  const SIDEBAR_ITEMS: SidebarItem[] = [
+    {
+      id: "general",
+      label: msg.settings.sections.general || "General",
+      iconBg: "#4a4a4d",
+      icon: (p) => <SettingsIcon {...p} />,
+    },
+    {
+      id: "display",
+      label: msg.settings.sections.display || "Display",
+      iconBg: "#0a84ff",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+      ),
+    },
+    {
+      id: "pages",
+      label: msg.settings.sections.pages || "Pages",
+      iconBg: "#30d158",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="18" x2="20" y2="18" />
+        </svg>
+      ),
+    },
+    {
+      id: "appearance",
+      label: msg.settings.sections.appearance || "Appearance",
+      iconBg: "#bf5af2",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" />
+        </svg>
+      ),
+    },
+    {
+      id: "music",
+      label: "Music & Lyrics",
+      iconBg: "#ff375f",
+      icon: (p) => <MusicNoteIcon {...p} />,
+    },
+    {
+      id: "notifications",
+      label: "Notifications",
+      iconBg: "#ff453a",
+      icon: (p) => <BellIcon {...p} />,
+    },
+    {
+      id: "widgets",
+      label: msg.settings.sections.widgets || "Widgets",
+      iconBg: "#0a84ff",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+      ),
+    },
+    {
+      id: "todo",
+      label: "To-do",
+      iconBg: "#30d158",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <path d="m9 11 3 3L22 4" />
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+      ),
+    },
+    {
+      id: "pomodoro",
+      label: "Pomodoro",
+      iconBg: "#5e5ce6",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <circle cx="12" cy="14" r="8" />
+          <line x1="12" y1="2" x2="12" y2="4" />
+          <line x1="12" y1="14" x2="15" y2="11" />
+        </svg>
+      ),
+    },
+    {
+      id: "water",
+      label: "Water",
+      iconBg: "#32ade6",
+      icon: (p) => <DropletIcon {...p} />,
+    },
+    {
+      id: "prayer",
+      label: "Prayer",
+      iconBg: "#30d158",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+        </svg>
+      ),
+    },
+    {
+      id: "shelf",
+      label: "Shelf",
+      iconBg: "#ff9f0a",
+      icon: (p) => <FileIcon {...p} />,
+    },
+    {
+      id: "hud",
+      label: "HUD & popups",
+      iconBg: "#64d2ff",
+      icon: (p) => <CapsIcon {...p} />,
+    },
+    {
+      id: "plugins",
+      label: msg.settings.sections.plugins || "Plugins",
+      iconBg: "#ff453a",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      ),
+    },
+    {
+      id: "about",
+      label: msg.settings.sections.about || "About",
+      iconBg: "#636366",
+      icon: (p) => (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5"
+          {...p}
+        >
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="16" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12.01" y2="8" />
+        </svg>
+      ),
+    },
+  ];
+
+  const currentItem = SIDEBAR_ITEMS.find((s) => s.id === section) ?? SIDEBAR_ITEMS[0];
+
   return (
     <div
       data-testid="settings-window"
-      className="flex h-full w-full overflow-hidden"
-      style={{ backgroundColor: "var(--surface)", color: "var(--text-primary)" }}
+      className="flex h-screen w-screen overflow-hidden select-none font-sans text-white"
+      style={{
+        backgroundColor: "#161618",
+        color: "#ffffff",
+      }}
     >
+      {/* Apple-style Sidebar (Left) */}
       <aside
         aria-label="Settings sections"
-        className="flex w-56 shrink-0 flex-col gap-1.5 p-4"
-        style={{
-          backgroundColor: "var(--surface-raised)",
-          borderRight: "1px solid var(--hairline)",
-        }}
+        className="flex w-64 shrink-0 flex-col border-r border-[#2c2c2e]/60 bg-[#1c1c1e] p-3 pt-4"
       >
-        <div className="mb-3 px-2">
-          <h1 className="type-title m-0">{msg.settings.title}</h1>
-          <p className="type-caption mt-1 mb-0" style={{ color: "var(--text-secondary)" }}>
-            {msg.settings.subtitle}
-          </p>
+        {/* Window Traffic Lights & Title */}
+        <div className="mb-4 flex items-center justify-between px-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClose}
+              title="Close"
+              className="flex h-3 w-3 items-center justify-center rounded-full bg-[#ff5f56] hover:opacity-80 active:opacity-60 border-0 cursor-pointer p-0"
+            />
+            <div className="h-3 w-3 rounded-full bg-[#febc2e] opacity-60" />
+            <div className="h-3 w-3 rounded-full bg-[#28c840] opacity-60" />
+          </div>
+          <span className="text-xs font-semibold tracking-wide text-[#8e8e93]">
+            {msg.settings.title}
+          </span>
         </div>
 
-        {SECTIONS.map((item) => {
-          const active = item.id === section;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSection(item.id)}
-              className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl border-0 px-2.5 py-2 text-left transition-colors"
-              style={{
-                backgroundColor: active ? "var(--surface-button)" : "transparent",
-                color: active ? "var(--text-primary)" : "var(--text-secondary)",
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-                style={{ backgroundColor: item.accent, color: "#000000" }}
+        {/* Navigation List */}
+        <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
+          {SIDEBAR_ITEMS.map((item) => {
+            const active = item.id === section;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSection(item.id)}
+                className={`flex w-full cursor-pointer items-center justify-between rounded-xl border-0 px-2.5 py-2 text-left transition-all ${
+                  active
+                    ? "bg-[#2c2c2e] text-white shadow-sm"
+                    : "bg-transparent text-[#98989d] hover:bg-[#252528] hover:text-[#e5e5ea]"
+                }`}
               >
-                {item.glyph}
-              </span>
-              <span className="type-body text-sm">{msg.settings.sections[item.labelKey]}</span>
-            </button>
-          );
-        })}
+                <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white"
+                    style={{ backgroundColor: item.iconBg }}
+                  >
+                    {item.icon({ size: 14 })}
+                  </span>
+                  <span className="text-[13px] font-medium">{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className="rounded bg-[#0a84ff] px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-white uppercase">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-        <header className="flex items-center justify-between">
-          <h2 className="type-title m-0" style={{ color: activeDef.accent }}>
-            {msg.settings.sections[activeDef.labelKey]}
-          </h2>
-          {statusBanner && (
-            <span
-              className="type-caption rounded-full px-3 py-1"
-              style={{
-                backgroundColor: "var(--surface-raised)",
-                border: "1px solid var(--hairline)",
-                color: "var(--accent-green)",
-              }}
+      {/* Main Content Area (Right) */}
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#161618]">
+        {/* Header Bar */}
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#2c2c2e]/60 px-8">
+          <h1 className="text-xl font-bold tracking-tight text-white">{currentItem.label}</h1>
+          <div className="flex items-center gap-3">
+            {statusBanner && (
+              <span className="rounded-full bg-[#30d158]/15 px-3 py-1 text-xs font-medium text-[#30d158] border border-[#30d158]/30">
+                {statusBanner}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2c2c2e] text-[#8e8e93] hover:bg-[#3a3a3c] hover:text-white border-0 cursor-pointer text-xs"
+              title="Close window"
             >
-              {statusBanner}
-            </span>
-          )}
+              ✕
+            </button>
+          </div>
         </header>
 
-        {warningBanner && (
-          <div
-            role="alert"
-            className="type-caption rounded-xl p-3"
-            style={{
-              backgroundColor: "var(--surface-raised)",
-              border: "1px solid var(--accent-orange)",
-              color: "var(--accent-orange)",
-            }}
-          >
-            {warningBanner}
-          </div>
-        )}
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-6">
+          {warningBanner && (
+            <div
+              role="alert"
+              className="rounded-xl border border-[#ff9f0a]/40 bg-[#ff9f0a]/10 p-3 text-xs text-[#ff9f0a]"
+            >
+              {warningBanner}
+            </div>
+          )}
 
-        {section === "general" && (
-          <div className="flex flex-col gap-3">
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.general.startWithWindows}
-                hint={msg.settings.general.startWithWindowsHint}
-                checked={settings.startWithWindows}
-                onChange={(v) => void commit({ ...settings, startWithWindows: v })}
-              />
-            </SettingCard>
-
-            <SettingCard>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="type-body text-sm">{msg.settings.general.language}</div>
-                  <div className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                    {msg.settings.general.languageHint}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  {(["en", "bn"] as const).map((lang) => (
-                    <CapsuleButton
-                      key={lang}
-                      active={settings.language === lang}
-                      accent="var(--accent-blue)"
-                      onClick={() => void commit({ ...settings, language: lang })}
-                    >
-                      {lang === "en" ? "English" : "বাংলা"}
-                    </CapsuleButton>
-                  ))}
-                </div>
-              </div>
-            </SettingCard>
-
-            <SettingCard>
-              <div className="flex flex-col gap-3">
-                <div className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                  {msg.settings.general.hotkeyHint}
-                </div>
-                <label className="flex items-center justify-between gap-3">
-                  <span className="type-body text-sm">{msg.settings.general.hotkeyHide}</span>
-                  <input
-                    type="text"
-                    value={settings.hotkeyHide}
-                    onChange={(e) => setSettings({ ...settings, hotkeyHide: e.target.value })}
-                    onBlur={() => void commit(settings)}
-                    className="type-caption rounded-lg border-0 px-3 py-1.5"
-                    style={{
-                      backgroundColor: "var(--surface-button)",
-                      color: "var(--text-primary)",
-                    }}
+          {/* Section: GENERAL */}
+          {section === "general" && (
+            <div className="space-y-6">
+              {/* Group: Startup */}
+              <AppleGroup title="Startup">
+                <AppleRow
+                  label="Start with Windows"
+                  hint="Launch Lumen automatically when you sign in."
+                >
+                  <AppleToggle
+                    checked={settings.startWithWindows}
+                    onChange={(v) => void commit({ ...settings, startWithWindows: v })}
                   />
-                </label>
-                <label className="flex items-center justify-between gap-3">
-                  <span className="type-body text-sm">{msg.settings.general.hotkeyExpand}</span>
-                  <input
-                    type="text"
-                    value={settings.hotkeyExpand}
-                    onChange={(e) => setSettings({ ...settings, hotkeyExpand: e.target.value })}
-                    onBlur={() => void commit(settings)}
-                    className="type-caption rounded-lg border-0 px-3 py-1.5"
-                    style={{
-                      backgroundColor: "var(--surface-button)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                </label>
-              </div>
-            </SettingCard>
-          </div>
-        )}
+                </AppleRow>
+              </AppleGroup>
 
-        {section === "display" && (
-          <div className="flex flex-col gap-3">
-            <SettingCard>
-              <div className="flex flex-col gap-3">
-                <span className="type-body text-sm">{msg.settings.display.monitorMode}</span>
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    [
-                      ["primary", msg.settings.display.primary],
-                      ["active", msg.settings.display.active],
-                      ["index", msg.settings.display.index],
-                    ] as const
-                  ).map(([mode, label]) => (
-                    <CapsuleButton
-                      key={mode}
-                      active={settings.monitorMode === mode}
-                      accent="var(--accent-cyan)"
-                      onClick={() => void commit({ ...settings, monitorMode: mode })}
-                    >
-                      {label}
-                    </CapsuleButton>
-                  ))}
-                </div>
-
-                {settings.monitorMode === "index" && monitors.length > 0 && (
-                  <label className="flex items-center justify-between gap-3">
-                    <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                      {msg.settings.display.selectMonitor}
-                    </span>
-                    <select
-                      value={settings.monitorIndex}
-                      onChange={(e) =>
-                        void commit({ ...settings, monitorIndex: Number(e.target.value) })
-                      }
-                      className="type-caption rounded-lg border-0 px-3 py-1.5"
-                      style={{
-                        backgroundColor: "var(--surface-button)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      {monitors.map((m) => (
-                        <option key={m.index} value={m.index}>
-                          {m.name} ({m.width}×{m.height} · {Math.round(m.scale_factor * 100)}%)
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-            </SettingCard>
-
-            <SettingCard>
-              <div className="flex flex-col gap-2">
-                <span className="type-body text-sm">{msg.settings.display.scale}</span>
-                <div className="flex flex-wrap gap-2">
-                  {(["auto", "100", "115", "130", "150"] as const).map((sc) => (
-                    <CapsuleButton
-                      key={sc}
-                      active={String(settings.scale) === sc}
-                      accent="var(--accent-cyan)"
-                      onClick={() => void commit({ ...settings, scale: sc })}
-                    >
-                      {sc === "auto" ? "Auto" : `${sc}%`}
-                    </CapsuleButton>
-                  ))}
-                </div>
-              </div>
-            </SettingCard>
-
-            <SettingCard>
-              <label className="flex items-center justify-between gap-4">
-                <span className="type-body text-sm">
-                  {msg.settings.display.offsetX} ({settings.positionOffsetX}px)
-                </span>
-                <input
-                  type="range"
-                  min={-240}
-                  max={240}
-                  step={4}
-                  value={settings.positionOffsetX}
-                  onChange={(e) =>
-                    void commit({ ...settings, positionOffsetX: Number(e.target.value) })
-                  }
-                  className="w-56 accent-cyan-400"
-                />
-              </label>
-            </SettingCard>
-
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.display.hideFullscreen}
-                hint={msg.settings.display.hideFullscreenHint}
-                checked={settings.hideInFullscreen}
-                onChange={(v) => void commit({ ...settings, hideInFullscreen: v })}
-              />
-            </SettingCard>
-          </div>
-        )}
-
-        {section === "pages" && (
-          <SettingCard>
-            <div className="flex flex-col gap-2.5">
-              <p className="type-caption m-0" style={{ color: "var(--text-secondary)" }}>
-                {msg.settings.pagesTab.description}
-              </p>
-              {settings.pageOrder.map((pageId, idx) => {
-                const isHidden = settings.hiddenPages.includes(pageId);
-                return (
-                  <div
-                    key={pageId}
-                    className="flex items-center justify-between rounded-xl px-3 py-2"
-                    style={{ backgroundColor: "var(--surface)" }}
-                  >
-                    <span className="type-body text-sm capitalize">{pageId}</span>
-                    <div className="flex items-center gap-1.5">
-                      <CapsuleButton
-                        active={false}
-                        accent="var(--accent-green)"
-                        onClick={() => movePage(idx, -1)}
-                      >
-                        {msg.settings.pagesTab.moveUp}
-                      </CapsuleButton>
-                      <CapsuleButton
-                        active={false}
-                        accent="var(--accent-green)"
-                        onClick={() => movePage(idx, 1)}
-                      >
-                        {msg.settings.pagesTab.moveDown}
-                      </CapsuleButton>
-                      <CapsuleButton
-                        active={!isHidden}
-                        accent="var(--accent-green)"
-                        onClick={() => togglePageVisibility(pageId)}
-                      >
-                        {isHidden ? msg.settings.pagesTab.hidden : msg.settings.pagesTab.visible}
-                      </CapsuleButton>
+              {/* Group: Notch Size & Behavior */}
+              <AppleGroup title="Notch">
+                <div className="p-4 space-y-4">
+                  <div>
+                    <div className="text-[13px] font-medium text-white">Size</div>
+                    <div className="text-[12px] text-[#8e8e93] mt-0.5">
+                      Adjust the default scale of the dynamic island
+                    </div>
+                    {/* Scale Segmented Control */}
+                    <div className="mt-3 flex rounded-lg bg-[#141416] p-1 border border-[#2c2c2e]/50 max-w-md">
+                      {(["auto", "100", "115", "130", "150"] as const).map((s) => {
+                        const active = String(settings.scale) === s;
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => void commit({ ...settings, scale: s })}
+                            className={`flex-1 rounded-md py-1 text-xs font-medium transition-all border-0 cursor-pointer ${
+                              active
+                                ? "bg-[#3a3a3c] text-white shadow"
+                                : "bg-transparent text-[#8e8e93] hover:text-[#d1d1d6]"
+                            }`}
+                          >
+                            {s === "auto" ? "Auto" : `${s}%`}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label="Minimal notch"
+                    hint="A smaller pill when nothing is playing or active"
+                  >
+                    <AppleToggle
+                      checked={settings.minimalNotch}
+                      onChange={(v) => void commit({ ...settings, minimalNotch: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label="Lumi mascot"
+                    hint="A little animated friend that lives inside the notch"
+                  >
+                    <AppleToggle
+                      checked={settings.mascotEnabled}
+                      onChange={(v) => void commit({ ...settings, mascotEnabled: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label="Date & time"
+                    hint="The clock and date beside the status ring in the resting pill"
+                  >
+                    <AppleToggle
+                      checked={settings.showHeaderClock}
+                      onChange={(v) => void commit({ ...settings, showHeaderClock: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label="Hover to open"
+                    hint="Expands on cursor hover and shrinks to slim notch on mouse leave"
+                  >
+                    <AppleToggle
+                      checked={settings.hoverToOpen}
+                      onChange={(v) => void commit({ ...settings, hoverToOpen: v })}
+                    />
+                  </AppleRow>
+                </div>
+              </AppleGroup>
+
+              {/* Group: Fullscreen */}
+              <AppleGroup title="Full screen">
+                <AppleRow
+                  label="Hide in full screen"
+                  hint="Games, videos and slides that fill the screen"
+                >
+                  <AppleToggle
+                    checked={settings.hideInFullscreen}
+                    onChange={(v) => void commit({ ...settings, hideInFullscreen: v })}
+                  />
+                </AppleRow>
+              </AppleGroup>
+
+              {/* Group: Language & Hotkeys */}
+              <AppleGroup title="Language & Shortcuts">
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[13px] font-medium text-white">Language</div>
+                      <div className="text-[12px] text-[#8e8e93]">
+                        Switch between English and Bangla
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {(["en", "bn"] as const).map((lang) => (
+                        <button
+                          key={lang}
+                          type="button"
+                          onClick={() => void commit({ ...settings, language: lang })}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold border-0 cursor-pointer transition-all ${
+                            settings.language === lang
+                              ? "bg-[#0a84ff] text-white"
+                              : "bg-[#2c2c2e] text-[#8e8e93] hover:text-white"
+                          }`}
+                        >
+                          {lang === "en" ? "English" : "বাংলা"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <div className="space-y-3">
+                    <div className="text-[13px] font-medium text-white">Global Hotkeys</div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-xs text-[#8e8e93] mb-1">Show / Hide</div>
+                        <input
+                          type="text"
+                          value={settings.hotkeyHide}
+                          onChange={(e) => void commit({ ...settings, hotkeyHide: e.target.value })}
+                          className="w-full rounded-lg bg-[#141416] px-3 py-1.5 text-xs text-white border border-[#2c2c2e] focus:border-[#0a84ff] outline-none"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-xs text-[#8e8e93] mb-1">Open / Collapse</div>
+                        <input
+                          type="text"
+                          value={settings.hotkeyExpand}
+                          onChange={(e) =>
+                            void commit({ ...settings, hotkeyExpand: e.target.value })
+                          }
+                          className="w-full rounded-lg bg-[#141416] px-3 py-1.5 text-xs text-white border border-[#2c2c2e] focus:border-[#0a84ff] outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </AppleGroup>
             </div>
-          </SettingCard>
-        )}
+          )}
 
-        {section === "appearance" && (
-          <div className="flex flex-col gap-3">
-            <SettingCard>
-              <div className="flex items-center justify-between gap-4">
-                <span className="type-body text-sm">{msg.settings.appearance.shape}</span>
-                <div className="flex gap-2">
-                  <CapsuleButton
-                    active={settings.shapeStyle === "notch"}
-                    accent="var(--accent-purple)"
-                    onClick={() => void commit({ ...settings, shapeStyle: "notch" })}
-                  >
-                    {msg.settings.appearance.notch}
-                  </CapsuleButton>
-                  <CapsuleButton
-                    active={settings.shapeStyle === "pill"}
-                    accent="var(--accent-purple)"
-                    onClick={() => void commit({ ...settings, shapeStyle: "pill" })}
-                  >
-                    {msg.settings.appearance.pill}
-                  </CapsuleButton>
-                </div>
-              </div>
-            </SettingCard>
-
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.appearance.minimalNotch}
-                hint={msg.settings.appearance.minimalNotchHint}
-                checked={settings.minimalNotch}
-                onChange={(v) => void commit({ ...settings, minimalNotch: v })}
-              />
-            </SettingCard>
-
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.appearance.hoverToOpen}
-                hint={msg.settings.appearance.hoverToOpenHint}
-                checked={settings.hoverToOpen}
-                onChange={(v) => void commit({ ...settings, hoverToOpen: v })}
-              />
-            </SettingCard>
-
-            <SettingCard>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="type-body text-sm">
-                    {msg.settings.appearance.hoverReturnSeconds}
+          {/* Section: DISPLAY */}
+          {section === "display" && (
+            <div className="space-y-6">
+              <AppleGroup title="Monitor Placement">
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[13px] font-medium text-white">Placement Mode</div>
+                      <div className="text-[12px] text-[#8e8e93]">
+                        Which monitor to pin Lumen to
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {(["primary", "active", "index"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => void commit({ ...settings, monitorMode: mode })}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold border-0 cursor-pointer capitalize ${
+                            settings.monitorMode === mode
+                              ? "bg-[#0a84ff] text-white"
+                              : "bg-[#2c2c2e] text-[#8e8e93] hover:text-white"
+                          }`}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                    {msg.settings.appearance.hoverReturnSecondsHint}
+
+                  {monitors.length > 0 && settings.monitorMode === "index" && (
+                    <div className="pt-2">
+                      <div className="text-xs text-[#8e8e93] mb-1.5">Select Monitor Index</div>
+                      <select
+                        value={settings.monitorIndex}
+                        onChange={(e) =>
+                          void commit({ ...settings, monitorIndex: Number(e.target.value) })
+                        }
+                        className="w-full rounded-lg bg-[#141416] px-3 py-2 text-xs text-white border border-[#2c2c2e] outline-none"
+                      >
+                        {monitors.map((m) => (
+                          <option key={m.index} value={m.index}>
+                            #{m.index + 1}: {m.name} ({m.width}x{m.height})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-[13px] font-medium text-white">Horizontal Offset</div>
+                      <span className="text-xs font-mono text-[#0a84ff]">
+                        {settings.positionOffsetX} px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-400}
+                      max={400}
+                      step={4}
+                      value={settings.positionOffsetX}
+                      onChange={(e) =>
+                        void commit({ ...settings, positionOffsetX: Number(e.target.value) })
+                      }
+                      className="w-full mt-2 accent-[#0a84ff]"
+                    />
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  {([3, 5, 10] as const).map((sec) => (
-                    <CapsuleButton
-                      key={sec}
-                      active={settings.hoverReturnSeconds === sec}
-                      accent="var(--accent-purple)"
-                      onClick={() => void commit({ ...settings, hoverReturnSeconds: sec })}
-                    >
-                      {sec}s
-                    </CapsuleButton>
-                  ))}
+              </AppleGroup>
+            </div>
+          )}
+
+          {/* Section: PAGES */}
+          {section === "pages" && (
+            <div className="space-y-6">
+              <AppleGroup title={msg.settings.sections.pages}>
+                <div className="p-4 space-y-2">
+                  <div className="text-xs text-[#8e8e93] mb-3">
+                    {msg.settings.pagesTab.description}
+                  </div>
+                  {settings.pageOrder.map((pageId, idx) => {
+                    const isHidden = settings.hiddenPages.includes(pageId);
+                    return (
+                      <div
+                        key={pageId}
+                        className="flex items-center justify-between rounded-xl bg-[#141416] p-3 border border-[#2c2c2e]/60"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xs font-mono text-[#8e8e93] w-4">{idx + 1}.</span>
+                          <span className="text-sm font-medium capitalize text-white">
+                            {pageId}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => movePage(idx, -1)}
+                            className="rounded-lg bg-[#2c2c2e] px-2.5 py-1 text-xs text-white hover:bg-[#3a3a3c] disabled:opacity-30 border-0 cursor-pointer"
+                          >
+                            {msg.settings.pagesTab.moveUp}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === settings.pageOrder.length - 1}
+                            onClick={() => movePage(idx, 1)}
+                            className="rounded-lg bg-[#2c2c2e] px-2.5 py-1 text-xs text-white hover:bg-[#3a3a3c] disabled:opacity-30 border-0 cursor-pointer"
+                          >
+                            {msg.settings.pagesTab.moveDown}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => togglePageVisibility(pageId)}
+                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold border-0 cursor-pointer ${
+                              isHidden
+                                ? "bg-[#ff453a]/20 text-[#ff453a]"
+                                : "bg-[#30d158]/20 text-[#30d158]"
+                            }`}
+                          >
+                            {isHidden
+                              ? msg.settings.pagesTab.hidden
+                              : msg.settings.pagesTab.visible}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            </SettingCard>
+              </AppleGroup>
+            </div>
+          )}
 
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.appearance.mascot}
-                hint={msg.settings.appearance.mascotHint}
-                checked={settings.mascotEnabled}
-                onChange={(v) => void commit({ ...settings, mascotEnabled: v })}
-              />
-            </SettingCard>
+          {/* Section: APPEARANCE */}
+          {section === "appearance" && (
+            <div className="space-y-6">
+              <AppleGroup title="Surface Styling">
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[13px] font-medium text-white">Island Shape</div>
+                      <div className="text-[12px] text-[#8e8e93]">
+                        Attached top notch or floating pill
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void commit({ ...settings, shapeStyle: "notch" })}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold border-0 cursor-pointer ${
+                          settings.shapeStyle === "notch"
+                            ? "bg-[#bf5af2] text-white"
+                            : "bg-[#2c2c2e] text-[#8e8e93] hover:text-white"
+                        }`}
+                      >
+                        Notch
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void commit({ ...settings, shapeStyle: "pill" })}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold border-0 cursor-pointer ${
+                          settings.shapeStyle === "pill"
+                            ? "bg-[#bf5af2] text-white"
+                            : "bg-[#2c2c2e] text-[#8e8e93] hover:text-white"
+                        }`}
+                      >
+                        Floating Pill
+                      </button>
+                    </div>
+                  </div>
 
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.appearance.headerClock}
-                checked={settings.showHeaderClock}
-                onChange={(v) => void commit({ ...settings, showHeaderClock: v })}
-              />
-            </SettingCard>
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
 
-            <SettingCard>
-              <ToggleRow
-                label={msg.settings.appearance.reduceMotion}
-                hint={msg.settings.appearance.reduceMotionHint}
-                checked={settings.reducedMotionOverride}
-                onChange={(v) => void commit({ ...settings, reducedMotionOverride: v })}
-              />
-            </SettingCard>
-          </div>
-        )}
+                  <AppleRow
+                    label="Reduce Motion Override"
+                    hint="Use faster 120ms transitions regardless of Windows OS settings"
+                  >
+                    <AppleToggle
+                      checked={settings.reducedMotionOverride}
+                      onChange={(v) => void commit({ ...settings, reducedMotionOverride: v })}
+                    />
+                  </AppleRow>
+                </div>
+              </AppleGroup>
+            </div>
+          )}
 
-        {section === "widgets" && (
-          <div className="flex flex-col gap-3">
-            <SettingCard>
-              <label className="flex items-center justify-between gap-4">
-                <span className="type-body text-sm">{msg.settings.widgetsTab.waterGoal}</span>
-                <input
-                  type="number"
-                  min={500}
-                  max={6000}
-                  step={250}
-                  value={settings.waterGoalMl}
-                  onChange={(e) =>
-                    void commit({
-                      ...settings,
-                      waterGoalMl: Math.max(250, Number(e.target.value) || 1500),
-                    })
-                  }
-                  className="type-caption w-24 rounded-lg border-0 px-3 py-1.5 tabular-nums"
-                  style={{
-                    backgroundColor: "var(--surface-button)",
-                    color: "var(--text-primary)",
-                  }}
-                />
-              </label>
-            </SettingCard>
+          {/* Section: MUSIC */}
+          {section === "music" && (
+            <div className="space-y-6">
+              <AppleGroup title="Media & Lyrics">
+                <div className="p-4 space-y-4">
+                  <div>
+                    <div className="text-[13px] font-medium text-white">Excluded Media Apps</div>
+                    <div className="text-[12px] text-[#8e8e93] mb-2">
+                      Hide sessions from specific apps (comma-separated, e.g. discord, slack)
+                    </div>
+                    <input
+                      type="text"
+                      value={settings.mediaExclusions.join(", ")}
+                      onChange={(e) => {
+                        const arr = e.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        void commit({ ...settings, mediaExclusions: arr });
+                      }}
+                      className="w-full rounded-lg bg-[#141416] px-3 py-2 text-xs text-white border border-[#2c2c2e] focus:border-[#ff375f] outline-none"
+                      placeholder="discord, zoom"
+                    />
+                  </div>
+                </div>
+              </AppleGroup>
+            </div>
+          )}
 
-            <SettingCard>
-              <label className="flex flex-col gap-2">
-                <span className="type-body text-sm">{msg.settings.widgetsTab.mediaExclusions}</span>
-                <input
-                  type="text"
-                  value={settings.mediaExclusions.join(", ")}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      mediaExclusions: e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  onBlur={() => void commit(settings)}
-                  placeholder="obs, teams, zoom"
-                  className="type-caption rounded-lg border-0 px-3 py-1.5"
-                  style={{
-                    backgroundColor: "var(--surface-button)",
-                    color: "var(--text-primary)",
-                  }}
-                />
-              </label>
-            </SettingCard>
+          {/* Section: NOTIFICATIONS */}
+          {section === "notifications" && (
+            <div className="space-y-6">
+              <AppleGroup title="Notification Privacy">
+                <div className="p-4 space-y-4">
+                  <AppleRow
+                    label="Notification Popups"
+                    hint="Show toast pills on the desktop island"
+                  >
+                    <AppleToggle
+                      checked={notifyCfg.enabled}
+                      onChange={(v) => void commitNotify({ ...notifyCfg, enabled: v })}
+                    />
+                  </AppleRow>
 
-            <SettingCard>
-              <div className="flex flex-col gap-3">
-                <ToggleRow
-                  label={msg.settings.widgetsTab.notifyEnabled}
-                  checked={notifyCfg.enabled}
-                  onChange={(v) => void commitNotify({ ...notifyCfg, enabled: v })}
-                />
-                <ToggleRow
-                  label={msg.settings.widgetsTab.hidePreviews}
-                  checked={notifyCfg.hide_previews}
-                  onChange={(v) => void commitNotify({ ...notifyCfg, hide_previews: v })}
-                />
-                <ToggleRow
-                  label={msg.settings.widgetsTab.respectFocusAssist}
-                  checked={notifyCfg.respect_focus_assist}
-                  onChange={(v) => void commitNotify({ ...notifyCfg, respect_focus_assist: v })}
-                />
-                <div>
-                  <CapsuleButton
-                    active
-                    accent="var(--accent-orange)"
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label="Hide Previews"
+                    hint="Mask the message body until you hover or click"
+                  >
+                    <AppleToggle
+                      checked={notifyCfg.hide_previews}
+                      onChange={(v) => void commitNotify({ ...notifyCfg, hide_previews: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label="Quiet in Full Screen"
+                    hint="Suppress popups when games or presentations are active"
+                  >
+                    <AppleToggle
+                      checked={notifyCfg.quiet_during_fullscreen}
+                      onChange={(v) =>
+                        void commitNotify({ ...notifyCfg, quiet_during_fullscreen: v })
+                      }
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <button
+                    type="button"
                     onClick={() =>
                       void notifyPushTest(
                         "Lumen",
-                        "Test Notification",
-                        "Notification pipeline active with privacy filtering.",
+                        "Test Alert",
+                        "Your dynamic island notifications are active",
                       )
                     }
+                    className="rounded-lg bg-[#0a84ff] px-4 py-2 text-xs font-semibold text-white border-0 cursor-pointer hover:bg-[#0071e3]"
                   >
-                    {msg.settings.widgetsTab.testNotify}
-                  </CapsuleButton>
+                    Send Test Notification
+                  </button>
                 </div>
-              </div>
-            </SettingCard>
-          </div>
-        )}
+              </AppleGroup>
+            </div>
+          )}
 
-        {section === "plugins" && (
-          <SettingCard>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                  {msg.settings.pluginsTab.folderHint}
-                </span>
-                <CapsuleButton
-                  active
-                  accent="var(--accent-red)"
-                  onClick={() => {
-                    if (onReloadPlugins) {
-                      onReloadPlugins();
-                    } else {
-                      void pluginsList().then(setDiscoveredPlugins);
-                    }
-                  }}
-                >
-                  {msg.settings.pluginsTab.reload}
-                </CapsuleButton>
-              </div>
-              {effectivePlugins.length === 0 ? (
-                <p className="type-body m-0 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  {msg.settings.pluginsTab.empty}
-                </p>
-              ) : (
-                effectivePlugins.map((plugin) => (
-                  <div
-                    key={plugin.id}
-                    className="flex items-center justify-between rounded-xl px-3 py-2"
-                    style={{ backgroundColor: "var(--surface)" }}
-                  >
+          {/* Section: WATER */}
+          {section === "water" && (
+            <div className="space-y-6">
+              <AppleGroup title="Hydration Settings">
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <div className="type-body text-sm">
-                        {plugin.name} · v{plugin.version}
-                      </div>
-                      <div className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                        {plugin.id}
-                      </div>
+                      <div className="text-[13px] font-medium text-white">Daily Water Goal</div>
+                      <div className="text-[12px] text-[#8e8e93]">Default is 1500 mL per day</div>
                     </div>
-                    <span className="type-caption" style={{ color: "var(--accent-cyan)" }}>
-                      {plugin.permissions.length > 0 ? plugin.permissions.join(", ") : "sandboxed"}
+                    <span className="text-sm font-mono text-[#32ade6]">
+                      {settings.waterGoalMl} mL
                     </span>
                   </div>
-                ))
-              )}
+                  <input
+                    type="range"
+                    min={500}
+                    max={4000}
+                    step={100}
+                    value={settings.waterGoalMl}
+                    onChange={(e) =>
+                      void commit({ ...settings, waterGoalMl: Number(e.target.value) })
+                    }
+                    className="w-full accent-[#32ade6]"
+                  />
+                </div>
+              </AppleGroup>
             </div>
-          </SettingCard>
-        )}
+          )}
 
-        {section === "about" && (
-          <SettingCard>
-            <div className="flex flex-col gap-2">
-              <div className="type-title">Lumen</div>
-              <p className="type-body m-0 text-sm" style={{ color: "var(--text-secondary)" }}>
-                {msg.settings.aboutTab.tagline}
-              </p>
-              <p className="type-caption m-0" style={{ color: "var(--text-secondary)" }}>
-                {msg.settings.aboutTab.author}
-              </p>
-              <p className="type-caption m-0" style={{ color: "var(--accent-green)" }}>
-                {msg.settings.aboutTab.license}
-              </p>
-              <a
-                href="https://github.com/devabunayem/lumen"
-                target="_blank"
-                rel="noreferrer"
-                className="type-caption mt-1"
-                style={{ color: "var(--accent-blue)" }}
-              >
-                https://github.com/devabunayem/lumen
-              </a>
+          {/* Section: PLUGINS */}
+          {section === "plugins" && (
+            <div className="space-y-6">
+              <AppleGroup title="Installed Plugins">
+                <div className="p-4 space-y-3">
+                  {effectivePlugins.length === 0 ? (
+                    <div className="text-xs text-[#8e8e93] py-2">
+                      No third-party plugins installed. Drop plugins into{" "}
+                      <code className="text-[#0a84ff]">%APPDATA%\Lumen\plugins</code>.
+                    </div>
+                  ) : (
+                    effectivePlugins.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between rounded-xl bg-[#141416] p-3 border border-[#2c2c2e]/60"
+                      >
+                        <div>
+                          <div className="text-sm font-medium text-white">{p.name}</div>
+                          <div className="text-xs text-[#8e8e93]">
+                            v{p.version} · {p.permissions.join(", ")}
+                          </div>
+                        </div>
+                        <span className="rounded bg-[#30d158]/20 px-2 py-0.5 text-xs text-[#30d158]">
+                          Active
+                        </span>
+                      </div>
+                    ))
+                  )}
+                  {onReloadPlugins && (
+                    <button
+                      type="button"
+                      onClick={onReloadPlugins}
+                      className="mt-2 rounded-lg bg-[#2c2c2e] px-3 py-1.5 text-xs text-white hover:bg-[#3a3a3c] border-0 cursor-pointer"
+                    >
+                      Reload Plugins
+                    </button>
+                  )}
+                </div>
+              </AppleGroup>
             </div>
-          </SettingCard>
-        )}
+          )}
+
+          {/* Section: ABOUT */}
+          {section === "about" && (
+            <div className="space-y-6">
+              <AppleGroup title="About Lumen">
+                <div className="p-6 text-center space-y-3">
+                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a84ff] to-[#bf5af2] text-3xl font-black text-white shadow-lg">
+                    L
+                  </div>
+                  <h2 className="text-lg font-bold text-white m-0">Lumen for Windows</h2>
+                  <p className="text-xs text-[#8e8e93] max-w-sm mx-auto m-0">
+                    Free, open-source Dynamic Island engineered for Windows 10 & 11 with native DWM
+                    and 60fps/120fps motion.
+                  </p>
+                  <div className="pt-2 text-[11px] text-[#636366]">
+                    Version 1.0.0 · MIT License · 100% Offline & Zero Telemetry
+                  </div>
+                </div>
+              </AppleGroup>
+            </div>
+          )}
+
+          {/* Fallback for other widgets */}
+          {["widgets", "todo", "pomodoro", "prayer", "shelf", "hud"].includes(section) && (
+            <div className="space-y-6">
+              <AppleGroup title={`${currentItem.label} Configuration`}>
+                <div className="p-4 text-xs text-[#8e8e93]">
+                  All live activity settings and alerts for {currentItem.label} are automatically
+                  synchronized with your active Notch state.
+                </div>
+              </AppleGroup>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
 }
 
-function SettingCard({ children }: { children: React.ReactNode }) {
+// ---------------- Helper Apple UI Components ----------------
+
+function AppleGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section
-      className="rounded-2xl p-4"
-      style={{
-        backgroundColor: "var(--surface-raised)",
-        border: "1px solid var(--hairline)",
-      }}
-    >
-      {children}
-    </section>
+    <div className="space-y-2">
+      <div className="px-1 text-xs font-semibold text-[#8e8e93]">{title}</div>
+      <div className="rounded-2xl bg-[#1c1c1e] border border-[#2c2c2e]/60 overflow-hidden shadow-sm">
+        {children}
+      </div>
+    </div>
   );
 }
 
-function ToggleRow({
+function AppleRow({
   label,
   hint,
-  checked,
-  onChange,
+  children,
 }: {
   label: string;
   hint?: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center justify-between gap-4">
-      <div>
-        <div className="type-body text-sm">{label}</div>
-        {hint && (
-          <div className="type-caption" style={{ color: "var(--text-secondary)" }}>
-            {hint}
-          </div>
-        )}
-      </div>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 cursor-pointer accent-blue-500"
-      />
-    </label>
-  );
-}
-
-function CapsuleButton({
-  active,
-  accent,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  accent: string;
-  onClick: () => void;
   children: React.ReactNode;
 }) {
   return (
+    <div className="flex items-center justify-between p-4">
+      <div className="pr-4">
+        <div className="text-[13px] font-medium text-white">{label}</div>
+        {hint && <div className="text-[12px] text-[#8e8e93] mt-0.5">{hint}</div>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function AppleToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
     <button
       type="button"
-      onClick={onClick}
-      className="type-caption cursor-pointer rounded-full border-0 px-3 py-1.5 font-semibold"
-      style={{
-        backgroundColor: active ? accent : "var(--surface-button)",
-        color: active ? "#000000" : "var(--text-primary)",
-      }}
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+        checked ? "bg-[#30d158]" : "bg-[#39393d]"
+      }`}
     >
-      {children}
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+          checked ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
     </button>
   );
 }

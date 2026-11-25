@@ -548,6 +548,13 @@ export async function openSettingsWindow(): Promise<void> {
   await invoke("open_settings_window");
 }
 
+export async function closeSettingsWindow(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("close_settings_window");
+}
+
 export async function subscribeSettingsUpdated(
   onUpdate: (settings: LumenSettings) => void,
 ): Promise<UnlistenFn> {
