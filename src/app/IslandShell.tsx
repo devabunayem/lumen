@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, PinIcon, SettingsIcon } from "../design/icons";
+import { PinIcon, SettingsIcon } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import { type AppLanguage, getMessages } from "../i18n";
@@ -165,7 +165,6 @@ export function IslandShell({
   const showHeaderClock = clockDateOverride ?? showHeaderClockSetting;
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [slideDirection, setSlideDirection] = useState<1 | -1>(1);
-  const [isHeaderHovered, setIsHeaderHovered] = useState(false);
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
@@ -694,7 +693,6 @@ export function IslandShell({
         }}
         onMouseEnter={() => {
           isHoveredRef.current = true;
-          setIsHeaderHovered(true);
           clearHoverTimers();
           setSlimReturnActive(false);
           if (!isExpanded && !isHidden && !isHud && !isNotify && hoverToOpen) {
@@ -710,7 +708,6 @@ export function IslandShell({
         }}
         onMouseLeave={() => {
           isHoveredRef.current = false;
-          setIsHeaderHovered(false);
           if (hoverOpenTimerRef.current !== null) {
             window.clearTimeout(hoverOpenTimerRef.current);
             hoverOpenTimerRef.current = null;
@@ -1056,24 +1053,6 @@ export function IslandShell({
                 </div>
 
                 <div className="relative flex min-h-0 flex-1 items-center overflow-hidden">
-                  {isHeaderHovered && (
-                    <button
-                      type="button"
-                      aria-label={msg.pill.prevPage}
-                      onClick={() => {
-                        setSlideDirection(-1);
-                        setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length);
-                      }}
-                      className="type-caption absolute -left-2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 shadow-md"
-                      style={{
-                        backgroundColor: "var(--surface-button)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      <ChevronLeftIcon size={13} />
-                    </button>
-                  )}
-
                   <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
                     <motion.div
                       key={activePage.id}
@@ -1292,24 +1271,6 @@ export function IslandShell({
                       {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
                     </motion.div>
                   </AnimatePresence>
-
-                  {isHeaderHovered && (
-                    <button
-                      type="button"
-                      aria-label={msg.pill.nextPage}
-                      onClick={() => {
-                        setSlideDirection(1);
-                        setActivePageIndex((idx) => (idx + 1) % pages.length);
-                      }}
-                      className="type-caption absolute -right-2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 shadow-md"
-                      style={{
-                        backgroundColor: "var(--surface-button)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      <ChevronRightIcon size={13} />
-                    </button>
-                  )}
                 </div>
 
                 <div className="flex items-center justify-center gap-1.5">
