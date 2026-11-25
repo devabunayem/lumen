@@ -14,14 +14,6 @@ export interface WaterWidgetProps {
   onChangeGoal: (goalMl: number) => void;
 }
 
-function formatWaterAmount(ml: number): { value: string; unit: string } {
-  if (ml < 1000) {
-    return { value: String(ml), unit: "ml" };
-  }
-  const liters = Number((ml / 1000).toFixed(2));
-  return { value: String(liters), unit: "L" };
-}
-
 export function WaterWidget({
   summary,
   servingMl,
@@ -53,12 +45,6 @@ export function WaterWidget({
     return () => window.clearTimeout(timer);
   }, [undoEntryId]);
 
-  const radius = 34;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - clampedGaugePct / 100);
-  const formatted = formatWaterAmount(todayMl);
-  const formattedGoal = Number((goalMl / 1000).toFixed(1));
-
   const triggerDrink = (ml: number) => {
     onDrink(ml);
     if (summary?.last_entry_id) {
@@ -73,22 +59,62 @@ export function WaterWidget({
     }
   };
 
+  // Open 270-degree arc gauge math
+  const r = 32;
+  const c = 2 * Math.PI * r;
+  const arcLen = c * 0.75; // 270 deg
+  const filledArc = arcLen * (clampedGaugePct / 100);
+  const dotAngleDeg = 135 + (clampedGaugePct / 100) * 270;
+  const dotAngleRad = (dotAngleDeg * Math.PI) / 180;
+  const dotX = 41 + r * Math.cos(dotAngleRad);
+  const dotY = 41 + r * Math.sin(dotAngleRad);
+
   return (
-    <div className="flex h-full w-full items-center justify-between gap-3 overflow-hidden">
-      {/* Left block: amount, progress, Drink / Undo / Settings capsules */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
-        <div className="flex items-baseline gap-2">
-          <span className="type-display tabular-nums" style={{ color: "var(--text-primary)" }}>
-            {formatted.value}
-            <span className="type-body ml-1" style={{ color: "var(--text-secondary)" }}>
-              {formatted.unit}
+    <div className="flex h-full w-full items-stretch justify-between gap-3 overflow-hidden px-0.5">
+      {/* Left block: 0.0 / 1.5 L + bell toggle, Today · 0%, progress bar, Drink + Settings */}
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-1.5">
+            <span
+              className="text-[28px] font-bold leading-none tracking-tight tabular-nums"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {(todayMl / 1000).toFixed(1)}
             </span>
-          </span>
-          <span className="type-caption tabular-nums" style={{ color: "var(--text-secondary)" }}>
-            / {formattedGoal} L
+            <span className="type-caption tabular-nums" style={{ color: "var(--text-secondary)" }}>
+              / {(goalMl / 1000).toFixed(1)} L
+            </span>
+          </div>
+
+          {/* iOS-style Bell Toggle Switch */}
+          <button
+            type="button"
+            aria-label="Toggle hydration reminders"
+            aria-pressed={remindersEnabled}
+            onClick={onToggleReminders}
+            className="relative flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-0 p-0.5 transition-colors"
+            style={{
+              backgroundColor: remindersEnabled ? "var(--accent-blue)" : "var(--surface-button)",
+            }}
+          >
+            <span
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-white transition-transform"
+              style={{
+                transform: remindersEnabled ? "translateX(20px)" : "translateX(0px)",
+                color: remindersEnabled ? "var(--accent-blue)" : "var(--surface)",
+              }}
+            >
+              <BellIcon size={11} />
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] tabular-nums">
+          <span style={{ color: "var(--text-secondary)" }}>
+            Today · <span style={{ color: "var(--accent-blue)" }}>{pct}%</span>
           </span>
           {goalReached && (
-            <span className="type-caption font-semibold" style={{ color: "var(--accent-green)" }}>
+            <span className="font-semibold" style={{ color: "var(--accent-green)" }}>
               Goal reached
             </span>
           )}
@@ -96,7 +122,7 @@ export function WaterWidget({
 
         {/* Thin progress bar */}
         <div
-          className="h-1.5 w-full overflow-hidden rounded-full"
+          className="h-1 w-full overflow-hidden rounded-full"
           style={{ backgroundColor: "var(--surface-button)" }}
         >
           <motion.div
@@ -157,7 +183,8 @@ export function WaterWidget({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              title="Tap to log · Hold or right-click for sizes"
+              aria-label={`Drink +${activeServing} ml`}
+              title={`Tap +${activeServing} ml · Hold for sizes`}
               onPointerDown={() => {
                 longPressedRef.current = false;
                 clearLongPress();
@@ -179,14 +206,18 @@ export function WaterWidget({
                 }
                 triggerDrink(activeServing);
               }}
-              className="type-caption cursor-pointer rounded-full border-0 px-3.5 font-semibold"
+              className="type-caption flex cursor-pointer items-center gap-1.5 rounded-full border-0 px-3.5 font-semibold transition-transform active:scale-95"
               style={{
                 height: "var(--capsule-height)",
-                backgroundColor: "var(--accent-blue)",
+                backgroundColor: "rgba(10, 132, 255, 0.24)",
+                border: "1px solid rgba(10, 132, 255, 0.45)",
                 color: "var(--text-primary)",
               }}
             >
-              Drink +{activeServing} ml
+              <span style={{ color: "var(--accent-cyan)" }}>
+                <DropletIcon size={12} />
+              </span>
+              <span>Drink</span>
             </button>
 
             {undoEntryId !== null && (
@@ -217,30 +248,16 @@ export function WaterWidget({
                 color: "var(--text-secondary)",
               }}
             >
-              Goal
-            </button>
-
-            <button
-              type="button"
-              aria-label="Toggle hydration reminders"
-              aria-pressed={remindersEnabled}
-              onClick={onToggleReminders}
-              className="type-caption flex w-8 cursor-pointer items-center justify-center rounded-full bg-transparent transition-colors"
-              style={{
-                height: "var(--capsule-height)",
-                border: remindersEnabled
-                  ? "1px solid var(--accent-blue)"
-                  : "1px solid var(--hairline-strong)",
-                color: remindersEnabled ? "var(--accent-blue)" : "var(--text-secondary)",
-              }}
-            >
-              <BellIcon size={14} />
+              Settings
             </button>
           </div>
         )}
       </div>
 
-      {/* Right block: free-floating tappable circular gauge (no heavy box) */}
+      {/* Subtle vertical divider */}
+      <div className="my-1 w-px self-stretch bg-white/10" />
+
+      {/* Right block: Free-floating 270° open-arc gauge with glowing dot */}
       <motion.button
         type="button"
         whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
@@ -248,50 +265,47 @@ export function WaterWidget({
         aria-label={`Log +${activeServing} ml water`}
         title={`Tap to add +${activeServing} ml`}
         onClick={() => triggerDrink(activeServing)}
-        className="relative flex h-[84px] w-[84px] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0"
+        className="relative flex w-[38%] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0"
       >
-        <svg
-          width="78"
-          height="78"
-          viewBox="0 0 82 82"
-          aria-hidden="true"
-          style={{
-            filter:
-              pct === 0
-                ? "drop-shadow(0 0 6px rgba(10, 132, 255, 0.24))"
-                : "drop-shadow(0 0 8px rgba(10, 132, 255, 0.35))",
-          }}
-        >
+        <svg width="84" height="84" viewBox="0 0 82 82" aria-hidden="true">
           <circle
             cx="41"
             cy="41"
-            r={radius}
+            r={r}
             fill="none"
-            stroke="rgba(10, 132, 255, 0.16)"
-            strokeWidth="6"
-          />
-          <circle
-            cx="41"
-            cy="41"
-            r={radius}
-            fill="none"
-            stroke="var(--accent-blue)"
-            strokeWidth="6"
+            stroke="rgba(10, 132, 255, 0.18)"
+            strokeWidth="5.5"
             strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-            transform="rotate(-90 41 41)"
+            strokeDasharray={`${arcLen} ${c}`}
+            transform="rotate(135 41 41)"
           />
+          {clampedGaugePct > 0 && (
+            <circle
+              cx="41"
+              cy="41"
+              r={r}
+              fill="none"
+              stroke="var(--accent-blue)"
+              strokeWidth="5.5"
+              strokeLinecap="round"
+              strokeDasharray={`${filledArc} ${c}`}
+              transform="rotate(135 41 41)"
+            />
+          )}
+          <circle cx={dotX} cy={dotY} r="3.8" fill="var(--accent-cyan)" />
         </svg>
-        <div className="absolute flex flex-col items-center gap-0.5">
-          <span style={{ color: "var(--accent-blue)" }}>
-            <DropletIcon size={13} />
-          </span>
+        <div className="absolute flex flex-col items-center">
           <span
-            className="type-caption font-semibold tabular-nums"
+            className="text-[22px] font-bold leading-none tabular-nums"
             style={{ color: "var(--text-primary)" }}
           >
-            {pct}%
+            {pct}
+          </span>
+          <span className="mt-0.5 flex items-center gap-0.5 text-[10px]">
+            <span style={{ color: "var(--accent-cyan)" }}>
+              <DropletIcon size={9} />
+            </span>
+            <span style={{ color: "var(--text-secondary)" }}>%</span>
           </span>
         </div>
       </motion.button>

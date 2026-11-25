@@ -1,3 +1,5 @@
+import { motion, useReducedMotion } from "motion/react";
+import { getMotionTransition } from "../../design/motion";
 import type { PomodoroSnapshot } from "../../lib/ipc";
 
 export interface PomodoroWidgetProps {
@@ -13,18 +15,8 @@ function formatTimer(secs: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-function phaseLabel(phase: PomodoroSnapshot["phase"]): string {
-  switch (phase) {
-    case "focus":
-      return "Focus Session";
-    case "short_break":
-      return "Short Break";
-    case "long_break":
-      return "Long Break";
-  }
-}
-
 export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: PomodoroWidgetProps) {
+  const prefersReducedMotion = useReducedMotion() ?? false;
   const snap: PomodoroSnapshot = pomodoro ?? {
     phase: "focus",
     remaining_secs: 25 * 60,
@@ -36,120 +28,183 @@ export function PomodoroWidget({ pomodoro, onToggle, onSkip, onReset }: Pomodoro
     chime_tick: 0,
   };
 
-  const ratio = snap.total_secs > 0 ? snap.remaining_secs / snap.total_secs : 0;
-  const radius = 34;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - Math.min(1, Math.max(0, ratio)));
+  const progressPct =
+    snap.total_secs > 0
+      ? Math.min(
+          100,
+          Math.max(0, ((snap.total_secs - snap.remaining_secs) / snap.total_secs) * 100),
+        )
+      : 0;
+  const currentRound = Math.min(snap.cycles_before_long, snap.cycle_index + 1);
+  const totalMins = Math.round(snap.total_secs / 60);
+  const phaseWord =
+    snap.phase === "focus" ? "Focus" : snap.phase === "short_break" ? "Break" : "Long Break";
 
   return (
-    <div className="flex h-full w-full items-center justify-between gap-3 overflow-hidden">
-      {/* Left block: big timer, session dots & controls (FR-PO-1..3) */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
-        <div className="flex items-center justify-between">
-          <span className="type-caption font-semibold" style={{ color: "var(--accent-orange)" }}>
-            {phaseLabel(snap.phase)}
-          </span>
-          <span className="type-caption tabular-nums" style={{ color: "var(--text-secondary)" }}>
-            {snap.daily_focus_minutes} min focused today
-          </span>
+    <div className="flex h-full w-full items-stretch justify-between gap-3 overflow-hidden px-0.5">
+      {/* Left block: round label, big bold timer, status & progress bar */}
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+        <span className="type-caption font-medium" style={{ color: "var(--text-secondary)" }}>
+          {phaseWord} · {currentRound} of {snap.cycles_before_long}
+        </span>
+
+        <span
+          className="text-[30px] font-bold leading-none tracking-tight tabular-nums"
+          style={{ color: "var(--text-primary)" }}
+        >
+          {formatTimer(snap.remaining_secs)}
+        </span>
+
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold">
+          <span style={{ color: "var(--text-primary)" }}>{totalMins} min</span>
+          <span style={{ color: "var(--accent-purple)" }}>{snap.running ? "Live" : "Ready"}</span>
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="type-display tabular-nums" style={{ color: "var(--text-primary)" }}>
-            {formatTimer(snap.remaining_secs)}
-          </span>
-
-          <div className="flex items-center gap-1.5" aria-label="Pomodoro session dots">
-            {Array.from({ length: snap.cycles_before_long }).map((_, idx) => (
-              <span
-                key={idx}
-                className="h-2 w-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    idx < snap.cycle_index ? "var(--accent-orange)" : "var(--surface-button)",
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="type-caption cursor-pointer rounded-full border-0 px-4 font-semibold"
-            style={{
-              height: "var(--capsule-height)",
-              backgroundColor: "var(--accent-orange)",
-              color: "var(--surface)",
-            }}
-          >
-            {snap.running ? "Pause" : "Start"}
-          </button>
-          <button
-            type="button"
-            onClick={onSkip}
-            className="type-caption cursor-pointer rounded-full border-0 px-3"
-            style={{
-              height: "var(--capsule-height)",
-              backgroundColor: "var(--surface-button)",
-              color: "var(--text-primary)",
-            }}
-          >
-            Skip
-          </button>
-          <button
-            type="button"
-            onClick={onReset}
-            className="type-caption cursor-pointer rounded-full border-0 px-3"
-            style={{
-              height: "var(--capsule-height)",
-              backgroundColor: "var(--surface-button)",
-              color: "var(--text-secondary)",
-            }}
-          >
-            Reset
-          </button>
+        <div
+          className="h-1 w-full overflow-hidden rounded-full"
+          style={{ backgroundColor: "var(--surface-button)" }}
+        >
+          <motion.div
+            className="h-full rounded-full"
+            style={{ backgroundColor: "var(--accent-purple)" }}
+            initial={false}
+            animate={{ width: `${progressPct}%` }}
+            transition={getMotionTransition("progressSpring", prefersReducedMotion)}
+          />
         </div>
       </div>
 
-      {/* Right ring */}
-      <div
-        className="relative flex h-[86px] w-[86px] shrink-0 items-center justify-center"
-        style={{
-          backgroundColor: "var(--surface-raised)",
-          borderRadius: "var(--card-radius)",
-          border: "1px solid var(--hairline)",
-        }}
-      >
-        <svg width="74" height="74" viewBox="0 0 82 82" aria-hidden="true">
-          <circle
-            cx="41"
-            cy="41"
-            r={radius}
-            fill="none"
-            stroke="var(--surface-button)"
-            strokeWidth="6"
-          />
-          <circle
-            cx="41"
-            cy="41"
-            r={radius}
-            fill="none"
-            stroke="var(--accent-orange)"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-            transform="rotate(-90 41 41)"
-          />
-        </svg>
-        <span
-          className="type-caption absolute font-medium"
-          style={{ color: "var(--accent-orange)" }}
-        >
-          {snap.running ? "Live" : "Ready"}
-        </span>
+      {/* Subtle vertical divider */}
+      <div className="my-1 w-px self-stretch bg-white/10" />
+
+      {/* Right block: This round + Start/Reset/Skip + 4-round segmented timeline */}
+      <div className="flex w-[50%] flex-col justify-between py-0.5">
+        <div className="flex items-center justify-between gap-1.5">
+          <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
+            This round
+          </span>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onToggle}
+              className="type-caption cursor-pointer rounded-full border-0 px-4 font-semibold text-white transition-transform active:scale-95"
+              style={{
+                height: "26px",
+                backgroundColor: "var(--accent-purple)",
+              }}
+            >
+              {snap.running ? "Pause" : "Start"}
+            </button>
+
+            <button
+              type="button"
+              aria-label="Reset"
+              title="Reset timer"
+              onClick={onReset}
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95"
+              style={{
+                backgroundColor: "var(--surface-button)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              aria-label="Skip"
+              title="Skip phase"
+              onClick={onSkip}
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 transition-transform active:scale-95"
+              style={{
+                backgroundColor: "var(--surface-button)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <polygon points="5 4 15 12 5 20 5 4" />
+                <rect x="17" y="4" width="2.5" height="16" rx="1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Segmented round timeline: 1 · 2 · 3 · 4 · Long */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1">
+            {[0, 1, 2, 3].map((idx) => {
+              const filled = idx < snap.cycle_index;
+              const active = idx === snap.cycle_index && snap.phase === "focus";
+              return (
+                <div key={idx} className="flex flex-1 items-center gap-1">
+                  <div
+                    className="h-1.5 flex-1 rounded-full"
+                    style={{
+                      backgroundColor: filled
+                        ? "var(--accent-purple)"
+                        : active
+                          ? "rgba(191, 90, 242, 0.45)"
+                          : "var(--surface-button)",
+                    }}
+                  />
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-white/25" />
+                </div>
+              );
+            })}
+            <div
+              className="h-1.5 w-6 shrink-0 rounded-full"
+              style={{
+                backgroundColor:
+                  snap.phase === "long_break" ? "var(--accent-purple)" : "var(--surface-button)",
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between px-2 text-[10px] tabular-nums">
+            {[1, 2, 3, 4].map((num) => (
+              <span
+                key={num}
+                style={{
+                  color: num === currentRound ? "var(--text-primary)" : "var(--text-tertiary)",
+                  fontWeight: num === currentRound ? 600 : 400,
+                }}
+              >
+                {num}
+              </span>
+            ))}
+            <span
+              style={{
+                color: snap.phase === "long_break" ? "var(--text-primary)" : "var(--text-tertiary)",
+              }}
+            >
+              Long
+            </span>
+          </div>
+        </div>
+
+        <div className="text-[11px] tabular-nums" style={{ color: "var(--text-secondary)" }}>
+          {snap.daily_focus_minutes} min focused today
+        </div>
       </div>
     </div>
   );
