@@ -492,7 +492,7 @@ impl LumenSettings {
         if !matches!(self.language.as_str(), "en" | "bn") {
             self.language = default_language();
         }
-        self.hover_return_seconds = self.hover_return_seconds.clamp(1, 30);
+        self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
         self.position_offset_x = self.position_offset_x.clamp(-400, 400);
         self.water_goal_ml = self.water_goal_ml.clamp(250, 10_000);
         if self.hotkey_hide.trim().is_empty() {

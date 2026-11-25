@@ -608,6 +608,34 @@ export function SettingsWindow({
                       onChange={(v) => void commit({ ...settings, hoverToOpen: v })}
                     />
                   </AppleRow>
+
+                  {settings.hoverToOpen && (
+                    <>
+                      <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                      <AppleRow
+                        label={msg.settings.appearance.hoverReturnSeconds}
+                        hint={msg.settings.appearance.hoverReturnSecondsHint}
+                      >
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {[0, 3, 5, 10, 15].map((secs) => (
+                            <button
+                              key={secs}
+                              type="button"
+                              onClick={() => void commit({ ...settings, hoverReturnSeconds: secs })}
+                              className={`rounded-lg px-2.5 py-1 text-xs font-semibold border-0 cursor-pointer transition-all ${
+                                settings.hoverReturnSeconds === secs
+                                  ? "bg-[#0a84ff] text-white"
+                                  : "bg-[#2c2c2e] text-[#8e8e93] hover:text-white"
+                              }`}
+                            >
+                              {secs === 0 ? "Immediate" : `${secs}s`}
+                            </button>
+                          ))}
+                        </div>
+                      </AppleRow>
+                    </>
+                  )}
                 </div>
               </AppleGroup>
 
