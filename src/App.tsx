@@ -1,19 +1,42 @@
 import { useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { IslandShell } from "./app/IslandShell";
 import type { ShapeStyle } from "./design/tokens";
 import { settingsGet, settingsUpdate, subscribeSettingsUpdated } from "./lib/ipc";
 import { DEFAULT_SETTINGS, type LumenSettings, resolveSettingsScaleFactor } from "./settings";
 import { SettingsWindow } from "./settings/SettingsWindow";
 
+function detectIsSettingsWindow(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get("window") === "settings") {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  if (window.location.hash.includes("settings")) {
+    return true;
+  }
+  try {
+    if (getCurrentWindow().label === "settings") {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  const anyWin = window as unknown as {
+    __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } };
+  };
+  return anyWin.__TAURI_INTERNALS__?.metadata?.currentWindow?.label === "settings";
+}
+
 export function App() {
   const [settings, setSettings] = useState<LumenSettings>(DEFAULT_SETTINGS);
-  const isSettingsWindow =
-    typeof window !== "undefined" &&
-    (new URLSearchParams(window.location.search).get("window") === "settings" ||
-      window.location.hash.includes("settings") ||
-      (typeof window !== "undefined" &&
-        (window as unknown as { __TAURI_METADATA__?: { currentWindow?: { label?: string } } })
-          .__TAURI_METADATA__?.currentWindow?.label === "settings"));
+  const isSettingsWindow = detectIsSettingsWindow();
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
