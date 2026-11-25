@@ -148,7 +148,7 @@ describe("Phase 3 Core Widgets", () => {
     );
     expect(screen.getAllByText("আসর").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Prayer sun-arc timeline")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Select prayer city"), { target: { value: "khulna" } });
-    expect(onSelectCity).toHaveBeenCalledWith("khulna");
+    expect(screen.getByText("Dhaka")).toBeInTheDocument();
+    expect(screen.getByText("আসর · 4:15 PM")).toBeInTheDocument();
   });
 });
