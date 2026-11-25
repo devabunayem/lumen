@@ -283,3 +283,34 @@ export function ScanTextIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function ChevronUpIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
+export function CoffeeIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
+      <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
+      <line x1="6" y1="2" x2="6" y2="4" />
+      <line x1="10" y1="2" x2="10" y2="4" />
+      <line x1="14" y1="2" x2="14" y2="4" />
+    </svg>
+  );
+}
+
+export function GridIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <rect x="3" y="3" width="7" height="7" rx="2" />
+      <rect x="14" y="3" width="7" height="7" rx="2" />
+      <rect x="14" y="14" width="7" height="7" rx="2" />
+      <rect x="3" y="14" width="7" height="7" rx="2" />
+    </svg>
+  );
+}
