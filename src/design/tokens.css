@@ -32,8 +32,8 @@
   --hud-w: 340px;
   --hud-h: 60px;
 
-  --island-padding: 16px;
-  --island-gap: 10px;
+  --island-padding: 12px;
+  --island-gap: 6px;
   --card-radius: 18px;
   --capsule-height: 32px;
   --pill-float-offset: 8px;
@@ -43,6 +43,12 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }
 
 html,

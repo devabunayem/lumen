@@ -27,8 +27,8 @@ export const BASE_GEOMETRY = {
   hud: { width: 340, height: 60 },
   notchBottomRadius: 24,
   pillFloatOffset: 8,
-  innerPadding: 16,
-  blockGap: 10,
+  innerPadding: 12,
+  blockGap: 6,
   innerCardRadius: 18,
   capsuleButtonHeight: 32,
 } as const;

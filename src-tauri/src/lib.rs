@@ -760,7 +760,7 @@ async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     .inner_size(920.0, 640.0)
     .min_inner_size(780.0, 540.0)
     .center()
-    .decorations(true)
+    .decorations(false)
     .transparent(false)
     .build()
     .map_err(|e| format!("failed to open settings window: {e}"))?;
