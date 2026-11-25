@@ -6,6 +6,8 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Camera & Mic Privacy Indicators + Calendar Agenda (Phase 4):** Added real-time Windows `CapabilityAccessManager\ConsentStore` webcam/microphone active detection (`lumen-windows::privacy_device_status`) displaying Apple-style green/orange indicator dots in the notch, plus a local SQLite-backed `Today Agenda` (`CalendarWidget`) with live event countdowns.
+
 - **Screenshot Capture, Offline Screen OCR & File Shelf Sync (Phase 3):** Added native Win32 GDI + WinRT `BitmapEncoder` PNG screenshot capture that auto-drops captures into the File Shelf, plus offline WinRT `Windows.Media.Ocr` screen text extraction to clipboard with one-click "Save OCR as To-Do" integration inside the Control Center.
 
 - **Control Panel Home Hub & Core System Actions (Phase 2):** Added a default `Control Center` first page featuring one-tap Windows Core Audio microphone mute/unmute (`eCapture`), Quiet/DND notification toggle, `LockWorkStation` PC lock, and connected live glance cards for To-Do count, Water intake, Pomodoro countdown, and active Music playback.

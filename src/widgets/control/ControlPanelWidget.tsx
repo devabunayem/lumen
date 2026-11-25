@@ -10,6 +10,8 @@ import {
   ScanTextIcon,
 } from "../../design/icons";
 import {
+  type CalendarEvent,
+  calendarList,
   type MediaStateSnapshot,
   notifyGetConfig,
   notifySetConfig,
@@ -30,6 +32,8 @@ export interface ControlPanelWidgetProps {
   media: MediaStateSnapshot | null;
   pomodoro: PomodoroSnapshot | null;
   waterGoalMl: number;
+  cameraActive?: boolean;
+  micActive?: boolean;
   language: "en" | "bn";
   onNavigatePage: (pageId: string) => void;
 }
@@ -38,12 +42,15 @@ export function ControlPanelWidget({
   media,
   pomodoro,
   waterGoalMl,
+  cameraActive = false,
+  micActive = false,
   language,
   onNavigatePage,
 }: ControlPanelWidgetProps) {
   const [micMuted, setMicMuted] = useState(false);
   const [quietMode, setQuietMode] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [water, setWater] = useState<WaterSummary | null>(null);
   const [statusChip, setStatusChip] = useState<string | null>(null);
   const [ocrSnippet, setOcrSnippet] = useState<string | null>(null);
@@ -53,6 +60,7 @@ export function ControlPanelWidget({
     void systemGetMicMuted().then((m) => active && setMicMuted(m));
     void notifyGetConfig().then((cfg) => active && cfg && setQuietMode(!cfg.enabled));
     void tasksList().then((list) => active && setTasks(list));
+    void calendarList().then((evs) => active && setEvents(evs));
     void waterGetSummary(waterGoalMl).then((w) => active && w && setWater(w));
     return () => {
       active = false;
@@ -157,11 +165,29 @@ export function ControlPanelWidget({
           onClick={() => void systemLockWorkstation()}
         />
         <ActionTile
-          active={Boolean(media?.active?.is_playing)}
-          activeColor="var(--accent-green)"
-          icon={<span className="text-[11px] font-bold">♪</span>}
-          label={media?.active?.title ? media.active.title : isBn ? "মিডিয়া" : "Music"}
-          onClick={() => onNavigatePage("music")}
+          active={Boolean(media?.active?.is_playing) || cameraActive || micActive}
+          activeColor={
+            cameraActive
+              ? "var(--accent-green)"
+              : micActive
+                ? "var(--accent-orange)"
+                : "var(--accent-green)"
+          }
+          icon={<span className="text-[11px] font-bold">{cameraActive ? "●" : "♪"}</span>}
+          label={
+            cameraActive
+              ? isBn
+                ? "ক্যামেরা অন"
+                : "Cam Live"
+              : media?.active?.title
+                ? media.active.title
+                : events.length > 0
+                  ? events[0].title
+                  : isBn
+                    ? "অ্যাজেন্ডা"
+                    : "Agenda"
+          }
+          onClick={() => onNavigatePage(events.length > 0 ? "calendar" : "music")}
         />
       </div>
 

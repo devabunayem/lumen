@@ -16,6 +16,8 @@
     "controlAccent": "Center",
     "musicLead": "Now",
     "musicAccent": "Playing",
+    "calendarLead": "Today",
+    "calendarAccent": "Agenda",
     "todoLead": "Todo",
     "todoAccent": "List",
     "waterLead": "Water",

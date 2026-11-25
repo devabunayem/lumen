@@ -21,13 +21,13 @@ use lumen_plugins::{LoadedPlugin, discover_plugins};
 use lumen_prayer::{
     BANGLADESH_CITIES, PrayerCityPreset, PrayerConfig, PrayerSchedule, compute_prayer_schedule,
 };
-use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
+use lumen_storage::{CalendarEvent, ShelfItem, StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{
     GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
     capture_screen_to_png, compute_pill_screen_rect, compute_top_center_position,
     cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
-    lock_workstation, ocr_screen_to_clipboard, open_shell_target, set_autostart_enabled,
-    set_click_through, set_window_bounds_atomic,
+    lock_workstation, ocr_screen_to_clipboard, open_shell_target, privacy_device_status,
+    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -838,6 +838,32 @@ async fn system_ocr_screen(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn system_privacy_indicators() -> Result<(bool, bool), String> {
+    tokio::task::spawn_blocking(privacy_device_status)
+        .await
+        .map_err(|e| format!("privacy status error: {e}"))
+}
+
+#[tauri::command]
+fn calendar_list(state: State<'_, AppState>) -> Result<Vec<CalendarEvent>, String> {
+    state.storage.list_calendar_events()
+}
+
+#[tauri::command]
+fn calendar_add(
+    title: String,
+    start_at: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<CalendarEvent>, String> {
+    state.storage.add_calendar_event(&title, &start_at)
+}
+
+#[tauri::command]
+fn calendar_delete(id: i64, state: State<'_, AppState>) -> Result<Vec<CalendarEvent>, String> {
+    state.storage.delete_calendar_event(id)
+}
+
+#[tauri::command]
 fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
     discover_plugins(&state.plugins_dir)
 }
@@ -1220,6 +1246,10 @@ pub fn run() {
             system_lock_workstation,
             system_capture_screenshot,
             system_ocr_screen,
+            system_privacy_indicators,
+            calendar_list,
+            calendar_add,
+            calendar_delete,
             plugins_list
         ])
         .run(tauri::generate_context!())

@@ -4,6 +4,7 @@ import type { LumenWidget } from "./types";
 export const BUILTIN_WIDGET_IDS = [
   "control",
   "music",
+  "calendar",
   "todo",
   "water",
   "prayer",

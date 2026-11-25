@@ -44,6 +44,7 @@ import {
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
+  systemPrivacyIndicators,
   type TaskItem,
   tasksAdd,
   tasksDelete,
@@ -56,6 +57,7 @@ import {
 } from "../lib/ipc";
 import { DEFAULT_SETTINGS } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
+import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
 import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
 import { MusicWidget } from "../widgets/music/MusicWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
@@ -184,6 +186,20 @@ export function IslandShell({
   const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const [slimReturnActive, setSlimReturnActive] = useState(false);
+  const [privacyDevices, setPrivacyDevices] = useState<[boolean, boolean]>([false, false]);
+
+  useEffect(() => {
+    let active = true;
+    const poll = () => {
+      void systemPrivacyIndicators().then((res) => active && setPrivacyDevices(res));
+    };
+    poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const pillRef = useRef<HTMLDivElement | null>(null);
   const hudTimerRef = useRef<number | null>(null);
@@ -263,6 +279,15 @@ export function IslandShell({
           titleLead: msg.pages.musicLead,
           titleAccent: msg.pages.musicAccent,
           accentVar: media?.active?.accent_hex || "var(--accent-blue)",
+        },
+      ],
+      [
+        "calendar",
+        {
+          id: "calendar",
+          titleLead: msg.pages.calendarLead,
+          titleAccent: msg.pages.calendarAccent,
+          accentVar: "var(--accent-orange)",
         },
       ],
       [
@@ -862,12 +887,32 @@ export function IslandShell({
                       )}
                     </div>
 
-                    <span
-                      className="type-header-clock tabular-nums"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {clock.timeText}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {(privacyDevices[0] || privacyDevices[1]) && (
+                        <span className="flex items-center gap-1" aria-label="Active sensor">
+                          {privacyDevices[0] && (
+                            <span
+                              title="Camera active"
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: "var(--accent-green)" }}
+                            />
+                          )}
+                          {privacyDevices[1] && (
+                            <span
+                              title="Microphone active"
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: "var(--accent-orange)" }}
+                            />
+                          )}
+                        </span>
+                      )}
+                      <span
+                        className="type-header-clock tabular-nums"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {clock.timeText}
+                      </span>
+                    </div>
                   </>
                 )}
               </motion.div>
@@ -1061,6 +1106,8 @@ export function IslandShell({
                           media={media}
                           pomodoro={pomodoro}
                           waterGoalMl={initialWaterGoalMl}
+                          cameraActive={privacyDevices[0]}
+                          micActive={privacyDevices[1]}
                           language={language}
                           onNavigatePage={(targetId) => {
                             const targetIndex = pages.findIndex((p) => p.id === targetId);
@@ -1071,6 +1118,7 @@ export function IslandShell({
                           }}
                         />
                       )}
+                      {activePage.id === "calendar" && <CalendarWidget language={language} />}
                       {activePage.id === "music" && (
                         <MusicWidget
                           media={media}
