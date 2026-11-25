@@ -20,7 +20,7 @@ describe("Phase 6 Settings, Mascot & Bangla i18n", () => {
     fireEvent.click(downButtons[0]);
     expect(onCommit).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        pageOrder: ["todo", "music", "water", "prayer", "pomodoro", "shelf"],
+        pageOrder: ["music", "control", "todo", "water", "prayer", "pomodoro", "shelf"],
       }),
     );
   });

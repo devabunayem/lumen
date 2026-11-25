@@ -481,6 +481,15 @@ mod win32 {
         Ok(())
     }
 
+    /// Locks the active Windows workstation session (`LockWorkStation`).
+    pub fn lock_workstation() -> Result<(), String> {
+        // SAFETY: Standard Win32 user-session lock call with no pointer arguments.
+        unsafe {
+            windows::Win32::System::Shutdown::LockWorkStation()
+                .map_err(|e| format!("LockWorkStation failed: {e}"))
+        }
+    }
+
     /// Atomically moves and resizes an overlay HWND in a single DWM frame without cursor flicker.
     pub fn set_window_bounds_atomic(raw_hwnd: isize, x: i32, y: i32, width: i32, height: i32) {
         if raw_hwnd == 0 {
@@ -611,12 +620,16 @@ mod win32 {
     pub fn open_shell_target(_target: &str) -> Result<(), String> {
         Ok(())
     }
+
+    pub fn lock_workstation() -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, cursor_screen_pos,
-    is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen, open_shell_target,
-    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
+    is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen, lock_workstation,
+    open_shell_target, set_autostart_enabled, set_click_through, set_window_bounds_atomic,
 };
 
 #[cfg(test)]

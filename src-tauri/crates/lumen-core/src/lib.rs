@@ -359,7 +359,9 @@ impl PomodoroController {
     }
 }
 
-const BUILTIN_PAGE_ORDER: [&str; 6] = ["music", "todo", "water", "prayer", "pomodoro", "shelf"];
+const BUILTIN_PAGE_ORDER: [&str; 7] = [
+    "control", "music", "todo", "water", "prayer", "pomodoro", "shelf",
+];
 
 fn default_version() -> u32 {
     1
@@ -608,7 +610,7 @@ mod tests {
         assert_eq!(migrated.water_goal_ml, 10_000);
         assert_eq!(migrated.position_offset_x, -400);
         assert_eq!(migrated.scale, "auto");
-        assert_eq!(migrated.page_order.len(), 6);
+        assert_eq!(migrated.page_order.len(), 7);
 
         let fallback = LumenSettings::load_or_migrate("{invalid json");
         assert_eq!(fallback, LumenSettings::default());

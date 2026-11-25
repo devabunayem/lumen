@@ -6,6 +6,8 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Control Panel Home Hub & Core System Actions (Phase 2):** Added a default `Control Center` first page featuring one-tap Windows Core Audio microphone mute/unmute (`eCapture`), Quiet/DND notification toggle, `LockWorkStation` PC lock, and connected live glance cards for To-Do count, Water intake, Pomodoro countdown, and active Music playback.
+
 - **Pure-Black Apple Settings UI & Notification App Icons (Phase 1):** Upgraded the Settings window to a pure `#000000` OLED black base matching the Dynamic Island notch with vibrant Apple macOS-style gradient squircle sidebar icons, and added smart app-specific icons + masked privacy indicator badges to `NotificationToast`.
 - **Async Settings Window Launch & TypeScript 6.0.3:** Converted `open_settings_window` to an `async` Tauri command and spawned tray launches asynchronously to prevent Windows WebView2 UI-thread deadlocks on window creation; upgraded TypeScript to `6.0.3` (latest compatible with `typescript-eslint`).
 - **Apple-Style Settings Window Redesign:** Complete overhaul of the Settings window to match Apple macOS System Settings UI aesthetics. Features a sleek dark sidebar with colorful glyph icons (General, Display, Pages, Appearance, Music & Lyrics, Notifications, Widgets, To-do, Pomodoro, Hydration, Prayer, Shelf, HUD, Plugins, About), native window traffic light controls (close button), grouped card sections with iOS/macOS styled switches, segmented scale control (`Auto`, `100%`, `115%`, `130%`, `150%`), and live IPC synchronization.

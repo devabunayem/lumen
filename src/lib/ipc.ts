@@ -572,3 +572,24 @@ export async function pluginsList(): Promise<LoadedPlugin[]> {
   }
   return invoke<LoadedPlugin[]>("plugins_list");
 }
+
+export async function systemGetMicMuted(): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return false;
+  }
+  return invoke<boolean>("system_get_mic_muted");
+}
+
+export async function systemToggleMicMute(): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return false;
+  }
+  return invoke<boolean>("system_toggle_mic_mute");
+}
+
+export async function systemLockWorkstation(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("system_lock_workstation");
+}

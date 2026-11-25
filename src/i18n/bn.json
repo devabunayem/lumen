@@ -12,6 +12,8 @@
     "shapePill": "পিল"
   },
   "pages": {
+    "controlLead": "কন্ট্রোল",
+    "controlAccent": "প্যানেল",
     "musicLead": "এখন",
     "musicAccent": "চলছে",
     "todoLead": "কাজের",
