@@ -56,6 +56,7 @@ import {
 } from "../lib/ipc";
 import { DEFAULT_SETTINGS } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
+import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
 import { MusicWidget } from "../widgets/music/MusicWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
 import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
@@ -246,6 +247,15 @@ export function IslandShell({
 
   const pages = useMemo<IslandPageMeta[]>(() => {
     const catalog = new Map<string, IslandPageMeta>([
+      [
+        "control",
+        {
+          id: "control",
+          titleLead: msg.pages.controlLead,
+          titleAccent: msg.pages.controlAccent,
+          accentVar: "var(--accent-blue)",
+        },
+      ],
       [
         "music",
         {
@@ -1046,6 +1056,21 @@ export function IslandShell({
                       transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
                       className="flex h-full w-full items-center"
                     >
+                      {activePage.id === "control" && (
+                        <ControlPanelWidget
+                          media={media}
+                          pomodoro={pomodoro}
+                          waterGoalMl={initialWaterGoalMl}
+                          language={language}
+                          onNavigatePage={(targetId) => {
+                            const targetIndex = pages.findIndex((p) => p.id === targetId);
+                            if (targetIndex >= 0) {
+                              setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
+                              setActivePageIndex(targetIndex);
+                            }
+                          }}
+                        />
+                      )}
                       {activePage.id === "music" && (
                         <MusicWidget
                           media={media}

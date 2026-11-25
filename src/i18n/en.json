@@ -12,6 +12,8 @@
     "shapePill": "Pill"
   },
   "pages": {
+    "controlLead": "Control",
+    "controlAccent": "Center",
     "musicLead": "Now",
     "musicAccent": "Playing",
     "todoLead": "Todo",

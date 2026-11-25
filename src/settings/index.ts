@@ -44,7 +44,7 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   startWithWindows: false,
   hotkeyHide: "Ctrl+Alt+L",
   hotkeyExpand: "Ctrl+Alt+Space",
-  pageOrder: ["music", "todo", "water", "prayer", "pomodoro", "shelf"],
+  pageOrder: ["control", "music", "todo", "water", "prayer", "pomodoro", "shelf"],
   hiddenPages: [],
   waterGoalMl: 1500,
   mediaExclusions: [],

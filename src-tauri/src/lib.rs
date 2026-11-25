@@ -9,8 +9,9 @@ use lumen_core::{
     PomodoroSnapshot,
 };
 use lumen_media::{
-    LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_system_volume,
-    parse_lrc_lines, read_media_state, seek_media, send_media_command, set_system_volume,
+    LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_mic_muted,
+    get_system_volume, parse_lrc_lines, read_media_state, seek_media, send_media_command,
+    set_system_volume, toggle_mic_mute,
 };
 use lumen_notify::{
     NotificationPopup, NotificationPrivacyConfig, filter_notification, is_focus_assist_quiet,
@@ -24,8 +25,8 @@ use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{
     GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
     compute_pill_screen_rect, compute_top_center_position, cursor_screen_pos, is_autostart_enabled,
-    is_caps_lock_on, is_other_app_fullscreen, open_shell_target, set_autostart_enabled,
-    set_click_through, set_window_bounds_atomic,
+    is_caps_lock_on, is_other_app_fullscreen, lock_workstation, open_shell_target,
+    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -775,6 +776,25 @@ fn close_settings_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn system_get_mic_muted() -> Result<bool, String> {
+    tokio::task::spawn_blocking(get_mic_muted)
+        .await
+        .map_err(|e| format!("mic query error: {e}"))
+}
+
+#[tauri::command]
+async fn system_toggle_mic_mute() -> Result<bool, String> {
+    tokio::task::spawn_blocking(toggle_mic_mute)
+        .await
+        .map_err(|e| format!("mic toggle error: {e}"))?
+}
+
+#[tauri::command]
+fn system_lock_workstation() -> Result<(), String> {
+    lock_workstation()
+}
+
+#[tauri::command]
 fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
     discover_plugins(&state.plugins_dir)
 }
@@ -1152,6 +1172,9 @@ pub fn run() {
             settings_update,
             open_settings_window,
             close_settings_window,
+            system_get_mic_muted,
+            system_toggle_mic_mute,
+            system_lock_workstation,
             plugins_list
         ])
         .run(tauri::generate_context!())

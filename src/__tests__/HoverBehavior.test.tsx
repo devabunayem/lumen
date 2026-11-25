@@ -71,6 +71,10 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     // Unpin and switch to Todo page with a focused input
     fireEvent.click(screen.getByRole("button", { name: "Unpin island" }));
     fireEvent.wheel(pill, { deltaY: 120 });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    fireEvent.wheel(pill, { deltaY: 120 });
     fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
     const input = pill.querySelector("input");
     expect(input).not.toBeNull();
@@ -88,9 +92,9 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     const pill = screen.getByTestId("lumen-island-pill");
 
     fireEvent.click(pill);
-    expect(screen.getByText("Now")).toBeInTheDocument();
+    expect(screen.getByText("Control")).toBeInTheDocument();
 
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByText("Todo")).toBeInTheDocument();
+    expect(screen.getByText("Now")).toBeInTheDocument();
   });
 });

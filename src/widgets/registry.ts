@@ -2,6 +2,7 @@ import type { LoadedPlugin } from "../lib/ipc";
 import type { LumenWidget } from "./types";
 
 export const BUILTIN_WIDGET_IDS = [
+  "control",
   "music",
   "todo",
   "water",

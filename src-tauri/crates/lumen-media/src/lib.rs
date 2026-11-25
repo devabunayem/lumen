@@ -224,7 +224,7 @@ mod platform {
     use windows::Storage::Streams::DataReader;
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::Media::Audio::{
-        IMMDeviceEnumerator, MMDeviceEnumerator, eConsole, eRender,
+        EDataFlow, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole, eRender,
     };
     use windows::Win32::System::Com::{
         CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
@@ -339,16 +339,40 @@ mod platform {
         (Some(format!("data:{mime};base64,{encoded}")), accent)
     }
 
-    fn with_endpoint_volume<T>(f: impl FnOnce(&IAudioEndpointVolume) -> Option<T>) -> Option<T> {
-        // SAFETY: Initializes COM apartment for current worker thread and queries default render endpoint.
+    fn with_endpoint_volume_flow<T>(
+        flow: EDataFlow,
+        f: impl FnOnce(&IAudioEndpointVolume) -> Option<T>,
+    ) -> Option<T> {
+        // SAFETY: Initializes COM apartment for current worker thread and queries default endpoint.
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let enumerator: IMMDeviceEnumerator =
                 CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
-            let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
+            let device = enumerator.GetDefaultAudioEndpoint(flow, eConsole).ok()?;
             let volume: IAudioEndpointVolume = device.Activate(CLSCTX_ALL, None).ok()?;
             f(&volume)
         }
+    }
+
+    fn with_endpoint_volume<T>(f: impl FnOnce(&IAudioEndpointVolume) -> Option<T>) -> Option<T> {
+        with_endpoint_volume_flow(eRender, f)
+    }
+
+    #[must_use]
+    pub fn get_mic_muted() -> bool {
+        with_endpoint_volume_flow(eCapture, |vol| unsafe {
+            Some(vol.GetMute().ok()?.as_bool())
+        })
+        .unwrap_or(false)
+    }
+
+    pub fn toggle_mic_mute() -> Result<bool, String> {
+        with_endpoint_volume_flow(eCapture, |vol| unsafe {
+            let next = !vol.GetMute().ok()?.as_bool();
+            vol.SetMute(next, &GUID::zeroed()).ok()?;
+            Some(next)
+        })
+        .ok_or_else(|| "unable to access default microphone endpoint".to_string())
     }
 
     #[must_use]
@@ -554,6 +578,15 @@ mod platform {
     use super::{MediaCommand, MediaStateSnapshot};
 
     #[must_use]
+    pub fn get_mic_muted() -> bool {
+        false
+    }
+
+    pub fn toggle_mic_mute() -> Result<bool, String> {
+        Ok(false)
+    }
+
+    #[must_use]
     pub fn get_system_volume() -> (u8, bool) {
         (50, false)
     }
@@ -585,8 +618,8 @@ mod platform {
 }
 
 pub use platform::{
-    fetch_lrclib_lrc, get_system_volume, read_media_state, seek_media, send_media_command,
-    set_system_volume,
+    fetch_lrclib_lrc, get_mic_muted, get_system_volume, read_media_state, seek_media,
+    send_media_command, set_system_volume, toggle_mic_mute,
 };
 
 #[cfg(test)]

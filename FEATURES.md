@@ -7,6 +7,7 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 ### Island Shell & Window Engine
 
 - Pure-black (`#000000`) continuous **Notch** and **Floating Pill** bezel surfaces with critically-damped Motion springs, uniform `1.5`-stroke SVG line icons, and flicker-free absolute crossfades (`src/design/icons.tsx`, `src/design/motion.ts`)
+- **Control Panel Home Hub:** Default first screen with one-tap Global Mic Mute (`Core Audio`), Quiet/DND mode, Lock PC (`LockWorkStation`), and connected live summary cards that jump directly to To-Do, Water, Pomodoro, and Music pages
 - **Apple-Style System Settings:** Pure `#000000` OLED black macOS-inspired dark settings window matching the Notch, featuring traffic light controls, vibrant Apple gradient squircle sidebar icons, grouped preference cards, segmented notch scaling (`Auto`, `100%`, `115%`, `130%`, `150%`), toggle switches, and full live IPC synchronization
 - **Minimal Apple-Style Music Player:** Clean flush black layout, rounded-2xl artwork, inline track title, thin scrub bar, centered transport buttons with lyrics toggle and volume control (no nested gray card clutter)
 - **Carousel Slide Page Transitions:** Directional horizontal slide animations when switching pages via mouse wheel or arrows
