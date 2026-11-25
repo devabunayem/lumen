@@ -99,6 +99,6 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(screen.getByText("Control")).toBeInTheDocument();
 
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByText("Now")).toBeInTheDocument();
+    expect(screen.getByText("Media")).toBeInTheDocument();
   });
 });

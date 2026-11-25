@@ -277,8 +277,8 @@ export function IslandShell({
         "music",
         {
           id: "music",
-          titleLead: msg.pages.musicLead,
-          titleAccent: msg.pages.musicAccent,
+          titleLead: media?.active ? msg.pages.musicLead : isBn ? "মিডিয়া" : "Media",
+          titleAccent: media?.active ? msg.pages.musicAccent : "",
           accentVar: media?.active?.accent_hex || "var(--accent-blue)",
         },
       ],
@@ -355,10 +355,18 @@ export function IslandShell({
       hiddenPages,
     );
 
+    if (!media?.active && pageOrder.length === 0) {
+      const idx = orderedIds.indexOf("music");
+      if (idx >= 0) {
+        orderedIds.splice(idx, 1);
+        orderedIds.push("music");
+      }
+    }
+
     return orderedIds
       .map((id) => catalog.get(id))
       .filter((item): item is IslandPageMeta => Boolean(item));
-  }, [media?.active?.accent_hex, msg.pages, pageOrder, hiddenPages, plugins]);
+  }, [isBn, media?.active, msg.pages, pageOrder, hiddenPages, plugins]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -886,7 +894,13 @@ export function IslandShell({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div
+                      className={`flex items-center gap-1.5 transition-opacity duration-150 ${
+                        activePage.id === "control"
+                          ? "opacity-100"
+                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                      }`}
+                    >
                       {(privacyDevices[0] || privacyDevices[1]) && (
                         <span className="flex items-center gap-1" aria-label="Active sensor">
                           {privacyDevices[0] && (
@@ -933,7 +947,7 @@ export function IslandShell({
                   scale: 0.95,
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
-                className="absolute top-0 flex flex-col justify-between"
+                className="group absolute top-0 flex flex-col justify-between"
                 style={{
                   left: "50%",
                   x: "-50%",
@@ -975,7 +989,13 @@ export function IslandShell({
                     )}
                   </button>
 
-                  <div className="flex items-center gap-1.5">
+                  <div
+                    className={`flex items-center gap-1.5 transition-opacity duration-150 ${
+                      activePage.id === "control"
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                    }`}
+                  >
                     <button
                       type="button"
                       aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
