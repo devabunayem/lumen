@@ -23,7 +23,7 @@ export const BASE_GEOMETRY = {
   collapsed: { width: 184, height: 30 },
   minimal: { width: 110, height: 26 },
   slim: { width: 84, height: 12 },
-  expanded: { width: 560, height: 172 },
+  expanded: { width: 472, height: 172 },
   hud: { width: 340, height: 60 },
   notchBottomRadius: 24,
   pillFloatOffset: 8,
