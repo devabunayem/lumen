@@ -4,6 +4,13 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+
+- **Responsive Notch Inner Spacing, Icon-First Control Panel & Borderless Settings:**
+  - Removed ugly native scrollbars globally (`scrollbar-width: none` / `::-webkit-scrollbar { display: none }`) while preserving smooth wheel scrolling.
+  - Removed the duplicate Windows titlebar (`decorations(false)`) on the Settings window so only the custom Apple Traffic Light controls (`Close` / `Minimize` + `data-tauri-drag-region`) appear.
+  - Refactored `ControlPanelWidget` into a compact, non-clipping icon-first 3×2 grid with live pointer-hover action labels inside the exact `560×172` notch dimensions.
+
 ### Added
 
 - **Camera & Mic Privacy Indicators + Calendar Agenda (Phase 4):** Added real-time Windows `CapabilityAccessManager\ConsentStore` webcam/microphone active detection (`lumen-windows::privacy_device_status`) displaying Apple-style green/orange indicator dots in the notch, plus a local SQLite-backed `Today Agenda` (`CalendarWidget`) with live event countdowns.

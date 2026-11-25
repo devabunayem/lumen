@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
 import {
   BellIcon,
@@ -135,6 +136,14 @@ export function SettingsWindow({
 
   const handleClose = () => {
     void closeSettingsWindow();
+  };
+
+  const handleMinimize = () => {
+    try {
+      void getCurrentWindow().minimize();
+    } catch {
+      // ignore outside Tauri
+    }
   };
 
   const movePage = (idx: number, delta: -1 | 1) => {
@@ -396,19 +405,27 @@ export function SettingsWindow({
           borderRight: "1px solid var(--hairline)",
         }}
       >
-        {/* Window Traffic Lights & Title */}
-        <div className="mb-4 flex items-center justify-between px-2">
+        {/* Window Traffic Lights & Title (Draggable Region) */}
+        <div data-tauri-drag-region className="mb-4 flex items-center justify-between px-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleClose}
               title="Close"
-              className="flex h-3 w-3 items-center justify-center rounded-full bg-[#ff5f56] hover:opacity-80 active:opacity-60 border-0 cursor-pointer p-0"
+              className="flex h-3 w-3 cursor-pointer items-center justify-center rounded-full border-0 bg-[#ff5f56] p-0 hover:opacity-80 active:opacity-60"
             />
-            <div className="h-3 w-3 rounded-full bg-[#febc2e] opacity-60" />
-            <div className="h-3 w-3 rounded-full bg-[#28c840] opacity-60" />
+            <button
+              type="button"
+              onClick={handleMinimize}
+              title="Minimize"
+              className="h-3 w-3 cursor-pointer rounded-full border-0 bg-[#febc2e] p-0 hover:opacity-80 active:opacity-60"
+            />
+            <div className="h-3 w-3 rounded-full bg-[#28c840] opacity-40" />
           </div>
-          <span className="text-xs font-semibold tracking-wide text-[#8e8e93]">
+          <span
+            data-tauri-drag-region
+            className="text-xs font-semibold tracking-wide text-[#8e8e93]"
+          >
             {msg.settings.title}
           </span>
         </div>
@@ -461,12 +478,15 @@ export function SettingsWindow({
         className="flex min-w-0 flex-1 flex-col overflow-hidden"
         style={{ backgroundColor: "var(--surface)" }}
       >
-        {/* Header Bar */}
+        {/* Header Bar (Draggable) */}
         <header
+          data-tauri-drag-region
           className="flex h-14 shrink-0 items-center justify-between px-8"
           style={{ borderBottom: "1px solid var(--hairline)" }}
         >
-          <h1 className="text-xl font-bold tracking-tight text-white">{currentItem.label}</h1>
+          <h1 data-tauri-drag-region className="text-xl font-bold tracking-tight text-white">
+            {currentItem.label}
+          </h1>
           <div className="flex items-center gap-3">
             {statusBanner && (
               <span className="rounded-full bg-[#30d158]/15 px-3 py-1 text-xs font-medium text-[#30d158] border border-[#30d158]/30">
