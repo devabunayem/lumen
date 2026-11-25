@@ -6,6 +6,8 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Pure-Black Apple Settings UI & Notification App Icons (Phase 1):** Upgraded the Settings window to a pure `#000000` OLED black base matching the Dynamic Island notch with vibrant Apple macOS-style gradient squircle sidebar icons, and added smart app-specific icons + masked privacy indicator badges to `NotificationToast`.
+
 - **Apple-Style Settings Window Redesign:** Complete overhaul of the Settings window to match Apple macOS System Settings UI aesthetics. Features a sleek dark sidebar with colorful glyph icons (General, Display, Pages, Appearance, Music & Lyrics, Notifications, Widgets, To-do, Pomodoro, Hydration, Prayer, Shelf, HUD, Plugins, About), native window traffic light controls (close button), grouped card sections with iOS/macOS styled switches, segmented scale control (`Auto`, `100%`, `115%`, `130%`, `150%`), and live IPC synchronization.
 - **Strict Notch-Bounds Click Pass-Through:** Dynamically toggles Win32 `WS_EX_TRANSPARENT` layered window style using high-frequency (30 Hz) geometry hit testing. All mouse clicks outside the active notch or expanded island pass completely unhindered to background windows (such as browser tabs, address bars, and desktop icons), while clicks strictly inside the notch boundary remain fully interactive.
 - **Minimal Apple-Style Music Player Redesign:** Replaced raised nested containers and box cards with an uncluttered, deep-black Apple-style media interface featuring rounded-2xl album artwork, inline track title and session switcher, minimalist 2px duration scrub bar, centered transport buttons with micro-interactions, lyrics toggle bubble, and inline volume slider.

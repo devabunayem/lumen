@@ -81,9 +81,9 @@ export function SettingsWindow({
   const msg = getMessages(settings.language);
 
   useEffect(() => {
-    // Explicit background to eliminate white flashes
-    document.documentElement.style.background = "#141415";
-    document.body.style.background = "#141415";
+    // Pure OLED black base matching the Dynamic Island notch
+    document.documentElement.style.background = "#000000";
+    document.body.style.background = "#000000";
 
     if (!initialSettings) {
       void settingsGet().then((loaded) => {
@@ -159,23 +159,23 @@ export function SettingsWindow({
     {
       id: "general",
       label: msg.settings.sections.general || "General",
-      iconBg: "#4a4a4d",
+      iconBg: "linear-gradient(180deg, #8e8e93 0%, #636366 100%)",
       icon: (p) => <SettingsIcon {...p} />,
     },
     {
       id: "display",
       label: msg.settings.sections.display || "Display",
-      iconBg: "#0a84ff",
+      iconBg: "linear-gradient(180deg, #329aff 0%, #0066ff 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={1.85}
           className="h-3.5 w-3.5"
           {...p}
         >
-          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <rect x="2" y="3" width="20" height="14" rx="2.5" />
           <line x1="8" y1="21" x2="16" y2="21" />
           <line x1="12" y1="17" x2="12" y2="21" />
         </svg>
@@ -184,13 +184,14 @@ export function SettingsWindow({
     {
       id: "pages",
       label: msg.settings.sections.pages || "Pages",
-      iconBg: "#30d158",
+      iconBg: "linear-gradient(180deg, #4cd964 0%, #24b445 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={2}
+          strokeLinecap="round"
           className="h-3.5 w-3.5"
           {...p}
         >
@@ -203,13 +204,13 @@ export function SettingsWindow({
     {
       id: "appearance",
       label: msg.settings.sections.appearance || "Appearance",
-      iconBg: "#bf5af2",
+      iconBg: "linear-gradient(180deg, #d874ff 0%, #9b30d9 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={1.85}
           className="h-3.5 w-3.5"
           {...p}
         >
@@ -221,140 +222,155 @@ export function SettingsWindow({
     {
       id: "music",
       label: "Music & Lyrics",
-      iconBg: "#ff375f",
+      iconBg: "linear-gradient(180deg, #ff5b7f 0%, #fa2449 100%)",
       icon: (p) => <MusicNoteIcon {...p} />,
     },
     {
       id: "notifications",
       label: "Notifications",
-      iconBg: "#ff453a",
+      iconBg: "linear-gradient(180deg, #ff6259 0%, #e62e24 100%)",
       icon: (p) => <BellIcon {...p} />,
     },
     {
       id: "widgets",
       label: msg.settings.sections.widgets || "Widgets",
-      iconBg: "#0a84ff",
+      iconBg: "linear-gradient(180deg, #329aff 0%, #0066ff 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={1.85}
           className="h-3.5 w-3.5"
           {...p}
         >
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect
+            x="3"
+            y="3"
+            width="7.5"
+            height="7.5"
+            rx="2"
+            fill="currentColor"
+            fillOpacity={0.25}
+          />
+          <rect x="13.5" y="3" width="7.5" height="7.5" rx="2" />
+          <rect
+            x="13.5"
+            y="13.5"
+            width="7.5"
+            height="7.5"
+            rx="2"
+            fill="currentColor"
+            fillOpacity={0.25}
+          />
+          <rect x="3" y="13.5" width="7.5" height="7.5" rx="2" />
         </svg>
       ),
     },
     {
       id: "todo",
       label: "To-do",
-      iconBg: "#30d158",
+      iconBg: "linear-gradient(180deg, #4cd964 0%, #24b445 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           className="h-3.5 w-3.5"
           {...p}
         >
-          <path d="m9 11 3 3L22 4" />
-          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          <path d="m8 12 3 3 6-6" />
+          <rect x="3" y="3" width="18" height="18" rx="4" />
         </svg>
       ),
     },
     {
       id: "pomodoro",
       label: "Pomodoro",
-      iconBg: "#5e5ce6",
+      iconBg: "linear-gradient(180deg, #7d7aff 0%, #5856d6 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={1.85}
+          strokeLinecap="round"
           className="h-3.5 w-3.5"
           {...p}
         >
-          <circle cx="12" cy="14" r="8" />
-          <line x1="12" y1="2" x2="12" y2="4" />
-          <line x1="12" y1="14" x2="15" y2="11" />
+          <circle cx="12" cy="13.5" r="7.5" />
+          <line x1="12" y1="2.5" x2="12" y2="5" />
+          <line x1="12" y1="13.5" x2="15" y2="10.5" />
         </svg>
       ),
     },
     {
       id: "water",
       label: "Water",
-      iconBg: "#32ade6",
+      iconBg: "linear-gradient(180deg, #5ac8fa 0%, #0099e6 100%)",
       icon: (p) => <DropletIcon {...p} />,
     },
     {
       id: "prayer",
       label: "Prayer",
-      iconBg: "#30d158",
+      iconBg: "linear-gradient(180deg, #34d399 0%, #059669 100%)",
       icon: (p) => (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.75}
-          className="h-3.5 w-3.5"
-          {...p}
-        >
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5" {...p}>
+          <path d="M12 3a7 7 0 0 0 9 9 9 9 0 1 1-9-9Z" />
         </svg>
       ),
     },
     {
       id: "shelf",
       label: "Shelf",
-      iconBg: "#ff9f0a",
+      iconBg: "linear-gradient(180deg, #ffb340 0%, #ff8800 100%)",
       icon: (p) => <FileIcon {...p} />,
     },
     {
       id: "hud",
       label: "HUD & popups",
-      iconBg: "#64d2ff",
+      iconBg: "linear-gradient(180deg, #70d7ff 0%, #0a84ff 100%)",
       icon: (p) => <CapsIcon {...p} />,
     },
     {
       id: "plugins",
       label: msg.settings.sections.plugins || "Plugins",
-      iconBg: "#ff453a",
+      iconBg: "linear-gradient(180deg, #ff6961 0%, #d70015 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={1.85}
+          strokeLinecap="round"
           className="h-3.5 w-3.5"
           {...p}
         >
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          <path d="M12 2v4M8 6h8v4a4 4 0 0 1-8 0V6Z" />
+          <path d="M12 14v8" />
         </svg>
       ),
     },
     {
       id: "about",
       label: msg.settings.sections.about || "About",
-      iconBg: "#636366",
+      iconBg: "linear-gradient(180deg, #7c7c80 0%, #48484a 100%)",
       icon: (p) => (
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={2}
+          strokeLinecap="round"
           className="h-3.5 w-3.5"
           {...p}
         >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="16" x2="12" y2="12" />
-          <line x1="12" y1="8" x2="12.01" y2="8" />
+          <circle cx="12" cy="12" r="9.5" />
+          <line x1="12" y1="16" x2="12" y2="11.5" />
+          <circle cx="12" cy="8" r="0.75" fill="currentColor" />
         </svg>
       ),
     },
@@ -367,14 +383,18 @@ export function SettingsWindow({
       data-testid="settings-window"
       className="flex h-screen w-screen overflow-hidden select-none font-sans text-white"
       style={{
-        backgroundColor: "#161618",
-        color: "#ffffff",
+        backgroundColor: "var(--surface)",
+        color: "var(--text-primary)",
       }}
     >
       {/* Apple-style Sidebar (Left) */}
       <aside
         aria-label="Settings sections"
-        className="flex w-64 shrink-0 flex-col border-r border-[#2c2c2e]/60 bg-[#1c1c1e] p-3 pt-4"
+        className="flex w-64 shrink-0 flex-col p-3 pt-4"
+        style={{
+          backgroundColor: "#070709",
+          borderRight: "1px solid var(--hairline)",
+        }}
       >
         {/* Window Traffic Lights & Title */}
         <div className="mb-4 flex items-center justify-between px-2">
@@ -402,19 +422,26 @@ export function SettingsWindow({
                 key={item.id}
                 type="button"
                 onClick={() => setSection(item.id)}
-                className={`flex w-full cursor-pointer items-center justify-between rounded-xl border-0 px-2.5 py-2 text-left transition-all ${
+                className={`flex w-full cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 text-left transition-all ${
                   active
-                    ? "bg-[#2c2c2e] text-white shadow-sm"
-                    : "bg-transparent text-[#98989d] hover:bg-[#252528] hover:text-[#e5e5ea]"
+                    ? "bg-[#1a1a1d] text-white"
+                    : "bg-transparent text-[#98989d] hover:bg-[#121215] hover:text-[#e5e5ea]"
                 }`}
+                style={{
+                  border: active ? "1px solid var(--hairline-top)" : "1px solid transparent",
+                }}
               >
                 <div className="flex items-center gap-2.5">
                   <span
                     aria-hidden="true"
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white"
-                    style={{ backgroundColor: item.iconBg }}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-white"
+                    style={{
+                      background: item.iconBg,
+                      boxShadow:
+                        "inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 3px rgba(0, 0, 0, 0.65)",
+                    }}
                   >
-                    {item.icon({ size: 14 })}
+                    {item.icon({ size: 13 })}
                   </span>
                   <span className="text-[13px] font-medium">{item.label}</span>
                 </div>
@@ -430,9 +457,15 @@ export function SettingsWindow({
       </aside>
 
       {/* Main Content Area (Right) */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#161618]">
+      <main
+        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+        style={{ backgroundColor: "var(--surface)" }}
+      >
         {/* Header Bar */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#2c2c2e]/60 px-8">
+        <header
+          className="flex h-14 shrink-0 items-center justify-between px-8"
+          style={{ borderBottom: "1px solid var(--hairline)" }}
+        >
           <h1 className="text-xl font-bold tracking-tight text-white">{currentItem.label}</h1>
           <div className="flex items-center gap-3">
             {statusBanner && (
@@ -1025,8 +1058,14 @@ export function SettingsWindow({
 function AppleGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <div className="px-1 text-xs font-semibold text-[#8e8e93]">{title}</div>
-      <div className="rounded-2xl bg-[#1c1c1e] border border-[#2c2c2e]/60 overflow-hidden shadow-sm">
+      <div className="px-1 text-xs font-semibold tracking-wide text-[#8e8e93]">{title}</div>
+      <div
+        className="overflow-hidden rounded-2xl shadow-sm"
+        style={{
+          backgroundColor: "#0c0c0e",
+          border: "1px solid var(--hairline)",
+        }}
+      >
         {children}
       </div>
     </div>
