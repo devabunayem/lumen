@@ -749,22 +749,22 @@ export function IslandShell({
         {!isFloatingPill && (
           <>
             <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 -left-[9px]"
+              className="pointer-events-none absolute top-0 -left-[15px]"
             >
-              <path d="M 10 0 L 0 0 C 5.5 0 10 4.5 10 10 Z" fill="var(--surface)" />
+              <path d="M 16 0 L 0 0 C 8.8 0 16 7.2 16 16 Z" fill="var(--surface)" />
             </svg>
             <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 -right-[9px]"
+              className="pointer-events-none absolute top-0 -right-[15px]"
             >
-              <path d="M 0 0 L 10 0 C 4.5 0 0 4.5 0 10 Z" fill="var(--surface)" />
+              <path d="M 0 0 L 16 0 C 7.2 0 0 7.2 0 16 Z" fill="var(--surface)" />
             </svg>
           </>
         )}
