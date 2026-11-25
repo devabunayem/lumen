@@ -6,6 +6,7 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Strict Notch-Bounds Click Pass-Through:** Dynamically toggles Win32 `WS_EX_TRANSPARENT` layered window style using high-frequency (30 Hz) geometry hit testing. All mouse clicks outside the active notch or expanded island pass completely unhindered to background windows (such as browser tabs, address bars, and desktop icons), while clicks strictly inside the notch boundary remain fully interactive.
 - **Minimal Apple-Style Music Player Redesign:** Replaced raised nested containers and box cards with an uncluttered, deep-black Apple-style media interface featuring rounded-2xl album artwork, inline track title and session switcher, minimalist 2px duration scrub bar, centered transport buttons with micro-interactions, lyrics toggle bubble, and inline volume slider.
 - **Carousel Slide Page Transitions:** Added directional carousel slide animation (`x: ±60px`, spring-damped opacity and scale) for mouse-wheel and arrow key navigation between active widgets with zero layout reflow.
 - **Standardized Notch Geometry:** Refined resting notch dimensions to `184×30` (from `200×32`), minimal notch to `110×26`, slim resting line to `84×12`, and expanded island canvas to `560×172` for optimal visual balance against Windows top screen bezels.

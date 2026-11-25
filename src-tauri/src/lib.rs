@@ -23,8 +23,9 @@ use lumen_prayer::{
 use lumen_storage::{ShelfItem, StorageRepo, TaskItem, WaterSummary};
 use lumen_windows::{
     GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
-    compute_top_center_position, cursor_screen_pos, is_autostart_enabled, is_caps_lock_on,
-    is_other_app_fullscreen, open_shell_target, set_autostart_enabled, set_window_bounds_atomic,
+    compute_pill_screen_rect, compute_top_center_position, cursor_screen_pos, is_autostart_enabled,
+    is_caps_lock_on, is_other_app_fullscreen, open_shell_target, set_autostart_enabled,
+    set_click_through, set_window_bounds_atomic,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -41,6 +42,9 @@ const CANVAS_WIN_H: f64 = 220.0;
 struct IslandRuntimeConfig {
     hide_in_fullscreen: bool,
     visible: bool,
+    width_logical: f64,
+    height_logical: f64,
+    top_offset_logical: f64,
 }
 
 impl Default for IslandRuntimeConfig {
@@ -48,6 +52,9 @@ impl Default for IslandRuntimeConfig {
         Self {
             hide_in_fullscreen: true,
             visible: true,
+            width_logical: 184.0,
+            height_logical: 30.0,
+            top_offset_logical: 0.0,
         }
     }
 }
@@ -224,9 +231,9 @@ fn dispatch_island_event(
 
 #[tauri::command]
 fn sync_pill_bounds(
-    _width: f64,
-    _height: f64,
-    _top_offset: f64,
+    width: f64,
+    height: f64,
+    top_offset: f64,
     visible: bool,
     hide_in_fullscreen: bool,
     state: State<'_, AppState>,
@@ -235,6 +242,9 @@ fn sync_pill_bounds(
         .config
         .lock()
         .map_err(|_| "runtime config mutex poisoned".to_string())?;
+    guard.width_logical = width;
+    guard.height_logical = height;
+    guard.top_offset_logical = top_offset;
     guard.visible = visible;
     guard.hide_in_fullscreen = hide_in_fullscreen;
     Ok(())
@@ -889,12 +899,64 @@ pub fn run() {
             }
             let _ = tray_builder.build(app)?;
 
-            // Fullscreen & System HUD monitor loop at 2 Hz (FR-WIN-4, FR-HUD-1, NFR-PERF-3)
             #[cfg(windows)]
             let own_hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
             #[cfg(not(windows))]
             let own_hwnd = 0isize;
 
+            // Hit-test and click-through manager loop
+            // Dynamically toggles WS_EX_TRANSPARENT on the overlay window:
+            // - Inside notch/island bounds -> clicks interact with Lumen
+            // - Outside notch/island bounds -> clicks pass directly to underlying windows (browser tabs, desktop, etc.)
+            let hit_window = window.clone();
+            let hit_config = Arc::clone(&shared_config);
+            tauri::async_runtime::spawn(async move {
+                let mut last_pass_through: Option<bool> = None;
+                loop {
+                    let (visible, w_logical, h_logical, top_logical) = {
+                        let c = hit_config.lock().map(|cfg| *cfg).unwrap_or_default();
+                        (
+                            c.visible,
+                            c.width_logical,
+                            c.height_logical,
+                            c.top_offset_logical,
+                        )
+                    };
+
+                    let pass_through = if !visible {
+                        true
+                    } else if let (Some(pos), Some(size), Some((cx, cy))) = (
+                        hit_window.outer_position().ok(),
+                        hit_window.outer_size().ok(),
+                        cursor_screen_pos(),
+                    ) {
+                        let scale = hit_window.scale_factor().unwrap_or(1.0);
+                        let pill_rect = compute_pill_screen_rect(
+                            pos.x,
+                            pos.y,
+                            size.width as i32,
+                            (w_logical * scale).round() as i32,
+                            (h_logical * scale).round() as i32,
+                            (top_logical * scale).round() as i32,
+                        );
+                        let margin = (6.0 * scale).round() as i32;
+                        !pill_rect.contains_point(cx, cy, margin)
+                    } else {
+                        false
+                    };
+
+                    if last_pass_through != Some(pass_through) {
+                        last_pass_through = Some(pass_through);
+                        #[cfg(windows)]
+                        set_click_through(own_hwnd, pass_through);
+                    }
+
+                    // 30 Hz for responsive hit-testing
+                    tokio::time::sleep(Duration::from_millis(33)).await;
+                }
+            });
+
+            // Fullscreen & System HUD monitor loop at 2 Hz (FR-WIN-4, FR-HUD-1, NFR-PERF-3)
             let fs_window = window.clone();
             let fs_config = Arc::clone(&shared_config);
             tauri::async_runtime::spawn(async move {

@@ -499,6 +499,45 @@ mod win32 {
             )
         };
     }
+
+    const WS_EX_LAYERED_FLAG: isize = 0x00080000;
+    const WS_EX_TRANSPARENT_FLAG: isize = 0x00000020;
+    const GWL_EXSTYLE_INDEX: windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX =
+        windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
+
+    /// Toggles click pass-through on the overlay window (`WS_EX_TRANSPARENT`).
+    /// When pass_through is true, mouse clicks pass directly to underlying applications (Chrome, Desktop, etc).
+    /// When false, mouse clicks are handled by the Island.
+    pub fn set_click_through(raw_hwnd: isize, pass_through: bool) {
+        if raw_hwnd == 0 {
+            return;
+        }
+        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                GetWindowLongPtrW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+                SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos,
+            };
+            let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE_INDEX);
+            let target = if pass_through {
+                current | WS_EX_LAYERED_FLAG | WS_EX_TRANSPARENT_FLAG
+            } else {
+                (current | WS_EX_LAYERED_FLAG) & !WS_EX_TRANSPARENT_FLAG
+            };
+            if current != target {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE_INDEX, target);
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+            }
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -513,6 +552,8 @@ mod win32 {
         _height: i32,
     ) {
     }
+
+    pub const fn set_click_through(_raw_hwnd: isize, _pass_through: bool) {}
 
     #[must_use]
     pub const fn acquire_single_instance_mutex() -> bool {
@@ -575,7 +616,7 @@ mod win32 {
 pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, cursor_screen_pos,
     is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen, open_shell_target,
-    set_autostart_enabled, set_window_bounds_atomic,
+    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
 };
 
 #[cfg(test)]
