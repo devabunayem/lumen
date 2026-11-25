@@ -60,8 +60,8 @@ export function PlayIcon({ size = 14, className }: IconProps) {
 export function PauseIcon({ size = 14, className }: IconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
-      <rect x="6" y="4" width="4" height="16" fill="currentColor" />
-      <rect x="14" y="4" width="4" height="16" fill="currentColor" />
+      <rect x="6" y="4" width="4" height="16" rx="1.5" fill="currentColor" stroke="none" />
+      <rect x="14" y="4" width="4" height="16" rx="1.5" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -69,8 +69,8 @@ export function PauseIcon({ size = 14, className }: IconProps) {
 export function PrevIcon({ size = 14, className }: IconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
-      <polygon points="19 20 9 12 19 4 19 20" />
-      <line x1="5" y1="19" x2="5" y2="5" />
+      <polygon points="11 19 2 12 11 5 11 19" fill="currentColor" />
+      <polygon points="22 19 13 12 22 5 22 19" fill="currentColor" />
     </svg>
   );
 }
@@ -78,8 +78,8 @@ export function PrevIcon({ size = 14, className }: IconProps) {
 export function NextIcon({ size = 14, className }: IconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
-      <polygon points="5 4 15 12 5 20 5 4" />
-      <line x1="19" y1="5" x2="19" y2="19" />
+      <polygon points="13 19 22 12 13 5 13 19" fill="currentColor" />
+      <polygon points="2 19 11 12 2 5 2 19" fill="currentColor" />
     </svg>
   );
 }
