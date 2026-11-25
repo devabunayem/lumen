@@ -1,4 +1,5 @@
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import {
   MessageSquareIcon,
   MusicNoteIcon,
@@ -10,7 +11,12 @@ import {
   VolumeOnIcon,
 } from "../../design/icons";
 import { getMotionTransition } from "../../design/motion";
-import { type LyricLine, type MediaStateSnapshot, shelfOpen } from "../../lib/ipc";
+import {
+  type LyricLine,
+  type MediaSessionInfo,
+  type MediaStateSnapshot,
+  shelfOpen,
+} from "../../lib/ipc";
 
 export interface MusicWidgetProps {
   media: MediaStateSnapshot | null;
@@ -41,8 +47,56 @@ export function MusicWidget({
   onSelectSession,
 }: MusicWidgetProps) {
   const prefersReducedMotion = useReducedMotion() ?? false;
-  const active = media?.active ?? null;
+  const rawActive = media?.active ?? null;
+  const [heldActive, setHeldActive] = useState<MediaSessionInfo | null>(rawActive);
+  const [trackDirection, setTrackDirection] = useState<1 | -1>(1);
+  const [displayPosMs, setDisplayPosMs] = useState<number>(rawActive?.position_ms ?? 0);
+  const syncRef = useRef({
+    posMs: rawActive?.position_ms ?? 0,
+    syncedAt: 0,
+  });
+
+  // Hold the previous track briefly during Next/Previous transitions so SMTC
+  // transient null gaps never unload the player UI.
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => {
+        setHeldActive(rawActive);
+      },
+      rawActive ? 0 : 1200,
+    );
+    return () => window.clearTimeout(timer);
+  }, [rawActive]);
+
+  const active = rawActive ?? heldActive;
   const accent = active?.accent_hex || "var(--accent-blue)";
+
+  // Sync interpolation clock whenever SMTC reports a new position, track, or play state.
+  useEffect(() => {
+    const pos = active?.position_ms ?? 0;
+    syncRef.current = {
+      posMs: pos,
+      syncedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+    };
+    const timer = window.setTimeout(() => {
+      setDisplayPosMs(pos);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [active?.app_id, active?.title, active?.position_ms, active?.is_playing]);
+
+  // Smoothly tick elapsed & remaining seconds in real time while playing.
+  useEffect(() => {
+    if (!active?.is_playing) {
+      return;
+    }
+    const duration = Math.max(active.duration_ms, 1);
+    const id = window.setInterval(() => {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const elapsed = Math.max(0, now - syncRef.current.syncedAt);
+      setDisplayPosMs(Math.min(duration, syncRef.current.posMs + elapsed));
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [active?.is_playing, active?.duration_ms]);
 
   if (!active) {
     const lastSession = media?.sessions?.[0] ?? null;
@@ -117,9 +171,10 @@ export function MusicWidget({
   }
 
   const duration = Math.max(active.duration_ms, 1);
-  const clampedPos = Math.min(active.position_ms, duration);
+  const clampedPos = Math.min(displayPosMs, duration);
   const progressPct = Math.min(100, Math.max(0, (clampedPos / duration) * 100));
   const remainingMs = Math.max(0, duration - clampedPos);
+  const trackKey = `${active.app_id}:${active.title}:${active.artist}`;
 
   const activeLyricIdx = lyricsLines.reduce((acc, line, idx) => {
     return line.time_ms <= clampedPos ? idx : acc;
@@ -127,63 +182,100 @@ export function MusicWidget({
 
   return (
     <div className="flex h-full w-full flex-col justify-between overflow-hidden px-1">
-      {/* Top row: Artwork on Left, Song Title & Controls on Right */}
-      <div className="flex items-center gap-3">
-        {/* Album Artwork */}
-        <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-          style={{
-            backgroundColor: "var(--surface-raised)",
-            border: "1px solid var(--hairline)",
-            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
-          }}
-        >
-          {active.album_art_data_url ? (
-            <img src={active.album_art_data_url} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span style={{ color: accent }}>
-              <MusicNoteIcon size={22} />
-            </span>
-          )}
-        </div>
-
-        {/* Track Title and Artist / Session Info */}
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div className="flex items-center justify-between gap-2">
-            <span
-              className="type-body truncate font-semibold leading-tight"
-              style={{ color: "var(--text-primary)" }}
-              title={active.title}
-            >
-              {active.title || "Unknown Title"}
-            </span>
-            {media && media.sessions.length > 1 && (
-              <select
-                aria-label="Switch active media player"
-                value={active.app_id}
-                onChange={(e) => onSelectSession(e.target.value)}
-                className="type-caption max-w-[90px] cursor-pointer truncate rounded-full border-0 px-2 py-0.5"
-                style={{
-                  backgroundColor: "var(--surface-raised)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {media.sessions.map((s) => (
-                  <option key={s.app_id} value={s.app_id}>
-                    {s.title || s.app_id}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <span
-            className="type-caption truncate"
-            style={{ color: "var(--text-secondary)" }}
-            title={active.artist || active.app_id}
+      {/* Top row: Floating animated Artwork & Track Metadata */}
+      <div className="relative flex min-h-[44px] items-center overflow-hidden">
+        <AnimatePresence custom={trackDirection} initial={false} mode="popLayout">
+          <motion.div
+            key={trackKey}
+            custom={trackDirection}
+            variants={{
+              enter: (dir: number) => ({
+                x: prefersReducedMotion ? 0 : dir * 28,
+                opacity: 0,
+                scale: prefersReducedMotion ? 1 : 0.96,
+              }),
+              center: {
+                x: 0,
+                opacity: 1,
+                scale: 1,
+              },
+              exit: (dir: number) => ({
+                x: prefersReducedMotion ? 0 : dir * -28,
+                opacity: 0,
+                scale: prefersReducedMotion ? 1 : 0.96,
+              }),
+            }}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={
+              prefersReducedMotion
+                ? { duration: 0.08 }
+                : { type: "spring", stiffness: 420, damping: 32 }
+            }
+            className="flex w-full items-center gap-3"
           >
-            {active.artist || active.app_id || "Unknown Artist"}
-          </span>
-        </div>
+            {/* Album Artwork */}
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+              style={{
+                backgroundColor: "var(--surface-raised)",
+                border: "1px solid var(--hairline)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+              }}
+            >
+              {active.album_art_data_url ? (
+                <img
+                  src={active.album_art_data_url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span style={{ color: accent }}>
+                  <MusicNoteIcon size={22} />
+                </span>
+              )}
+            </div>
+
+            {/* Track Title and Artist / Session Info */}
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="type-body truncate font-semibold leading-tight"
+                  style={{ color: "var(--text-primary)" }}
+                  title={active.title}
+                >
+                  {active.title || "Unknown Title"}
+                </span>
+                {media && media.sessions.length > 1 && (
+                  <select
+                    aria-label="Switch active media player"
+                    value={active.app_id}
+                    onChange={(e) => onSelectSession(e.target.value)}
+                    className="type-caption max-w-[90px] cursor-pointer truncate rounded-full border-0 px-2 py-0.5"
+                    style={{
+                      backgroundColor: "var(--surface-raised)",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    {media.sessions.map((s) => (
+                      <option key={s.app_id} value={s.app_id}>
+                        {s.title || s.app_id}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <span
+                className="type-caption truncate"
+                style={{ color: "var(--text-secondary)" }}
+                title={active.artist || active.app_id}
+              >
+                {active.artist || active.app_id || "Unknown Artist"}
+              </span>
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Synced Lyrics drawer if enabled */}
@@ -228,7 +320,15 @@ export function MusicWidget({
             min={0}
             max={duration}
             value={clampedPos}
-            onChange={(e) => onSeek(Number(e.target.value))}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              syncRef.current = {
+                posMs: next,
+                syncedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+              };
+              setDisplayPosMs(next);
+              onSeek(next);
+            }}
             className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
           />
         </div>
@@ -261,7 +361,10 @@ export function MusicWidget({
           <button
             type="button"
             aria-label="Previous track"
-            onClick={() => onCommand("previous")}
+            onClick={() => {
+              setTrackDirection(-1);
+              onCommand("previous");
+            }}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
           >
             <PrevIcon size={18} />
@@ -277,7 +380,10 @@ export function MusicWidget({
           <button
             type="button"
             aria-label="Next track"
-            onClick={() => onCommand("next")}
+            onClick={() => {
+              setTrackDirection(1);
+              onCommand("next");
+            }}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
           >
             <NextIcon size={18} />
