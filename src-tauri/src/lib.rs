@@ -34,12 +34,8 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-const COLLAPSED_WIN_W: f64 = 260.0;
-const COLLAPSED_WIN_H: f64 = 52.0;
-const EXPANDED_WIN_W: f64 = 660.0;
-const EXPANDED_WIN_H: f64 = 220.0;
-const HUD_WIN_W: f64 = 380.0;
-const HUD_WIN_H: f64 = 84.0;
+const CANVAS_WIN_W: f64 = 660.0;
+const CANVAS_WIN_H: f64 = 220.0;
 
 #[derive(Debug, Clone, Copy)]
 struct IslandRuntimeConfig {
@@ -262,14 +258,7 @@ fn set_island_surface_mode(
         if hidden {
             let _ = window.hide();
         } else {
-            let (w, h) = if expanded {
-                (EXPANDED_WIN_W, EXPANDED_WIN_H)
-            } else if is_hud {
-                (HUD_WIN_W, HUD_WIN_H)
-            } else {
-                (COLLAPSED_WIN_W, COLLAPSED_WIN_H)
-            };
-            recenter_window(&window, w, h, &settings);
+            recenter_window(&window, CANVAS_WIN_W, CANVAS_WIN_H, &settings);
             let _ = window.show();
         }
     }
@@ -726,16 +715,10 @@ fn settings_update(
     }
 
     if let Some(window) = app.get_webview_window("island") {
-        let (expanded, hidden, is_hud) = state.surface_mode.lock().map(|g| *g).unwrap_or_default();
+        let (_expanded, hidden, _is_hud) =
+            state.surface_mode.lock().map(|g| *g).unwrap_or_default();
         if !hidden {
-            let (w, h) = if expanded {
-                (EXPANDED_WIN_W, EXPANDED_WIN_H)
-            } else if is_hud {
-                (HUD_WIN_W, HUD_WIN_H)
-            } else {
-                (COLLAPSED_WIN_W, COLLAPSED_WIN_H)
-            };
-            recenter_window(&window, w, h, &clean);
+            recenter_window(&window, CANVAS_WIN_W, CANVAS_WIN_H, &clean);
         }
     }
 
@@ -858,7 +841,7 @@ pub fn run() {
                 return Ok(());
             };
 
-            recenter_window(&window, COLLAPSED_WIN_W, COLLAPSED_WIN_H, &initial_settings);
+            recenter_window(&window, CANVAS_WIN_W, CANVAS_WIN_H, &initial_settings);
             let _ = window.show();
 
             // System tray icon & menu (FR-WIN-7)

@@ -666,12 +666,8 @@ export function IslandShell({
                 return;
               }
               expandedAtRef.current = Date.now();
-              lastSurfaceBucketRef.current = "expanded";
-              if (isTauriRuntime()) {
-                void setIslandSurfaceMode(true, false, false);
-              }
               dispatch({ type: "HOVER_EXPAND" });
-            }, 70);
+            }, 60);
           }
         }}
         onMouseLeave={() => {

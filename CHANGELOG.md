@@ -6,7 +6,9 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
-- **Hover Auto-Open & Ultra-Slim 5s Return:** Removed the legacy `peek` ("Click to open") state completely, switched window bounds updates to single-frame atomic Win32 `SetWindowPos`, and rendered the expanded view inside a fixed-dimension canvas (`620×190`) so morphing has zero reflow or cursor bounce. Hover expands (`70 ms`), leave collapses to the `96×14` slim notch (`350 ms`), and restores the resting pill after `5s`.
+- **Fixed-Canvas Overlay & Zero-Resize Window Architecture:** Eliminated OS-level Win32 window resizing and DWM coordinate shifts entirely during expand/collapse animations by keeping a transparent `660×220` hardware-accelerated canvas at all times. Pure CSS/GPU springs inside the canvas now handle 100% of the island morphing without any jitter, stutter, or cursor displacement.
+- **Tuned Apple-Grade Spring Physics:** Refined the expand/collapse spring presets (`stiffness: 240, damping: 26, mass: 0.8`) with a fast 60ms hover response for instant, fluid expansion matching native dynamic island motion.
+- **Hover Auto-Open & Ultra-Slim 5s Return:** Removed the legacy `peek` ("Click to open") state completely, switched window bounds updates to single-frame atomic Win32 `SetWindowPos`, and rendered the expanded view inside a fixed-dimension canvas (`620×190`) so morphing has zero reflow or cursor bounce. Hover expands (`60 ms`), leave collapses to the `96×14` slim notch (`350 ms`), and restores the resting pill after `5s`.
 - **Pin Lock & Scroll Paging:** Added an expanded header pin button and throttled mouse-wheel page switching across widgets.
 - **Unslop Craft & Animation Smoothness Pass:** Replaced all widget/chrome emojis with a unified `1.5`-stroke SVG line icon set (`src/design/icons.tsx`), removed CPU `drop-shadow` & full-size SVG path thrash in favor of hardware-composited surface springs with concave bezel ears, positioned `<AnimatePresence>` layers absolutely to eliminate crossfade vertical jumps, toned springs to critically-damped zero-overshoot motion, and aligned typography weights (`400–600`).
 

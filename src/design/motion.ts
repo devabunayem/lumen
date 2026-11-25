@@ -6,15 +6,15 @@ import type { Transition } from "motion/react";
 export const MOTION_PRESETS = {
   expand: {
     type: "spring",
-    stiffness: 280,
-    damping: 30,
-    mass: 0.85,
+    stiffness: 240,
+    damping: 26,
+    mass: 0.8,
   },
   collapse: {
     type: "spring",
-    stiffness: 320,
-    damping: 33,
-    mass: 0.85,
+    stiffness: 260,
+    damping: 28,
+    mass: 0.8,
   },
   pageSwitch: {
     type: "spring",

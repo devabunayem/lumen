@@ -15,8 +15,8 @@
       {
         "label": "island",
         "title": "Lumen",
-        "width": 260,
-        "height": 52,
+        "width": 660,
+        "height": 220,
         "resizable": false,
         "decorations": false,
         "transparent": true,
