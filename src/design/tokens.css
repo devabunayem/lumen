@@ -24,7 +24,7 @@
 
   /* Geometry tokens at 100% scale (SRS Section 3.4) */
   --island-scale: 1;
-  --pill-collapsed-w: 144px;
+  --pill-collapsed-w: 180px;
   --pill-collapsed-h: 42px;
   --pill-minimal-w: 80px;
   --pill-minimal-h: 32px;

@@ -13,7 +13,7 @@ describe("IslandShell", () => {
     render(<IslandShell shapeStyle="notch" scaleFactor={1} />);
     const pill = screen.getByTestId("lumen-island-pill");
     expect(pill).toHaveAttribute("data-state", "idle");
-    expect(pill).toHaveAttribute("data-target-width", "144");
+    expect(pill).toHaveAttribute("data-target-width", "180");
     expect(pill).toHaveAttribute("data-target-height", "42");
   });
 
