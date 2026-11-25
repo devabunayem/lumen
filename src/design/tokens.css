@@ -23,19 +23,19 @@
 
   /* Geometry tokens at 100% scale (SRS Section 3.4) */
   --island-scale: 1;
-  --pill-collapsed-w: 200px;
-  --pill-collapsed-h: 32px;
-  --pill-minimal-w: 120px;
-  --pill-minimal-h: 28px;
-  --island-expanded-w: 620px;
-  --island-expanded-h: 190px;
-  --hud-w: 360px;
-  --hud-h: 64px;
+  --pill-collapsed-w: 184px;
+  --pill-collapsed-h: 30px;
+  --pill-minimal-w: 110px;
+  --pill-minimal-h: 26px;
+  --island-expanded-w: 560px;
+  --island-expanded-h: 172px;
+  --hud-w: 340px;
+  --hud-h: 60px;
 
-  --island-padding: 20px;
-  --island-gap: 12px;
-  --card-radius: 22px;
-  --capsule-height: 36px;
+  --island-padding: 16px;
+  --island-gap: 10px;
+  --card-radius: 18px;
+  --capsule-height: 32px;
   --pill-float-offset: 8px;
 }
 

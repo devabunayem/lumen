@@ -13,7 +13,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     vi.useRealTimers();
   });
 
-  it("opens on hover after 70ms without peek flicker, collapses to 96x14 slim notch on leave, then restores normal pill after 5s", () => {
+  it("opens on hover without peek flicker, collapses to slim notch on leave, then restores normal pill after 5s", () => {
     render(<IslandShell hoverToOpen hoverReturnSeconds={5} />);
     const pill = screen.getByTestId("lumen-island-pill");
 
@@ -27,7 +27,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(70);
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
-    expect(pill).toHaveAttribute("data-target-width", "620");
+    expect(pill).toHaveAttribute("data-target-width", "560");
 
     fireEvent.mouseLeave(pill);
     act(() => {
@@ -35,8 +35,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "minimal");
     expect(pill).toHaveAttribute("data-slim", "true");
-    expect(pill).toHaveAttribute("data-target-width", "96");
-    expect(pill).toHaveAttribute("data-target-height", "14");
+    expect(pill).toHaveAttribute("data-target-width", "84");
+    expect(pill).toHaveAttribute("data-target-height", "12");
     expect(screen.getByTestId("lumen-slim-indicator")).toBeInTheDocument();
 
     act(() => {
@@ -44,8 +44,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "idle");
     expect(pill).toHaveAttribute("data-slim", "false");
-    expect(pill).toHaveAttribute("data-target-width", "200");
-    expect(pill).toHaveAttribute("data-target-height", "32");
+    expect(pill).toHaveAttribute("data-target-width", "184");
+    expect(pill).toHaveAttribute("data-target-height", "30");
   });
 
   it("stays expanded on mouse leave when pinned or while typing inside an input", () => {

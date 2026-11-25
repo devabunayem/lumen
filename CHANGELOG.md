@@ -6,6 +6,9 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Minimal Apple-Style Music Player Redesign:** Replaced raised nested containers and box cards with an uncluttered, deep-black Apple-style media interface featuring rounded-2xl album artwork, inline track title and session switcher, minimalist 2px duration scrub bar, centered transport buttons with micro-interactions, lyrics toggle bubble, and inline volume slider.
+- **Carousel Slide Page Transitions:** Added directional carousel slide animation (`x: ±60px`, spring-damped opacity and scale) for mouse-wheel and arrow key navigation between active widgets with zero layout reflow.
+- **Standardized Notch Geometry:** Refined resting notch dimensions to `184×30` (from `200×32`), minimal notch to `110×26`, slim resting line to `84×12`, and expanded island canvas to `560×172` for optimal visual balance against Windows top screen bezels.
 - **Fixed-Canvas Overlay & Zero-Resize Window Architecture:** Eliminated OS-level Win32 window resizing and DWM coordinate shifts entirely during expand/collapse animations by keeping a transparent `660×220` hardware-accelerated canvas at all times. Pure CSS/GPU springs inside the canvas now handle 100% of the island morphing without any jitter, stutter, or cursor displacement.
 - **Tuned Apple-Grade Spring Physics:** Refined the expand/collapse spring presets (`stiffness: 240, damping: 26, mass: 0.8`) with a fast 60ms hover response for instant, fluid expansion matching native dynamic island motion.
 - **Hover Auto-Open & Ultra-Slim 5s Return:** Removed the legacy `peek` ("Click to open") state completely, switched window bounds updates to single-frame atomic Win32 `SetWindowPos`, and rendered the expanded view inside a fixed-dimension canvas (`620×190`) so morphing has zero reflow or cursor bounce. Hover expands (`60 ms`), leave collapses to the `96×14` slim notch (`350 ms`), and restores the resting pill after `5s`.

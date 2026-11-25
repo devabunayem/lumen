@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import {
+  MessageSquareIcon,
   MusicNoteIcon,
   NextIcon,
   PauseIcon,
@@ -46,26 +47,29 @@ export function MusicWidget({
   if (!active) {
     return (
       <div
-        className="flex h-full w-full items-center justify-between px-4 py-3"
+        className="flex h-full w-full items-center gap-3.5 px-4"
         style={{
-          backgroundColor: "var(--surface-raised)",
           borderRadius: "var(--card-radius)",
-          border: "1px solid var(--hairline)",
         }}
       >
+        <div
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl"
+          style={{
+            backgroundColor: "var(--surface-raised)",
+            border: "1px solid var(--hairline)",
+            color: "var(--text-tertiary)",
+          }}
+        >
+          <MusicNoteIcon size={24} />
+        </div>
         <div className="flex flex-col gap-0.5">
-          <span className="type-body" style={{ color: "var(--text-primary)" }}>
-            Nothing playing
+          <span className="type-body font-semibold" style={{ color: "var(--text-primary)" }}>
+            Not Playing
           </span>
           <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-            Play Spotify, YouTube, or any media app to control it here
+            Play Spotify, YouTube, or any media player
           </span>
         </div>
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: "var(--text-tertiary)" }}
-        />
       </div>
     );
   }
@@ -80,207 +84,183 @@ export function MusicWidget({
   }, -1);
 
   return (
-    <div
-      className="flex h-full w-full items-center gap-3 px-3.5 py-2.5"
-      style={{
-        backgroundColor: "var(--surface-raised)",
-        borderRadius: "var(--card-radius)",
-        border: "1px solid var(--hairline)",
-      }}
-    >
-      {/* Album art left (FR-MUS-3) */}
-      <div
-        className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden"
-        style={{
-          borderRadius: "calc(var(--card-radius) - 6px)",
-          backgroundColor: "var(--surface-button)",
-          border: "1px solid var(--hairline)",
-        }}
-      >
-        {active.album_art_data_url ? (
-          <img
-            src={active.album_art_data_url}
-            alt={`${active.title} album art`}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span style={{ color: accent }}>
-            <MusicNoteIcon size={20} />
-          </span>
-        )}
-      </div>
+    <div className="flex h-full w-full flex-col justify-between px-1 py-0.5">
+      {/* Top row: Artwork on Left, Song Title & Controls on Right */}
+      <div className="flex items-center gap-3.5">
+        {/* Album Artwork */}
+        <div
+          className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl"
+          style={{
+            backgroundColor: "var(--surface-raised)",
+            border: "1px solid var(--hairline)",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+          }}
+        >
+          {active.album_art_data_url ? (
+            <img src={active.album_art_data_url} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span style={{ color: accent }}>
+              <MusicNoteIcon size={22} />
+            </span>
+          )}
+        </div>
 
-      {/* Track metadata or Synced Lyrics view (FR-MUS-3, FR-MUS-4) */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
-        {lyricsOpen ? (
-          <div className="flex h-16 flex-col justify-center gap-1 overflow-y-auto pr-1">
-            {lyricsLines.length === 0 ? (
-              <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                No synced lyrics found on LRCLIB for this track.
-              </span>
-            ) : (
-              lyricsLines
-                .slice(Math.max(0, activeLyricIdx), Math.max(0, activeLyricIdx) + 3)
-                .map((line, i) => (
-                  <div
-                    key={`${line.time_ms}-${i}`}
-                    className={
-                      i === 0 ? "type-body truncate font-semibold" : "type-caption truncate"
-                    }
-                    style={{
-                      color: i === 0 ? accent : "var(--text-secondary)",
-                    }}
-                  >
-                    {line.text}
-                  </div>
-                ))
+        {/* Track Title and Artist / Session Info */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className="type-body truncate font-semibold leading-tight"
+              style={{ color: "var(--text-primary)" }}
+              title={active.title}
+            >
+              {active.title || "Unknown Title"}
+            </span>
+            {media && media.sessions.length > 1 && (
+              <select
+                aria-label="Switch active media player"
+                value={active.app_id}
+                onChange={(e) => onSelectSession(e.target.value)}
+                className="type-caption max-w-[90px] cursor-pointer truncate rounded-full border-0 px-2 py-0.5"
+                style={{
+                  backgroundColor: "var(--surface-raised)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                {media.sessions.map((s) => (
+                  <option key={s.app_id} value={s.app_id}>
+                    {s.title || s.app_id}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
-        ) : (
-          <>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <div
-                  className="type-body truncate"
-                  style={{ color: "var(--text-primary)" }}
-                  title={active.title}
-                >
-                  {active.title}
-                </div>
-                <div
-                  className="type-caption truncate"
-                  style={{ color: "var(--text-secondary)" }}
-                  title={active.artist}
-                >
-                  {active.artist || active.app_id}
-                </div>
-              </div>
+          <span
+            className="type-caption truncate"
+            style={{ color: "var(--text-secondary)" }}
+            title={active.artist || active.app_id}
+          >
+            {active.artist || active.app_id || "Unknown Artist"}
+          </span>
+        </div>
+      </div>
 
-              {media && media.sessions.length > 1 && (
-                <select
-                  aria-label="Switch active media player"
-                  value={active.app_id}
-                  onChange={(e) => onSelectSession(e.target.value)}
-                  className="type-caption max-w-[110px] cursor-pointer truncate rounded-full border-0 px-2 py-0.5"
-                  style={{
-                    backgroundColor: "var(--surface-button)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {media.sessions.map((s) => (
-                    <option key={s.app_id} value={s.app_id}>
-                      {s.title || s.app_id}
-                    </option>
-                  ))}
-                </select>
-              )}
+      {/* Synced Lyrics drawer if enabled */}
+      {lyricsOpen && (
+        <div className="flex h-10 flex-col justify-center overflow-hidden px-1">
+          {lyricsLines.length === 0 ? (
+            <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
+              No synced lyrics available.
+            </span>
+          ) : (
+            <div className="type-caption truncate font-medium" style={{ color: accent }}>
+              {lyricsLines[Math.max(0, activeLyricIdx)]?.text ?? ""}
             </div>
+          )}
+        </div>
+      )}
 
-            <div className="flex items-center gap-2">
-              <span
-                className="type-caption w-9 shrink-0 tabular-nums"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                {formatDurationMs(clampedPos)}
-              </span>
-              <div className="relative flex flex-1 items-center">
-                <div
-                  className="h-1.5 w-full overflow-hidden rounded-full"
-                  style={{ backgroundColor: "var(--surface-button)" }}
-                >
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ backgroundColor: accent }}
-                    initial={false}
-                    animate={{ width: `${progressPct}%` }}
-                    transition={getMotionTransition("progressSpring", prefersReducedMotion)}
-                  />
-                </div>
-                <input
-                  type="range"
-                  aria-label="Seek track position"
-                  min={0}
-                  max={duration}
-                  value={clampedPos}
-                  onChange={(e) => onSeek(Number(e.target.value))}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-              </div>
-              <span
-                className="type-caption w-10 shrink-0 text-right tabular-nums"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                -{formatDurationMs(remainingMs)}
-              </span>
-            </div>
-          </>
-        )}
-
-        {/* Controls row: lyrics, prev, play/pause, next, system volume (FR-MUS-2, FR-MUS-3) */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="Toggle lyrics"
-              aria-pressed={lyricsOpen}
-              onClick={onToggleLyrics}
-              className="type-caption cursor-pointer rounded-full border-0 px-2.5 py-1"
-              style={{
-                backgroundColor: lyricsOpen ? accent : "var(--surface-button)",
-                color: "var(--text-primary)",
-              }}
-            >
-              Lyrics
-            </button>
-            <button
-              type="button"
-              aria-label="Previous track"
-              onClick={() => onCommand("previous")}
-              className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
-              style={{ backgroundColor: "var(--surface-button)", color: "var(--text-primary)" }}
-            >
-              <PrevIcon size={13} />
-            </button>
-            <button
-              type="button"
-              aria-label={active.is_playing ? "Pause" : "Play"}
-              onClick={() => onCommand("play_pause")}
-              className="type-caption flex h-7 w-8 cursor-pointer items-center justify-center rounded-full border-0 font-semibold"
-              style={{ backgroundColor: accent, color: "#000000" }}
-            >
-              {active.is_playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
-            </button>
-            <button
-              type="button"
-              aria-label="Next track"
-              onClick={() => onCommand("next")}
-              className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0"
-              style={{ backgroundColor: "var(--surface-button)", color: "var(--text-primary)" }}
-            >
-              <NextIcon size={13} />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label={media?.muted ? "Unmute system volume" : "Mute system volume"}
-              onClick={() => onCommand("toggle_mute")}
-              className="type-caption flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
-              style={{ backgroundColor: "var(--surface-button)", color: "var(--text-secondary)" }}
-            >
-              {media?.muted ? <VolumeOffIcon size={13} /> : <VolumeOnIcon size={13} />}
-            </button>
-            <input
-              type="range"
-              aria-label="System volume"
-              min={0}
-              max={100}
-              value={media?.volume_percent ?? 50}
-              onChange={(e) => onVolumeChange(Number(e.target.value))}
-              className="w-16 cursor-pointer accent-white"
+      {/* Progress timeline bar */}
+      <div className="flex items-center gap-2 px-0.5">
+        <span
+          className="type-caption w-8 shrink-0 tabular-nums text-xs"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          {formatDurationMs(clampedPos)}
+        </span>
+        <div className="relative flex flex-1 items-center">
+          <div
+            className="h-1.5 w-full overflow-hidden rounded-full"
+            style={{ backgroundColor: "rgba(255, 255, 255, 0.14)" }}
+          >
+            <motion.div
+              className="h-full rounded-full"
+              style={{ backgroundColor: "#ffffff" }}
+              initial={false}
+              animate={{ width: `${progressPct}%` }}
+              transition={getMotionTransition("progressSpring", prefersReducedMotion)}
             />
           </div>
+          <input
+            type="range"
+            aria-label="Seek track position"
+            min={0}
+            max={duration}
+            value={clampedPos}
+            onChange={(e) => onSeek(Number(e.target.value))}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </div>
+        <span
+          className="type-caption w-9 shrink-0 text-right tabular-nums text-xs"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          -{formatDurationMs(remainingMs)}
+        </span>
+      </div>
+
+      {/* Bottom Controls Row: Lyrics icon, Previous, Play/Pause, Next, Volume */}
+      <div className="flex items-center justify-between px-1 pt-0.5">
+        <button
+          type="button"
+          aria-label="Toggle lyrics"
+          aria-pressed={lyricsOpen}
+          onClick={onToggleLyrics}
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 transition-colors"
+          style={{
+            backgroundColor: lyricsOpen ? "rgba(255,255,255,0.2)" : "transparent",
+            color: lyricsOpen ? "#ffffff" : "var(--text-secondary)",
+          }}
+        >
+          <MessageSquareIcon size={16} />
+        </button>
+
+        {/* Playback Transport Buttons */}
+        <div className="flex items-center gap-5">
+          <button
+            type="button"
+            aria-label="Previous track"
+            onClick={() => onCommand("previous")}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
+          >
+            <PrevIcon size={18} />
+          </button>
+          <button
+            type="button"
+            aria-label={active.is_playing ? "Pause" : "Play"}
+            onClick={() => onCommand("play_pause")}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
+          >
+            {active.is_playing ? <PauseIcon size={22} /> : <PlayIcon size={22} />}
+          </button>
+          <button
+            type="button"
+            aria-label="Next track"
+            onClick={() => onCommand("next")}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
+          >
+            <NextIcon size={18} />
+          </button>
+        </div>
+
+        {/* Volume button and subtle hover popover or toggle */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-label={media?.muted ? "Unmute system volume" : "Mute system volume"}
+            onClick={() => onCommand("toggle_mute")}
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white/80 transition-colors hover:text-white"
+          >
+            {media?.muted ? <VolumeOffIcon size={16} /> : <VolumeOnIcon size={16} />}
+          </button>
+          <input
+            type="range"
+            aria-label="System volume"
+            min={0}
+            max={100}
+            value={media?.volume_percent ?? 50}
+            onChange={(e) => onVolumeChange(Number(e.target.value))}
+            className="w-14 cursor-pointer accent-white opacity-60 hover:opacity-100"
+          />
         </div>
       </div>
     </div>

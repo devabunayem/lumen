@@ -9,21 +9,21 @@ describe("IslandShell", () => {
     useIslandStore.setState(INITIAL_ISLAND_CONTEXT);
   });
 
-  it("renders the top-centre 200x32 black pill in idle state", () => {
+  it("renders the top-centre standard black pill in idle state", () => {
     render(<IslandShell shapeStyle="notch" scaleFactor={1} />);
     const pill = screen.getByTestId("lumen-island-pill");
     expect(pill).toHaveAttribute("data-state", "idle");
-    expect(pill).toHaveAttribute("data-target-width", "200");
-    expect(pill).toHaveAttribute("data-target-height", "32");
+    expect(pill).toHaveAttribute("data-target-width", "184");
+    expect(pill).toHaveAttribute("data-target-height", "30");
   });
 
-  it("expands to 620x190 when clicked and collapses on Escape", () => {
+  it("expands to 560x172 when clicked and collapses on Escape", () => {
     render(<IslandShell shapeStyle="notch" scaleFactor={1} />);
     const pill = screen.getByTestId("lumen-island-pill");
     fireEvent.click(pill);
     expect(pill).toHaveAttribute("data-state", "expanded");
-    expect(pill).toHaveAttribute("data-target-width", "620");
-    expect(pill).toHaveAttribute("data-target-height", "190");
+    expect(pill).toHaveAttribute("data-target-width", "560");
+    expect(pill).toHaveAttribute("data-target-height", "172");
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(pill).toHaveAttribute("data-state", "idle");

@@ -36,7 +36,7 @@ describe("MusicWidget", () => {
         onSelectSession={vi.fn()}
       />,
     );
-    expect(screen.getByText("Nothing playing")).toBeInTheDocument();
+    expect(screen.getByText("Not Playing")).toBeInTheDocument();
   });
 
   it("renders metadata, timestamps, session switcher, and triggers playback commands", () => {

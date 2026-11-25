@@ -20,17 +20,17 @@ export const COLOR_TOKENS = {
 } as const;
 
 export const BASE_GEOMETRY = {
-  collapsed: { width: 200, height: 32 },
-  minimal: { width: 120, height: 28 },
-  slim: { width: 96, height: 14 },
-  expanded: { width: 620, height: 190 },
-  hud: { width: 360, height: 64 },
-  notchBottomRadius: 32,
+  collapsed: { width: 184, height: 30 },
+  minimal: { width: 110, height: 26 },
+  slim: { width: 84, height: 12 },
+  expanded: { width: 560, height: 172 },
+  hud: { width: 340, height: 60 },
+  notchBottomRadius: 24,
   pillFloatOffset: 8,
-  innerPadding: 20,
-  blockGap: 12,
-  innerCardRadius: 22,
-  capsuleButtonHeight: 36,
+  innerPadding: 16,
+  blockGap: 10,
+  innerCardRadius: 18,
+  capsuleButtonHeight: 32,
 } as const;
 
 /**

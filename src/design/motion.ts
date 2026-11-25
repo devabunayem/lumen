@@ -18,8 +18,9 @@ export const MOTION_PRESETS = {
   },
   pageSwitch: {
     type: "spring",
-    stiffness: 300,
-    damping: 32,
+    stiffness: 260,
+    damping: 28,
+    mass: 0.8,
   },
   shapeMorph: {
     type: "spring",

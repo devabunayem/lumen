@@ -161,6 +161,7 @@ export function IslandShell({
   const [clockDateOverride, setClockDateOverride] = useState<boolean | null>(null);
   const showHeaderClock = clockDateOverride ?? showHeaderClockSetting;
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<1 | -1>(1);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
@@ -455,8 +456,10 @@ export function IslandShell({
         setSlimReturnActive(false);
         dispatch({ type: "ESCAPE" });
       } else if (state === "expanded" && event.key === "ArrowRight") {
+        setSlideDirection(1);
         setActivePageIndex((idx) => (idx + 1) % pages.length);
       } else if (state === "expanded" && event.key === "ArrowLeft") {
+        setSlideDirection(-1);
         setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length);
       }
     };
@@ -621,9 +624,9 @@ export function IslandShell({
           lastWheelAtRef.current = now;
           const dir =
             Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-          setActivePageIndex((idx) =>
-            dir > 0 ? (idx + 1) % pages.length : (idx - 1 + pages.length) % pages.length,
-          );
+          const step = dir > 0 ? 1 : -1;
+          setSlideDirection(step);
+          setActivePageIndex((idx) => (idx + step + pages.length) % pages.length);
         }}
         className={`relative select-none ${isHidden ? "pointer-events-none" : "pointer-events-auto cursor-pointer"}`}
         style={{
@@ -753,7 +756,7 @@ export function IslandShell({
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
                 transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                className={`absolute inset-0 flex h-full w-full items-center whitespace-nowrap ${isSlimQuiet ? "justify-center px-2" : "justify-between px-5"}`}
+                className={`absolute inset-0 flex h-full w-full items-center whitespace-nowrap ${isSlimQuiet ? "justify-center px-2" : "justify-between px-3.5"}`}
               >
                 {isSlimQuiet ? (
                   <div
@@ -883,8 +886,8 @@ export function IslandShell({
                   width: `${expandedW}px`,
                   height: `${expandedH}px`,
                   padding: "var(--island-padding)",
-                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "28px",
-                  paddingRight: isFloatingPill ? "var(--island-padding)" : "28px",
+                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "20px",
+                  paddingRight: isFloatingPill ? "var(--island-padding)" : "20px",
                   gap: "var(--island-gap)",
                 }}
                 onClick={(event) => event.stopPropagation()}
@@ -997,15 +1000,16 @@ export function IslandShell({
                   </div>
                 </div>
 
-                <div className="relative flex min-h-0 flex-1 items-center">
+                <div className="relative flex min-h-0 flex-1 items-center overflow-hidden">
                   {isHeaderHovered && (
                     <button
                       type="button"
                       aria-label={msg.pill.prevPage}
-                      onClick={() =>
-                        setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length)
-                      }
-                      className="type-caption absolute -left-4 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
+                      onClick={() => {
+                        setSlideDirection(-1);
+                        setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length);
+                      }}
+                      className="type-caption absolute -left-2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 shadow-md"
                       style={{
                         backgroundColor: "var(--surface-button)",
                         color: "var(--text-primary)",
@@ -1015,184 +1019,216 @@ export function IslandShell({
                     </button>
                   )}
 
-                  {activePage.id === "music" && (
-                    <MusicWidget
-                      media={media}
-                      lyricsOpen={lyricsOpen}
-                      lyricsLines={activeLyricsLines}
-                      onToggleLyrics={() => setLyricsOpen((v) => !v)}
-                      onCommand={(cmd) => {
-                        void sendMediaCommand(cmd).then((next) => next && setMedia(next));
+                  <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
+                    <motion.div
+                      key={activePage.id}
+                      custom={slideDirection}
+                      variants={{
+                        enter: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? 60 : -60,
+                          opacity: 0,
+                          scale: 0.98,
+                        }),
+                        center: {
+                          x: 0,
+                          opacity: 1,
+                          scale: 1,
+                        },
+                        exit: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? -60 : 60,
+                          opacity: 0,
+                          scale: 0.98,
+                        }),
                       }}
-                      onSeek={(pos) => {
-                        void seekMedia(pos).then((next) => next && setMedia(next));
-                      }}
-                      onVolumeChange={(vol) => {
-                        void setSystemVolume(vol).then((next) => next && setMedia(next));
-                      }}
-                      onSelectSession={(appId) => {
-                        void selectMediaSession(appId).then((next) => next && setMedia(next));
-                      }}
-                    />
-                  )}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
+                      className="flex h-full w-full items-center"
+                    >
+                      {activePage.id === "music" && (
+                        <MusicWidget
+                          media={media}
+                          lyricsOpen={lyricsOpen}
+                          lyricsLines={activeLyricsLines}
+                          onToggleLyrics={() => setLyricsOpen((v) => !v)}
+                          onCommand={(cmd) => {
+                            void sendMediaCommand(cmd).then((next) => next && setMedia(next));
+                          }}
+                          onSeek={(pos) => {
+                            void seekMedia(pos).then((next) => next && setMedia(next));
+                          }}
+                          onVolumeChange={(vol) => {
+                            void setSystemVolume(vol).then((next) => next && setMedia(next));
+                          }}
+                          onSelectSession={(appId) => {
+                            void selectMediaSession(appId).then((next) => next && setMedia(next));
+                          }}
+                        />
+                      )}
 
-                  {activePage.id === "todo" && (
-                    <TodoWidget
-                      tasks={tasks}
-                      onAdd={(title, dueAt) => {
-                        void tasksAdd(title, dueAt).then((updated) => {
-                          if (updated.length > 0 || isTauriRuntime()) {
-                            setTasks(updated);
-                          } else {
-                            setTasks((prev) => [
-                              {
-                                id: Date.now(),
-                                title,
-                                done: false,
-                                due_at: dueAt ?? null,
-                                created_at: new Date().toISOString(),
-                              },
-                              ...prev,
-                            ]);
-                          }
-                        });
-                      }}
-                      onToggle={(id) => {
-                        void tasksToggle(id).then((updated) => {
-                          if (isTauriRuntime()) {
-                            setTasks(updated);
-                          } else {
-                            setTasks((prev) =>
-                              prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-                            );
-                          }
-                        });
-                      }}
-                      onDelete={(id) => {
-                        void tasksDelete(id).then((updated) => {
-                          if (isTauriRuntime()) {
-                            setTasks(updated);
-                          } else {
-                            setTasks((prev) => prev.filter((t) => t.id !== id));
-                          }
-                        });
-                      }}
-                    />
-                  )}
-
-                  {activePage.id === "water" && (
-                    <WaterWidget
-                      summary={waterSummary}
-                      servingMl={250}
-                      remindersEnabled={waterReminders}
-                      onDrink={(ml) => {
-                        void waterLog(ml, waterGoalMl, 4).then((w) => {
-                          if (w) {
-                            setWaterSummary(w);
-                          } else {
-                            const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
-                            const pct = (nextTotal / waterGoalMl) * 100;
-                            setWaterSummary({
-                              today_ml: nextTotal,
-                              goal_ml: waterGoalMl,
-                              percentage: pct,
-                              goal_reached: pct >= 100,
-                              last_entry_id: Date.now(),
-                              weekly: [],
+                      {activePage.id === "todo" && (
+                        <TodoWidget
+                          tasks={tasks}
+                          onAdd={(title, dueAt) => {
+                            void tasksAdd(title, dueAt).then((updated) => {
+                              if (updated.length > 0 || isTauriRuntime()) {
+                                setTasks(updated);
+                              } else {
+                                setTasks((prev) => [
+                                  {
+                                    id: Date.now(),
+                                    title,
+                                    done: false,
+                                    due_at: dueAt ?? null,
+                                    created_at: new Date().toISOString(),
+                                  },
+                                  ...prev,
+                                ]);
+                              }
                             });
+                          }}
+                          onToggle={(id) => {
+                            void tasksToggle(id).then((updated) => {
+                              if (isTauriRuntime()) {
+                                setTasks(updated);
+                              } else {
+                                setTasks((prev) =>
+                                  prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+                                );
+                              }
+                            });
+                          }}
+                          onDelete={(id) => {
+                            void tasksDelete(id).then((updated) => {
+                              if (isTauriRuntime()) {
+                                setTasks(updated);
+                              } else {
+                                setTasks((prev) => prev.filter((t) => t.id !== id));
+                              }
+                            });
+                          }}
+                        />
+                      )}
+
+                      {activePage.id === "water" && (
+                        <WaterWidget
+                          summary={waterSummary}
+                          servingMl={250}
+                          remindersEnabled={waterReminders}
+                          onDrink={(ml) => {
+                            void waterLog(ml, waterGoalMl, 4).then((w) => {
+                              if (w) {
+                                setWaterSummary(w);
+                              } else {
+                                const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
+                                const pct = (nextTotal / waterGoalMl) * 100;
+                                setWaterSummary({
+                                  today_ml: nextTotal,
+                                  goal_ml: waterGoalMl,
+                                  percentage: pct,
+                                  goal_reached: pct >= 100,
+                                  last_entry_id: Date.now(),
+                                  weekly: [],
+                                });
+                              }
+                            });
+                          }}
+                          onUndo={(entryId) => {
+                            void waterUndo(entryId, waterGoalMl, 4).then(
+                              (w) => w && setWaterSummary(w),
+                            );
+                          }}
+                          onToggleReminders={() => setWaterReminders((v) => !v)}
+                          onChangeGoal={(goal) => {
+                            setWaterGoalOverride(goal);
+                            void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
+                          }}
+                        />
+                      )}
+
+                      {activePage.id === "prayer" && (
+                        <PrayerWidget
+                          schedule={prayerSchedule}
+                          cities={prayerCities}
+                          language={prayerLang}
+                          onSelectCity={(cityId) => {
+                            void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
+                          }}
+                          onToggleLanguage={() =>
+                            setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
                           }
-                        });
-                      }}
-                      onUndo={(entryId) => {
-                        void waterUndo(entryId, waterGoalMl, 4).then(
-                          (w) => w && setWaterSummary(w),
-                        );
-                      }}
-                      onToggleReminders={() => setWaterReminders((v) => !v)}
-                      onChangeGoal={(goal) => {
-                        setWaterGoalOverride(goal);
-                        void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
-                      }}
-                    />
-                  )}
+                        />
+                      )}
 
-                  {activePage.id === "prayer" && (
-                    <PrayerWidget
-                      schedule={prayerSchedule}
-                      cities={prayerCities}
-                      language={prayerLang}
-                      onSelectCity={(cityId) => {
-                        void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
-                      }}
-                      onToggleLanguage={() =>
-                        setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
-                      }
-                    />
-                  )}
+                      {activePage.id === "pomodoro" && (
+                        <PomodoroWidget
+                          pomodoro={pomodoro}
+                          onToggle={() => {
+                            void pomodoroToggle().then((p) => p && setPomodoro(p));
+                          }}
+                          onSkip={() => {
+                            void pomodoroSkip().then((p) => p && setPomodoro(p));
+                          }}
+                          onReset={() => {
+                            void pomodoroReset().then((p) => p && setPomodoro(p));
+                          }}
+                        />
+                      )}
 
-                  {activePage.id === "pomodoro" && (
-                    <PomodoroWidget
-                      pomodoro={pomodoro}
-                      onToggle={() => {
-                        void pomodoroToggle().then((p) => p && setPomodoro(p));
-                      }}
-                      onSkip={() => {
-                        void pomodoroSkip().then((p) => p && setPomodoro(p));
-                      }}
-                      onReset={() => {
-                        void pomodoroReset().then((p) => p && setPomodoro(p));
-                      }}
-                    />
-                  )}
+                      {activePage.id === "shelf" && (
+                        <ShelfWidget
+                          items={shelfItems}
+                          onAdd={(kind, val) => {
+                            void shelfAdd(kind, val).then((items) => {
+                              if (isTauriRuntime()) {
+                                setShelfItems(items);
+                              } else {
+                                setShelfItems((prev) => [
+                                  {
+                                    id: Date.now(),
+                                    kind,
+                                    path_or_text: val,
+                                    display_name: val.slice(0, 40),
+                                    available: true,
+                                    added_at: new Date().toISOString(),
+                                  },
+                                  ...prev,
+                                ]);
+                              }
+                            });
+                          }}
+                          onOpen={(target) => {
+                            void shelfOpen(target);
+                          }}
+                          onRemove={(id) => {
+                            void shelfRemove(id).then((items) => {
+                              if (isTauriRuntime()) {
+                                setShelfItems(items);
+                              } else {
+                                setShelfItems((prev) => prev.filter((i) => i.id !== id));
+                              }
+                            });
+                          }}
+                          onClear={() => {
+                            void shelfClear().then(() => setShelfItems([]));
+                          }}
+                        />
+                      )}
 
-                  {activePage.id === "shelf" && (
-                    <ShelfWidget
-                      items={shelfItems}
-                      onAdd={(kind, val) => {
-                        void shelfAdd(kind, val).then((items) => {
-                          if (isTauriRuntime()) {
-                            setShelfItems(items);
-                          } else {
-                            setShelfItems((prev) => [
-                              {
-                                id: Date.now(),
-                                kind,
-                                path_or_text: val,
-                                display_name: val.slice(0, 40),
-                                available: true,
-                                added_at: new Date().toISOString(),
-                              },
-                              ...prev,
-                            ]);
-                          }
-                        });
-                      }}
-                      onOpen={(target) => {
-                        void shelfOpen(target);
-                      }}
-                      onRemove={(id) => {
-                        void shelfRemove(id).then((items) => {
-                          if (isTauriRuntime()) {
-                            setShelfItems(items);
-                          } else {
-                            setShelfItems((prev) => prev.filter((i) => i.id !== id));
-                          }
-                        });
-                      }}
-                      onClear={() => {
-                        void shelfClear().then(() => setShelfItems([]));
-                      }}
-                    />
-                  )}
-
-                  {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
+                      {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
+                    </motion.div>
+                  </AnimatePresence>
 
                   {isHeaderHovered && (
                     <button
                       type="button"
                       aria-label={msg.pill.nextPage}
-                      onClick={() => setActivePageIndex((idx) => (idx + 1) % pages.length)}
-                      className="type-caption absolute -right-4 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0"
+                      onClick={() => {
+                        setSlideDirection(1);
+                        setActivePageIndex((idx) => (idx + 1) % pages.length);
+                      }}
+                      className="type-caption absolute -right-2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 shadow-md"
                       style={{
                         backgroundColor: "var(--surface-button)",
                         color: "var(--text-primary)",
