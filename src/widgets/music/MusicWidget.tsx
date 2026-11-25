@@ -217,11 +217,11 @@ export function MusicWidget({
           >
             {/* Album Artwork */}
             <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl"
               style={{
                 backgroundColor: "var(--surface-raised)",
                 border: "1px solid var(--hairline)",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
               }}
             >
               {active.album_art_data_url ? (
@@ -303,16 +303,21 @@ export function MusicWidget({
         </span>
         <div className="relative flex flex-1 items-center">
           <div
-            className="h-1.5 w-full overflow-hidden rounded-full"
-            style={{ backgroundColor: "rgba(255, 255, 255, 0.14)" }}
+            className="h-1 w-full rounded-full"
+            style={{ backgroundColor: "rgba(255, 255, 255, 0.18)" }}
           >
             <motion.div
-              className="h-full rounded-full"
+              className="relative h-full rounded-full"
               style={{ backgroundColor: "#ffffff" }}
               initial={false}
               animate={{ width: `${progressPct}%` }}
               transition={getMotionTransition("progressSpring", prefersReducedMotion)}
-            />
+            >
+              <span
+                className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 translate-x-1/2 rounded-full bg-white"
+                style={{ boxShadow: "0 0 6px rgba(255, 255, 255, 0.7)" }}
+              />
+            </motion.div>
           </div>
           <input
             type="range"
@@ -357,7 +362,7 @@ export function MusicWidget({
         </button>
 
         {/* Playback Transport Buttons */}
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-6">
           <button
             type="button"
             aria-label="Previous track"
@@ -367,7 +372,7 @@ export function MusicWidget({
             }}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
           >
-            <PrevIcon size={18} />
+            <PrevIcon size={20} />
           </button>
           <button
             type="button"
@@ -386,20 +391,12 @@ export function MusicWidget({
             }}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white transition-transform active:scale-90"
           >
-            <NextIcon size={18} />
+            <NextIcon size={20} />
           </button>
         </div>
 
-        {/* Volume button and subtle hover popover or toggle */}
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-label={media?.muted ? "Unmute system volume" : "Mute system volume"}
-            onClick={() => onCommand("toggle_mute")}
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white/80 transition-colors hover:text-white"
-          >
-            {media?.muted ? <VolumeOffIcon size={16} /> : <VolumeOnIcon size={16} />}
-          </button>
+        {/* Clean Volume Icon (slider expands smoothly on hover/focus) */}
+        <div className="group/vol flex items-center justify-end gap-1">
           <input
             type="range"
             aria-label="System volume"
@@ -407,8 +404,16 @@ export function MusicWidget({
             max={100}
             value={media?.volume_percent ?? 50}
             onChange={(e) => onVolumeChange(Number(e.target.value))}
-            className="w-14 cursor-pointer accent-white opacity-60 hover:opacity-100"
+            className="w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-12 group-hover/vol:opacity-85 focus:w-12 focus:opacity-100"
           />
+          <button
+            type="button"
+            aria-label={media?.muted ? "Unmute system volume" : "Mute system volume"}
+            onClick={() => onCommand("toggle_mute")}
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-white/85 transition-colors hover:text-white"
+          >
+            {media?.muted ? <VolumeOffIcon size={16} /> : <VolumeOnIcon size={16} />}
+          </button>
         </div>
       </div>
     </div>
