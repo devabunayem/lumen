@@ -533,7 +533,7 @@ export function IslandShell({
       case "minimal":
         return BASE_GEOMETRY.minimal;
       case "live":
-        return { width: 244, height: 34 };
+        return { width: 268, height: 38 };
       case "expanded":
         return BASE_GEOMETRY.expanded;
       case "hud":
