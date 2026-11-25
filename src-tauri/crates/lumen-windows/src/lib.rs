@@ -854,6 +854,40 @@ mod win32 {
             }
         }
     }
+
+    /// Clips the OS window's hit-testable & DWM region to the exact active pill rectangle
+    /// (in window-relative physical pixels) so surrounding transparent canvas pixels
+    /// are completely non-existent to mouse events and never block apps behind the notch.
+    pub fn set_window_pill_region(
+        raw_hwnd: isize,
+        rel_x: i32,
+        rel_y: i32,
+        width: i32,
+        height: i32,
+        corner_radius_px: i32,
+        visible: bool,
+    ) {
+        if raw_hwnd == 0 {
+            return;
+        }
+        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
+        unsafe {
+            use windows::Win32::Graphics::Gdi::{
+                CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn,
+            };
+            let hrgn = if !visible || width <= 0 || height <= 0 {
+                CreateRectRgn(0, 0, 0, 0)
+            } else if corner_radius_px > 0 {
+                let diam = corner_radius_px * 2;
+                CreateRoundRectRgn(rel_x, rel_y, rel_x + width, rel_y + height, diam, diam)
+            } else {
+                CreateRectRgn(rel_x, rel_y, rel_x + width, rel_y + height)
+            };
+            if !hrgn.is_invalid() && SetWindowRgn(hwnd, Some(hrgn), true) == 0 {
+                let _ = DeleteObject(hrgn.into());
+            }
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -870,6 +904,17 @@ mod win32 {
     }
 
     pub const fn set_click_through(_raw_hwnd: isize, _pass_through: bool) {}
+
+    pub const fn set_window_pill_region(
+        _raw_hwnd: isize,
+        _rel_x: i32,
+        _rel_y: i32,
+        _width: i32,
+        _height: i32,
+        _corner_radius_px: i32,
+        _visible: bool,
+    ) {
+    }
 
     #[must_use]
     pub const fn acquire_single_instance_mutex() -> bool {
@@ -950,7 +995,7 @@ pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, capture_screen_to_png,
     cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
     lock_workstation, ocr_screen_to_clipboard, open_shell_target, privacy_device_status,
-    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
+    set_autostart_enabled, set_click_through, set_window_bounds_atomic, set_window_pill_region,
 };
 
 #[cfg(test)]
