@@ -27,7 +27,7 @@ use lumen_windows::{
     capture_screen_to_png, compute_pill_screen_rect, compute_top_center_position,
     cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
     lock_workstation, ocr_screen_to_clipboard, open_shell_target, privacy_device_status,
-    set_autostart_enabled, set_click_through, set_window_bounds_atomic,
+    set_autostart_enabled, set_click_through, set_window_bounds_atomic, set_window_pill_region,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -949,6 +949,7 @@ pub fn run() {
             };
 
             recenter_window(&window, CANVAS_WIN_W, CANVAS_WIN_H, &initial_settings);
+            let _ = window.set_ignore_cursor_events(true);
             let _ = window.show();
 
             // System tray icon & menu (FR-WIN-7)
@@ -1012,6 +1013,9 @@ pub fn run() {
             let hit_config = Arc::clone(&shared_config);
             tauri::async_runtime::spawn(async move {
                 let mut last_pass_through: Option<bool> = None;
+                let mut applied_rgn: Option<(i32, i32, i32, i32, bool)> = None;
+                let mut shrink_deadline: Option<tokio::time::Instant> = None;
+
                 loop {
                     let (visible, w_logical, h_logical, top_logical) = {
                         let c = hit_config.lock().map(|cfg| *cfg).unwrap_or_default();
@@ -1023,6 +1027,57 @@ pub fn run() {
                         )
                     };
 
+                    let scale = hit_window.scale_factor().unwrap_or(1.0);
+                    let win_w_px = hit_window
+                        .outer_size()
+                        .map(|s| s.width as i32)
+                        .unwrap_or((CANVAS_WIN_W * scale).round() as i32);
+                    let pill_w_px = (w_logical * scale).round() as i32;
+                    let pill_h_px = (h_logical * scale).round() as i32;
+                    let top_px = (top_logical * scale).round() as i32;
+                    let rel_x = (win_w_px - pill_w_px) / 2;
+                    let desired_rgn = (rel_x, top_px, pill_w_px, pill_h_px, visible);
+
+                    if applied_rgn != Some(desired_rgn) {
+                        let is_expanding = match applied_rgn {
+                            None => false,
+                            Some((_, _, prev_w, prev_h, prev_vis)) => {
+                                (visible && !prev_vis) || pill_w_px > prev_w || pill_h_px > prev_h
+                            }
+                        };
+                        if is_expanding || applied_rgn.is_none() {
+                            shrink_deadline = None;
+                            let corner_px = if h_logical <= 40.0 {
+                                (h_logical * 0.5 * scale).round() as i32
+                            } else {
+                                (24.0 * scale).round() as i32
+                            };
+                            set_window_pill_region(
+                                own_hwnd, rel_x, top_px, pill_w_px, pill_h_px, corner_px, visible,
+                            );
+                            applied_rgn = Some(desired_rgn);
+                        } else {
+                            let deadline = shrink_deadline.get_or_insert_with(|| {
+                                tokio::time::Instant::now() + Duration::from_millis(320)
+                            });
+                            if tokio::time::Instant::now() >= *deadline {
+                                shrink_deadline = None;
+                                let corner_px = if h_logical <= 40.0 {
+                                    (h_logical * 0.5 * scale).round() as i32
+                                } else {
+                                    (24.0 * scale).round() as i32
+                                };
+                                set_window_pill_region(
+                                    own_hwnd, rel_x, top_px, pill_w_px, pill_h_px, corner_px,
+                                    visible,
+                                );
+                                applied_rgn = Some(desired_rgn);
+                            }
+                        }
+                    } else {
+                        shrink_deadline = None;
+                    }
+
                     let pass_through = if !visible {
                         true
                     } else if let (Some(pos), Some(size), Some((cx, cy))) = (
@@ -1030,23 +1085,22 @@ pub fn run() {
                         hit_window.outer_size().ok(),
                         cursor_screen_pos(),
                     ) {
-                        let scale = hit_window.scale_factor().unwrap_or(1.0);
                         let pill_rect = compute_pill_screen_rect(
                             pos.x,
                             pos.y,
                             size.width as i32,
-                            (w_logical * scale).round() as i32,
-                            (h_logical * scale).round() as i32,
-                            (top_logical * scale).round() as i32,
+                            pill_w_px,
+                            pill_h_px,
+                            top_px,
                         );
-                        let margin = (6.0 * scale).round() as i32;
-                        !pill_rect.contains_point(cx, cy, margin)
+                        !pill_rect.contains_point(cx, cy, 0)
                     } else {
-                        false
+                        true
                     };
 
                     if last_pass_through != Some(pass_through) {
                         last_pass_through = Some(pass_through);
+                        let _ = hit_window.set_ignore_cursor_events(pass_through);
                         #[cfg(windows)]
                         set_click_through(own_hwnd, pass_through);
                     }
