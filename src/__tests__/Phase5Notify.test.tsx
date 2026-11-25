@@ -16,6 +16,7 @@ describe("NotificationToast (FR-NT-1..2)", () => {
         onDismiss={onDismiss}
       />,
     );
+    expect(screen.getByTestId("notification-app-icon")).toBeInTheDocument();
     expect(screen.getByText("Payment Alert")).toBeInTheDocument();
     expect(screen.getByText("Code •••• received")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Payment Alert"));
