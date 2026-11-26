@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "motion/react";
 import {
   useEffect,
   useRef,
@@ -16,6 +17,7 @@ import {
   VolumeOffIcon,
   VolumeOnIcon,
 } from "../../design/icons";
+import { getMotionTransition } from "../../design/motion";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages, type AppLanguage } from "../../i18n";
 import { formatDigits } from "../../i18n/digits";
@@ -61,7 +63,75 @@ export function MusicCard({
 }: MusicCardProps) {
   const msg = getMessages(language);
   const [volumeHudPct, setVolumeHudPct] = useState<number | null>(null);
-  const session = media.active;
+  const [skipHoldSession, setSkipHoldSession] = useState<MediaStateSnapshot["active"]>(null);
+  const [flipDirection, setFlipDirection] = useState<1 | -1>(1);
+  const skipDirExpiryRef = useRef<number>(0);
+  const holdReleaseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!media.active) {
+      if (Date.now() > skipDirExpiryRef.current) {
+        const resetDir = window.setTimeout(() => setFlipDirection(1), 0);
+        return () => window.clearTimeout(resetDir);
+      }
+      return;
+    }
+
+    if (holdReleaseTimerRef.current !== null) {
+      window.clearTimeout(holdReleaseTimerRef.current);
+      holdReleaseTimerRef.current = null;
+    }
+    const clearHold = window.setTimeout(() => {
+      setSkipHoldSession(null);
+      if (Date.now() > skipDirExpiryRef.current) {
+        setFlipDirection(1);
+      }
+    }, 0);
+    return () => window.clearTimeout(clearHold);
+  }, [media.active]);
+
+  useEffect(() => {
+    return () => {
+      if (holdReleaseTimerRef.current !== null) {
+        window.clearTimeout(holdReleaseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const triggerTrackSkip = (dir: 1 | -1, handler: () => void) => {
+    skipDirExpiryRef.current = Date.now() + 5000;
+    setFlipDirection(dir);
+    if (media.active) {
+      setSkipHoldSession(media.active);
+      if (holdReleaseTimerRef.current !== null) {
+        window.clearTimeout(holdReleaseTimerRef.current);
+      }
+      holdReleaseTimerRef.current = window.setTimeout(() => {
+        holdReleaseTimerRef.current = null;
+        setSkipHoldSession(null);
+      }, 2400);
+    }
+    handler();
+  };
+
+  const session = media.active ?? skipHoldSession;
+  const trackFlipKey = session ? `${session.app_id}::${session.title}::${session.artist}` : "empty";
+  const flipTransition = getMotionTransition(
+    reduceMotion ? "reducedMotionFade" : "trackFlip",
+    reduceMotion,
+  );
+  const flipVariants = {
+    enter: (dir: 1 | -1) =>
+      reduceMotion
+        ? { opacity: 0 }
+        : { opacity: 0, x: dir > 0 ? 24 : -24, rotateY: dir > 0 ? 42 : -42, scale: 0.94 },
+    center: { opacity: 1, x: 0, rotateY: 0, scale: 1 },
+    exit: (dir: 1 | -1) =>
+      reduceMotion
+        ? { opacity: 0 }
+        : { opacity: 0, x: dir > 0 ? -24 : 24, rotateY: dir > 0 ? -42 : 42, scale: 0.94 },
+  };
+
   const lastSession = media.sessions?.[0] ?? null;
   const [livePosMs, setLivePosMs] = useState<number>(session?.position_ms ?? 0);
   const syncRef = useRef({
@@ -147,39 +217,73 @@ export function MusicCard({
           : undefined
       }
     >
-      {/* 60px artwork square (radius 14) */}
+      {/* 60px artwork square (radius 14) with 3D side-flip track transition */}
       <div
-        className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-[14px]"
-        style={{
-          background: session?.album_art_data_url
-            ? COLOR_TOKENS.surfaceRaised
-            : `linear-gradient(135deg, ${COLOR_TOKENS.musicDefaultFrom}, ${COLOR_TOKENS.musicDefaultTo})`,
-        }}
+        className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-[14px]"
+        style={{ perspective: 520 }}
       >
-        {session?.album_art_data_url ? (
-          <img
-            src={session.album_art_data_url}
-            alt={session.album_title || session.title}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <MusicNoteIcon size={22} className="text-white/90" />
-        )}
+        <AnimatePresence mode="popLayout" initial={false} custom={flipDirection}>
+          <motion.div
+            key={session ? trackFlipKey : "empty-art"}
+            custom={flipDirection}
+            variants={flipVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={flipTransition}
+            style={{
+              transformPerspective: 520,
+              background: session?.album_art_data_url
+                ? COLOR_TOKENS.surfaceRaised
+                : `linear-gradient(135deg, ${COLOR_TOKENS.musicDefaultFrom}, ${COLOR_TOKENS.musicDefaultTo})`,
+            }}
+            className="flex h-full w-full items-center justify-center overflow-hidden rounded-[14px]"
+          >
+            {session?.album_art_data_url ? (
+              <img
+                src={session.album_art_data_url}
+                alt={session.album_title || session.title}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <MusicNoteIcon size={22} className="text-white/90" />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {session ? (
         <div className="flex min-w-0 flex-1 flex-col justify-between self-stretch">
           <div className="flex items-start justify-between gap-1.5">
-            <div className="min-w-0 flex-1">
-              <div className="type-home-card-title truncate leading-tight text-white">
-                {session.title}
-              </div>
-              <div
-                className="type-home-micro truncate leading-tight"
-                style={{ color: COLOR_TOKENS.textSecondary }}
-              >
-                {session.artist || session.app_id}
-              </div>
+            <div
+              data-testid="music-track-flip"
+              data-flip-direction={flipDirection > 0 ? "next" : "prev"}
+              className="min-w-0 flex-1 overflow-hidden"
+              style={{ perspective: 520 }}
+            >
+              <AnimatePresence mode="popLayout" initial={false} custom={flipDirection}>
+                <motion.div
+                  key={trackFlipKey}
+                  custom={flipDirection}
+                  variants={flipVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={flipTransition}
+                  style={{ transformPerspective: 520 }}
+                  className="min-w-0"
+                >
+                  <div className="type-home-card-title truncate leading-tight text-white">
+                    {session.title}
+                  </div>
+                  <div
+                    className="type-home-micro truncate leading-tight"
+                    style={{ color: COLOR_TOKENS.textSecondary }}
+                  >
+                    {session.artist || session.app_id}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
             </div>
 
             <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -264,7 +368,7 @@ export function MusicCard({
               <button
                 type="button"
                 aria-label={msg.home.music.prev}
-                onClick={onPrev}
+                onClick={() => triggerTrackSkip(-1, onPrev)}
                 className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-white/85 hover:text-white"
               >
                 <SkipBackIcon size={12} />
@@ -282,7 +386,7 @@ export function MusicCard({
               <button
                 type="button"
                 aria-label={msg.home.music.next}
-                onClick={onNext}
+                onClick={() => triggerTrackSkip(1, onNext)}
                 className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-white/85 hover:text-white"
               >
                 <SkipForwardIcon size={12} />

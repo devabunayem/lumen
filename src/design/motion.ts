@@ -98,6 +98,10 @@ export const MOTION_PRESETS = {
     duration: 0.35,
     ease: "easeInOut",
   },
+  trackFlip: {
+    duration: 0.28,
+    ease: [0.22, 1, 0.36, 1],
+  },
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {

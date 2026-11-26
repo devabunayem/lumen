@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DayArc } from "../home/components/DayArc";
+import { MusicCard } from "../home/components/MusicCard";
 import { computeDayArcGeometry } from "../home/hooks/useDayArcGeometry";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
@@ -218,5 +219,75 @@ describe("Phase 3 Core Widgets", () => {
       />,
     );
     expect(screen.getByTestId("home-qibla-btn")).toHaveTextContent("119° SE");
+  });
+
+  it("holds MusicCard during Next/Prev SMTC transitions without flashing empty and tracks side-flip direction", () => {
+    vi.useFakeTimers();
+    try {
+      const onNext = vi.fn();
+      const onPrev = vi.fn();
+      const makeSnapshot = (title: string | null) => ({
+        active: title
+          ? {
+              app_id: "chrome.exe",
+              title,
+              artist: "YouTube",
+              album_title: "",
+              is_playing: true,
+              position_ms: 15_000,
+              duration_ms: 210_000,
+              album_art_data_url: null,
+              accent_hex: "#FF6B2B",
+            }
+          : null,
+        sessions: [],
+        volume_percent: 65,
+        muted: false,
+      });
+
+      const baseProps = {
+        banglaDigits: false,
+        reduceMotion: false,
+        onPlayPause: vi.fn(),
+        onPrev,
+        onNext,
+        onMuteToggle: vi.fn(),
+        onVolumeDelta: vi.fn(),
+      };
+
+      const { rerender } = render(<MusicCard media={makeSnapshot("First Video")} {...baseProps} />);
+
+      // Press Next -> temporary null SMTC drop should hold "First Video" with direction="next"
+      fireEvent.click(screen.getByRole("button", { name: "Next track" }));
+      expect(onNext).toHaveBeenCalledTimes(1);
+
+      rerender(<MusicCard media={makeSnapshot(null)} {...baseProps} />);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(screen.queryByTestId("music-empty-state")).not.toBeInTheDocument();
+      expect(screen.getByText("First Video")).toBeInTheDocument();
+      expect(screen.getByTestId("music-track-flip")).toHaveAttribute("data-flip-direction", "next");
+
+      // Next video resolves directly -> shows "Second Video" flipping Next (right -> left)
+      rerender(<MusicCard media={makeSnapshot("Second Video")} {...baseProps} />);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(screen.getByText("Second Video")).toBeInTheDocument();
+      expect(screen.getByTestId("music-track-flip")).toHaveAttribute("data-flip-direction", "next");
+
+      // Press Previous -> temporary null drop still holds "Second Video" with direction="prev"
+      fireEvent.click(screen.getByRole("button", { name: "Previous track" }));
+      expect(onPrev).toHaveBeenCalledTimes(1);
+      rerender(<MusicCard media={makeSnapshot(null)} {...baseProps} />);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(screen.queryByTestId("music-empty-state")).not.toBeInTheDocument();
+      expect(screen.getByTestId("music-track-flip")).toHaveAttribute("data-flip-direction", "prev");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

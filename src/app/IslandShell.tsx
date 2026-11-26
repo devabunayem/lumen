@@ -716,6 +716,15 @@ export function IslandShell({
             dispatch({ type: "HUD_DISMISS" });
           }, bannerMs);
         }
+      } else if (trackKey && trackKey === prevPlayingKeyRef.current && snapshot.active) {
+        // Hydrate late-arriving YouTube/Chrome artwork onto an already-visible Now Playing banner.
+        const nextArt = snapshot.active.album_art_data_url ?? null;
+        const nextAccent = snapshot.active.accent_hex || "var(--accent-blue)";
+        setActiveNowPlaying((cur) =>
+          cur && (cur.albumArtDataUrl !== nextArt || cur.accentHex !== nextAccent)
+            ? { ...cur, albumArtDataUrl: nextArt, accentHex: nextAccent }
+            : cur,
+        );
       } else if (!isPlaying) {
         prevPlayingKeyRef.current = null;
         setAudioPeak(0);

@@ -11,9 +11,9 @@ use lumen_core::{
 };
 use lumen_media::sounds::{SoundSilenceContext, UiSoundName, try_play_ui_sound};
 use lumen_media::{
-    AudioPeakReader, LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_mic_muted,
-    get_system_volume, parse_lrc_lines, read_media_state, seek_media, send_media_command,
-    set_system_volume, shape_audio_peak, toggle_mic_mute,
+    AudioPeakReader, LyricLine, MediaCommand, MediaGraceStabilizer, MediaStateSnapshot,
+    fetch_lrclib_lrc, get_mic_muted, get_system_volume, parse_lrc_lines, read_media_state,
+    seek_media, send_media_command, set_system_volume, shape_audio_peak, toggle_mic_mute,
 };
 use lumen_notify::{
     NotificationPopup, NotificationPrivacyConfig, SystemNotificationWatcher,
@@ -95,6 +95,7 @@ struct AppState {
     machine: Mutex<IslandMachine>,
     config: Arc<Mutex<IslandRuntimeConfig>>,
     preferred_media_app: Arc<Mutex<Option<String>>>,
+    media_stabilizer: Arc<Mutex<MediaGraceStabilizer>>,
     storage: Arc<StorageRepo>,
     prayer_config: Mutex<PrayerConfig>,
     pomodoro: Arc<Mutex<PomodoroController>>,
@@ -328,6 +329,17 @@ fn request_keyboard_focus(focused: bool, app: tauri::AppHandle) -> Result<(), St
     Ok(())
 }
 
+fn read_stabilized_media(
+    preferred: Option<&str>,
+    stabilizer: &Arc<Mutex<MediaGraceStabilizer>>,
+) -> MediaStateSnapshot {
+    let raw = read_media_state(preferred);
+    stabilizer
+        .lock()
+        .map(|mut s| s.stabilize(raw.clone(), Instant::now()))
+        .unwrap_or(raw)
+}
+
 #[tauri::command]
 async fn media_get_state(state: State<'_, AppState>) -> Result<MediaStateSnapshot, String> {
     let preferred = state
@@ -335,7 +347,8 @@ async fn media_get_state(state: State<'_, AppState>) -> Result<MediaStateSnapsho
         .lock()
         .ok()
         .and_then(|g| g.clone());
-    tokio::task::spawn_blocking(move || read_media_state(preferred.as_deref()))
+    let stabilizer = Arc::clone(&state.media_stabilizer);
+    tokio::task::spawn_blocking(move || read_stabilized_media(preferred.as_deref(), &stabilizer))
         .await
         .map_err(|e| format!("media task error: {e}"))
 }
@@ -353,9 +366,15 @@ async fn media_control(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let stabilizer = Arc::clone(&state.media_stabilizer);
+    if matches!(cmd, MediaCommand::Next | MediaCommand::Previous)
+        && let Ok(mut guard) = stabilizer.lock()
+    {
+        guard.notify_skip(Instant::now());
+    }
     let snap = tokio::task::spawn_blocking(move || {
         send_media_command(cmd, preferred.as_deref())?;
-        Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
+        Ok::<MediaStateSnapshot, String>(read_stabilized_media(preferred.as_deref(), &stabilizer))
     })
     .await
     .map_err(|e| format!("media control join error: {e}"))??;
@@ -376,9 +395,10 @@ async fn media_seek(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let stabilizer = Arc::clone(&state.media_stabilizer);
     let snap = tokio::task::spawn_blocking(move || {
         seek_media(position_ms, preferred.as_deref())?;
-        Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
+        Ok::<MediaStateSnapshot, String>(read_stabilized_media(preferred.as_deref(), &stabilizer))
     })
     .await
     .map_err(|e| format!("media seek join error: {e}"))??;
@@ -398,9 +418,10 @@ async fn media_set_volume(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let stabilizer = Arc::clone(&state.media_stabilizer);
     tokio::task::spawn_blocking(move || {
         set_system_volume(volume_percent)?;
-        Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
+        Ok::<MediaStateSnapshot, String>(read_stabilized_media(preferred.as_deref(), &stabilizer))
     })
     .await
     .map_err(|e| format!("volume task join error: {e}"))?
@@ -423,7 +444,8 @@ async fn media_select_session(
         .lock()
         .ok()
         .and_then(|g| g.clone());
-    tokio::task::spawn_blocking(move || read_media_state(preferred.as_deref()))
+    let stabilizer = Arc::clone(&state.media_stabilizer);
+    tokio::task::spawn_blocking(move || read_stabilized_media(preferred.as_deref(), &stabilizer))
         .await
         .map_err(|e| format!("session select join error: {e}"))
 }
@@ -1316,6 +1338,7 @@ pub fn run() {
 
     let shared_config = Arc::new(Mutex::new(IslandRuntimeConfig::default()));
     let preferred_media_app = Arc::new(Mutex::new(None));
+    let shared_media_stabilizer = Arc::new(Mutex::new(MediaGraceStabilizer::new()));
 
     tauri::Builder::default()
         .setup(move |app| {
@@ -1380,6 +1403,7 @@ pub fn run() {
                 machine: Mutex::new(machine),
                 config: Arc::clone(&shared_config),
                 preferred_media_app: Arc::clone(&preferred_media_app),
+                media_stabilizer: Arc::clone(&shared_media_stabilizer),
                 storage: Arc::clone(&storage),
                 prayer_config: Mutex::new(PrayerConfig::default()),
                 pomodoro: Arc::clone(&pomodoro),
@@ -1707,6 +1731,7 @@ pub fn run() {
             // Background SMTC (2 Hz real-time timeline sync) + Pomodoro + OS Notification & Reminder ticker
             let media_window = window.clone();
             let media_pref = Arc::clone(&preferred_media_app);
+            let media_stab_loop = Arc::clone(&shared_media_stabilizer);
             let pom_ref = Arc::clone(&pomodoro);
             let storage_ref = Arc::clone(&storage);
             let notify_cfg_ref = Arc::clone(&shared_notify_config);
@@ -1758,8 +1783,11 @@ pub fn run() {
                 loop {
                     half_tick = half_tick.wrapping_add(1);
                     let pref = media_pref.lock().ok().and_then(|g| g.clone());
-                    if let Ok(snapshot) =
-                        tokio::task::spawn_blocking(move || read_media_state(pref.as_deref())).await
+                    let stab = Arc::clone(&media_stab_loop);
+                    if let Ok(snapshot) = tokio::task::spawn_blocking(move || {
+                        read_stabilized_media(pref.as_deref(), &stab)
+                    })
+                    .await
                     {
                         let playing_now = snapshot.active.as_ref().is_some_and(|a| a.is_playing);
                         media_playing_for_poll.store(playing_now, Ordering::Relaxed);

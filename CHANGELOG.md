@@ -6,6 +6,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Reliable YouTube Thumbnail Hydration, Letterbox Trim & Zero-Flash Side-Flip Track Transitions:**
+  - Upgraded `lumen-media`'s `THUMB_CACHE` to store a lightweight FNV-1a stream fingerprint and re-validate incoming SMTC thumbnails during the first 4 seconds of a track change—catching delayed Chrome/Edge YouTube artwork updates (and breaking stale previous-video thumbnail locks) with ~0% overhead, while trimming symmetric `#000000` vertical letterbox bars on `4:3` `hqdefault` thumbnails via WIC `BitmapEncoder`.
+  - Added `MediaGraceStabilizer` (`src-tauri/crates/lumen-media` + `src-tauri/src/lib.rs`) alongside a matching frontend hold guard in `MusicCard` and `NowPlayingBanner` artwork hydration (`IslandShell`) so pressing `Next`/`Previous` on YouTube or desktop players never flashes `"Nothing playing"` (`music-empty-state`) during transient media teardown, transitioning directly old-track → new-track.
+  - Added 3D perspective directional side-flip animations (`MOTION_PRESETS.trackFlip`) to `MusicCard` artwork & track metadata (`Right → Left` on `Next` / auto-advance, `Left → Right` on `Previous`) with stable controls and automatic `reduceMotion` fallback.
+
 - **Content-Fitted Notification Sizing & Inner Bottom-Edge Aurora Glow:**
   - Replaced the oversized `440×84` minimum toast footprint with dynamic `measureNotificationDimensions()` (`248×58` up to `428×138`) and tightened `NotificationToast` padding (`px-3.5 py-2.5`) so notification bubbles hug their actual title and body copy with only subtle rim breathing room.
   - Constrained `ActionGlowLayer` to a crisp, vibrant `38px` bottom strip inside the notch silhouette (`inset-x-0 bottom-0 h-[38px] max-h-full overflow-hidden`, boosted `--aurora-*` token luminescence) so the movable aurora glow always stays cleanly inside the notch bottom edge across every state without spilling outside or stretching into tall empty slabs.

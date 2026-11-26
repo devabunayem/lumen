@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use serde::{Deserialize, Serialize};
 
 pub mod sounds;
@@ -263,6 +265,153 @@ pub fn detect_image_mime(bytes: &[u8]) -> &'static str {
     }
 }
 
+/// Computes a fast 64-bit FNV-1a fingerprint over encoded image bytes so thumbnail updates
+/// during delayed browser hydration are detected cheaply without decoding unchanged frames.
+#[must_use]
+pub fn compute_thumbnail_fingerprint(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325 ^ (bytes.len() as u64);
+    let step = (bytes.len() / 2048).max(1);
+    for &b in bytes.iter().step_by(step) {
+        hash ^= u64::from(b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Detects symmetric vertical `#000000` letterboxing (common in YouTube `4:3` `hqdefault` thumbs)
+/// and returns `(top_trim_rows, kept_height)` when both top and bottom bars are present.
+#[must_use]
+pub fn detect_vertical_letterbox(rgba: &[u8], width: u32, height: u32) -> Option<(u32, u32)> {
+    let w = usize::try_from(width).ok()?;
+    let h = usize::try_from(height).ok()?;
+    if w < 64 || h < 48 || rgba.len() < w.saturating_mul(h).saturating_mul(4) {
+        return None;
+    }
+
+    let row_stride = w * 4;
+    let col_step = (w / 24).max(1);
+    let is_black_row = |row: usize| -> bool {
+        let base = row * row_stride;
+        let mut sampled = 0usize;
+        let mut black = 0usize;
+        for col in (0..w).step_by(col_step) {
+            let px = &rgba[base + col * 4..base + col * 4 + 4];
+            sampled += 1;
+            if px[3] >= 240 && px[0] <= 18 && px[1] <= 18 && px[2] <= 18 {
+                black += 1;
+            }
+        }
+        sampled > 0 && black * 100 >= sampled * 92
+    };
+
+    let mut top = 0usize;
+    while top < h && is_black_row(top) {
+        top += 1;
+    }
+    let mut bottom = 0usize;
+    while bottom < h.saturating_sub(top) && is_black_row(h - 1 - bottom) {
+        bottom += 1;
+    }
+
+    let min_bar = (h / 14).max(4);
+    if top < min_bar || bottom < min_bar {
+        return None;
+    }
+    let kept = h.saturating_sub(top + bottom);
+    if kept < h / 2 {
+        return None;
+    }
+    Some((top as u32, kept as u32))
+}
+
+/// Crops contiguous RGBA pixel rows `[top_row .. top_row + kept_height]`.
+#[must_use]
+pub fn crop_rgba_rows(rgba: &[u8], width: u32, top_row: u32, kept_height: u32) -> Vec<u8> {
+    let row_bytes = (width as usize).saturating_mul(4);
+    let start = (top_row as usize).saturating_mul(row_bytes);
+    let end = start.saturating_add((kept_height as usize).saturating_mul(row_bytes));
+    if end > rgba.len() || start >= end {
+        return Vec::new();
+    }
+    rgba[start..end].to_vec()
+}
+
+/// Smooths brief SMTC `active: None` or placeholder app-title drops when skipping tracks or
+/// loading the next browser video so UI transitions go directly old-track -> new-track.
+#[derive(Debug, Default)]
+pub struct MediaGraceStabilizer {
+    last_active: Option<MediaSessionInfo>,
+    skip_hold_until: Option<Instant>,
+    drop_grace_until: Option<Instant>,
+}
+
+impl MediaGraceStabilizer {
+    const SKIP_HOLD: Duration = Duration::from_millis(2600);
+    const DROP_GRACE: Duration = Duration::from_millis(2000);
+
+    /// Creates a fresh stabilizer.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Marks that a manual `Next` or `Previous` track command was just issued.
+    pub fn notify_skip(&mut self, now: Instant) {
+        self.skip_hold_until = Some(now + Self::SKIP_HOLD);
+    }
+
+    fn is_placeholder_session(info: &MediaSessionInfo) -> bool {
+        let friendly = friendly_media_app_label(&info.app_id);
+        let generic = info.title.is_empty() || info.title == friendly;
+        generic && (!info.is_playing || info.duration_ms == 0)
+    }
+
+    /// Filters a raw SMTC snapshot through the skip/drop grace window.
+    pub fn stabilize(&mut self, mut raw: MediaStateSnapshot, now: Instant) -> MediaStateSnapshot {
+        let skip_active = self.skip_hold_until.is_some_and(|u| now < u);
+
+        if let Some(ref current) = raw.active {
+            if Self::is_placeholder_session(current)
+                && let Some(ref prev) = self.last_active
+                && prev.app_id == current.app_id
+                && (skip_active || self.drop_grace_until.is_some_and(|u| now < u))
+            {
+                if self.drop_grace_until.is_none() {
+                    self.drop_grace_until = Some(now + Self::DROP_GRACE);
+                }
+                raw.active = Some(prev.clone());
+                return raw;
+            }
+
+            let switched_real_track = self
+                .last_active
+                .as_ref()
+                .is_some_and(|prev| prev.title != current.title && !current.title.is_empty());
+            if switched_real_track {
+                self.skip_hold_until = None;
+            }
+            self.drop_grace_until = None;
+            self.last_active = Some(current.clone());
+            return raw;
+        }
+
+        if let Some(ref prev) = self.last_active {
+            if self.drop_grace_until.is_none() {
+                self.drop_grace_until = Some(now + Self::DROP_GRACE);
+            }
+            if skip_active || self.drop_grace_until.is_some_and(|u| now < u) {
+                raw.active = Some(prev.clone());
+                return raw;
+            }
+        }
+
+        self.last_active = None;
+        self.drop_grace_until = None;
+        self.skip_hold_until = None;
+        raw
+    }
+}
+
 /// Applies perceptual compression, noise-gating, and fast-attack / smooth-decay envelope
 /// shaping to raw `0.0..=1.0` endpoint peak levels for fluid glow reactivity.
 #[must_use]
@@ -361,13 +510,13 @@ pub fn extract_dominant_accent_from_rgba(rgba: &[u8]) -> String {
 #[cfg(windows)]
 mod platform {
     use std::sync::{Mutex, OnceLock};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use windows::Foundation::TimeSpan;
     use windows::Graphics::Imaging::{
-        BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat, BitmapTransform, ColorManagementMode,
-        ExifOrientationMode,
+        BitmapAlphaMode, BitmapDecoder, BitmapEncoder, BitmapPixelFormat, BitmapTransform,
+        ColorManagementMode, ExifOrientationMode,
     };
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSession,
@@ -389,12 +538,22 @@ mod platform {
 
     use super::{
         DEFAULT_MEDIA_ACCENT, MediaCommand, MediaSessionInfo, MediaSessionSummary,
-        MediaStateSnapshot, extract_dominant_accent_from_rgba, friendly_media_app_label,
+        MediaStateSnapshot, compute_thumbnail_fingerprint, crop_rgba_rows,
+        detect_vertical_letterbox, extract_dominant_accent_from_rgba, friendly_media_app_label,
         interpolate_smtc_position_ms,
     };
 
-    type ThumbnailCacheEntry = (String, Option<String>, String);
-    static THUMB_CACHE: OnceLock<Mutex<Option<ThumbnailCacheEntry>>> = OnceLock::new();
+    #[derive(Clone)]
+    struct CachedThumbnail {
+        key: String,
+        first_seen_at: Instant,
+        raw_fingerprint: u64,
+        data_url: Option<String>,
+        accent_hex: String,
+    }
+
+    static THUMB_CACHE: OnceLock<Mutex<Option<CachedThumbnail>>> = OnceLock::new();
+    const THUMB_REVALIDATE_WINDOW: Duration = Duration::from_secs(4);
 
     fn current_windows_filetime_100ns() -> i64 {
         let Ok(dur) = SystemTime::now().duration_since(UNIX_EPOCH) else {
@@ -503,40 +662,94 @@ mod platform {
         if bytes.is_empty() { None } else { Some(bytes) }
     }
 
-    fn decode_accent_from_bytes(bytes: &[u8]) -> String {
+    fn encode_rgba_as_jpeg_data_url(rgba: &[u8], width: u32, height: u32) -> Option<String> {
+        let mem = InMemoryRandomAccessStream::new().ok()?;
+        let encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId().ok()?, &mem)
+            .ok()?
+            .join()
+            .ok()?;
+        encoder
+            .SetPixelData(
+                BitmapPixelFormat::Rgba8,
+                BitmapAlphaMode::Ignore,
+                width,
+                height,
+                96.0,
+                96.0,
+                rgba,
+            )
+            .ok()?;
+        encoder.FlushAsync().ok()?.join().ok()?;
+        let _ = mem.Seek(0);
+        let reader = DataReader::CreateDataReader(&mem).ok()?;
+        let size = usize::try_from(mem.Size().ok()?).ok()?;
+        if size == 0 || size > 4_000_000 {
+            return None;
+        }
+        let loaded = reader.LoadAsync(size as u32).ok()?.join().ok()?;
+        let mut encoded = vec![0u8; loaded as usize];
+        reader.ReadBytes(&mut encoded).ok()?;
+        let _ = reader.DetachStream();
+        if encoded.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "data:image/jpeg;base64,{}",
+                STANDARD.encode(&encoded)
+            ))
+        }
+    }
+
+    fn decode_thumbnail_and_accent(bytes: &[u8]) -> (Option<String>, String) {
+        let raw_fallback = || {
+            let mime = super::detect_image_mime(bytes);
+            Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+        };
+
         let Ok(mem) = InMemoryRandomAccessStream::new() else {
-            return DEFAULT_MEDIA_ACCENT.to_string();
+            return (raw_fallback(), DEFAULT_MEDIA_ACCENT.to_string());
         };
         let Ok(writer) = DataWriter::CreateDataWriter(&mem) else {
-            return DEFAULT_MEDIA_ACCENT.to_string();
+            return (raw_fallback(), DEFAULT_MEDIA_ACCENT.to_string());
         };
-        if writer.WriteBytes(bytes).is_err() {
-            let _ = writer.DetachStream();
-            return DEFAULT_MEDIA_ACCENT.to_string();
-        }
-        if writer
-            .StoreAsync()
-            .ok()
-            .and_then(|op| op.join().ok())
-            .is_none()
+        if writer.WriteBytes(bytes).is_err()
+            || writer
+                .StoreAsync()
+                .ok()
+                .and_then(|op| op.join().ok())
+                .is_none()
         {
             let _ = writer.DetachStream();
-            return DEFAULT_MEDIA_ACCENT.to_string();
+            return (raw_fallback(), DEFAULT_MEDIA_ACCENT.to_string());
         }
         let _ = writer.FlushAsync().ok().and_then(|op| op.join().ok());
         let _ = writer.DetachStream();
         let _ = mem.Seek(0);
 
         let Ok(dec_op) = BitmapDecoder::CreateAsync(&mem) else {
-            return DEFAULT_MEDIA_ACCENT.to_string();
+            return (raw_fallback(), DEFAULT_MEDIA_ACCENT.to_string());
         };
         let Ok(decoder) = dec_op.join() else {
-            return DEFAULT_MEDIA_ACCENT.to_string();
+            return (raw_fallback(), DEFAULT_MEDIA_ACCENT.to_string());
+        };
+
+        let src_w = decoder.PixelWidth().unwrap_or(0);
+        let src_h = decoder.PixelHeight().unwrap_or(0);
+        // Inspect/trim at up to 480px wide so large covers stay fast and memory-light.
+        let (target_w, target_h) = if src_w > 0 && src_h > 0 {
+            if src_w > 480 {
+                let scaled_h = ((u64::from(src_h) * 480) / u64::from(src_w)).max(1) as u32;
+                (480, scaled_h)
+            } else {
+                (src_w, src_h)
+            }
+        } else {
+            (64, 64)
         };
 
         if let Ok(transform) = BitmapTransform::new() {
-            let _ = transform.SetScaledWidth(64);
-            let _ = transform.SetScaledHeight(64);
+            let _ = transform.SetScaledWidth(target_w);
+            let _ = transform.SetScaledHeight(target_h);
             if let Ok(px_op) = decoder.GetPixelDataTransformedAsync(
                 BitmapPixelFormat::Rgba8,
                 BitmapAlphaMode::Straight,
@@ -546,7 +759,19 @@ mod platform {
             ) && let Ok(px_provider) = px_op.join()
                 && let Ok(pixels) = px_provider.DetachPixelData()
             {
-                return extract_dominant_accent_from_rgba(pixels.as_slice());
+                if let Some((top_row, kept_h)) =
+                    detect_vertical_letterbox(pixels.as_slice(), target_w, target_h)
+                {
+                    let cropped = crop_rgba_rows(pixels.as_slice(), target_w, top_row, kept_h);
+                    if !cropped.is_empty() {
+                        let accent = extract_dominant_accent_from_rgba(&cropped);
+                        let cropped_url = encode_rgba_as_jpeg_data_url(&cropped, target_w, kept_h)
+                            .or_else(raw_fallback);
+                        return (cropped_url, accent);
+                    }
+                }
+                let accent = extract_dominant_accent_from_rgba(pixels.as_slice());
+                return (raw_fallback(), accent);
             }
         }
 
@@ -559,36 +784,23 @@ mod platform {
                     chunk.swap(0, 2);
                 }
             }
-            return extract_dominant_accent_from_rgba(pixels.as_slice());
+            return (
+                raw_fallback(),
+                extract_dominant_accent_from_rgba(pixels.as_slice()),
+            );
         }
 
-        DEFAULT_MEDIA_ACCENT.to_string()
+        (raw_fallback(), DEFAULT_MEDIA_ACCENT.to_string())
     }
 
-    fn read_thumbnail_from_props(
+    fn read_raw_thumbnail_bytes(
         props: Option<&GlobalSystemMediaTransportControlsSessionMediaProperties>,
-    ) -> (Option<String>, String) {
-        let Some(props) = props else {
-            return (None, DEFAULT_MEDIA_ACCENT.to_string());
-        };
-        let Ok(thumb_ref) = props.Thumbnail() else {
-            return (None, DEFAULT_MEDIA_ACCENT.to_string());
-        };
-        let Ok(stream_op) = thumb_ref.OpenReadAsync() else {
-            return (None, DEFAULT_MEDIA_ACCENT.to_string());
-        };
-        let Ok(stream) = stream_op.join() else {
-            return (None, DEFAULT_MEDIA_ACCENT.to_string());
-        };
+    ) -> Option<Vec<u8>> {
+        let props = props?;
+        let thumb_ref = props.Thumbnail().ok()?;
+        let stream = thumb_ref.OpenReadAsync().ok()?.join().ok()?;
         // Read encoded bytes BEFORE decoding so WIC BitmapDecoder cannot exhaust or lock the WinRT stream.
-        let Some(bytes) = read_stream_bytes(&stream) else {
-            return (None, DEFAULT_MEDIA_ACCENT.to_string());
-        };
-
-        let mime = super::detect_image_mime(&bytes);
-        let accent = decode_accent_from_bytes(&bytes);
-        let encoded = STANDARD.encode(&bytes);
-        (Some(format!("data:{mime};base64,{encoded}")), accent)
+        read_stream_bytes(&stream)
     }
 
     fn with_endpoint_volume_flow<T>(
@@ -803,24 +1015,54 @@ mod platform {
             let display_artist = if !artist.is_empty() { artist } else { friendly };
 
             let cache_key = format!("{app_id}::{title}::{display_artist}");
+            let now = Instant::now();
             let cached = THUMB_CACHE
                 .get_or_init(|| Mutex::new(None))
                 .lock()
                 .ok()
                 .and_then(|g| g.clone())
-                .filter(|(k, _, _)| k == &cache_key);
+                .filter(|c| c.key == cache_key);
 
-            let (album_art_data_url, accent_hex) = if let Some((_, art, acc)) = cached {
-                (art, acc)
-            } else {
-                let (art, acc) = read_thumbnail_from_props(props);
-                // Only cache once Chrome/player has actually populated thumbnail artwork.
-                if art.is_some()
-                    && let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock()
-                {
-                    *guard = Some((cache_key, art.clone(), acc.clone()));
+            let (album_art_data_url, accent_hex) = if let Some(entry) = cached {
+                let settled = entry.data_url.is_some()
+                    && now.duration_since(entry.first_seen_at) > THUMB_REVALIDATE_WINDOW;
+                if settled {
+                    (entry.data_url, entry.accent_hex)
+                } else if let Some(bytes) = read_raw_thumbnail_bytes(props) {
+                    let fp = compute_thumbnail_fingerprint(&bytes);
+                    if fp == entry.raw_fingerprint && entry.data_url.is_some() {
+                        (entry.data_url, entry.accent_hex)
+                    } else {
+                        let (art, acc) = decode_thumbnail_and_accent(&bytes);
+                        if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+                            *guard = Some(CachedThumbnail {
+                                key: cache_key,
+                                first_seen_at: entry.first_seen_at,
+                                raw_fingerprint: fp,
+                                data_url: art.clone(),
+                                accent_hex: acc.clone(),
+                            });
+                        }
+                        (art, acc)
+                    }
+                } else {
+                    (entry.data_url, entry.accent_hex)
+                }
+            } else if let Some(bytes) = read_raw_thumbnail_bytes(props) {
+                let fp = compute_thumbnail_fingerprint(&bytes);
+                let (art, acc) = decode_thumbnail_and_accent(&bytes);
+                if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+                    *guard = Some(CachedThumbnail {
+                        key: cache_key,
+                        first_seen_at: now,
+                        raw_fingerprint: fp,
+                        data_url: art.clone(),
+                        accent_hex: acc.clone(),
+                    });
                 }
                 (art, acc)
+            } else {
+                (None, DEFAULT_MEDIA_ACCENT.to_string())
             };
 
             Some(MediaSessionInfo {
@@ -1083,5 +1325,73 @@ mod tests {
         // Silence decays smoothly back toward zero.
         let decayed = shape_audio_peak(0.0, hit);
         assert!(decayed < hit && decayed > 0.4);
+    }
+
+    #[test]
+    fn trims_symmetric_youtube_letterbox_bars_and_detects_fingerprint_changes() {
+        let w = 80u32;
+        let h = 60u32;
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for _ in 0..w {
+                if !(8..52).contains(&y) {
+                    rgba.extend_from_slice(&[0, 0, 0, 255]);
+                } else {
+                    rgba.extend_from_slice(&[240, 80, 30, 255]);
+                }
+            }
+        }
+        let crop = detect_vertical_letterbox(&rgba, w, h);
+        assert_eq!(crop, Some((8, 44)));
+        let cropped = crop_rgba_rows(&rgba, w, 8, 44);
+        assert_eq!(cropped.len(), (w * 44 * 4) as usize);
+        assert_ne!(
+            compute_thumbnail_fingerprint(&rgba),
+            compute_thumbnail_fingerprint(&cropped)
+        );
+    }
+
+    #[test]
+    fn grace_stabilizer_prevents_empty_flash_during_track_skip() {
+        let mut stab = MediaGraceStabilizer::new();
+        let t0 = Instant::now();
+        let track_a = MediaStateSnapshot {
+            active: Some(MediaSessionInfo {
+                app_id: "chrome.exe".into(),
+                title: "Song A".into(),
+                artist: "Artist".into(),
+                album_title: String::new(),
+                is_playing: true,
+                position_ms: 10_000,
+                duration_ms: 180_000,
+                album_art_data_url: None,
+                accent_hex: DEFAULT_MEDIA_ACCENT.into(),
+            }),
+            sessions: Vec::new(),
+            volume_percent: 60,
+            muted: false,
+        };
+        assert_eq!(
+            stab.stabilize(track_a.clone(), t0).active.map(|a| a.title),
+            Some("Song A".into())
+        );
+
+        // User skips Next; Chrome temporarily emits empty session after 200ms.
+        stab.notify_skip(t0 + Duration::from_millis(100));
+        let empty = MediaStateSnapshot::default();
+        let held = stab.stabilize(empty.clone(), t0 + Duration::from_millis(400));
+        assert_eq!(held.active.map(|a| a.title), Some("Song A".into()));
+
+        // Song B loads at +900ms -> transitions directly from Song A to Song B.
+        let mut track_b = track_a;
+        track_b.active.as_mut().unwrap().title = "Song B".into();
+        let next = stab.stabilize(track_b, t0 + Duration::from_millis(900));
+        assert_eq!(next.active.map(|a| a.title), Some("Song B".into()));
+
+        // True stop clears cleanly after > 2.1s grace period.
+        let held_late = stab.stabilize(empty.clone(), t0 + Duration::from_millis(1200));
+        assert!(held_late.active.is_some());
+        let cleared = stab.stabilize(empty, t0 + Duration::from_millis(3500));
+        assert!(cleared.active.is_none());
     }
 }
