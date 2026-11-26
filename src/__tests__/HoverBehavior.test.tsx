@@ -104,7 +104,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(pill).toHaveAttribute("data-state", "expanded");
   });
 
-  it("switches expanded pages on mouse wheel scroll from Home -> Control -> Media", () => {
+  it("switches expanded pages on mouse wheel scroll from Home -> Control -> Today Agenda", () => {
     render(<IslandShell hoverToOpen />);
     const pill = screen.getByTestId("lumen-island-pill");
 
@@ -118,6 +118,6 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(300);
     });
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByText("Media")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
   });
 });

@@ -29,12 +29,12 @@ describe("Phase 7 Plugin SDK & Widget Registry (FR-PL-1..3)", () => {
     const ordered = resolveOrderedWidgetIds(
       BUILTIN_WIDGET_IDS,
       ["io.etarnity.hello"],
-      ["pomodoro", "music"],
+      ["pomodoro", "calendar"],
       ["shelf"],
     );
 
     expect(ordered[0]).toBe("pomodoro");
-    expect(ordered[1]).toBe("music");
+    expect(ordered[1]).toBe("calendar");
     expect(ordered).not.toContain("shelf");
     expect(ordered).toContain("io.etarnity.hello");
   });

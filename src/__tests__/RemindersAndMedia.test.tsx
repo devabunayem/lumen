@@ -120,7 +120,13 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
 
   it("advances Home MusicCard timeline smoothly in real time while playing", () => {
     vi.useFakeTimers();
-    render(
+    const onSeek = vi.fn();
+    const onMuteToggle = vi.fn();
+    const onVolumeDelta = vi.fn();
+    const onSelectSession = vi.fn();
+    const onPlayPause = vi.fn();
+
+    const { rerender } = render(
       <MusicCard
         media={{
           active: {
@@ -134,18 +140,28 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
             album_art_data_url: null,
             accent_hex: "#FF453A",
           },
-          sessions: [],
+          sessions: [
+            {
+              app_id: "chrome.exe",
+              title: "Lo-Fi YouTube Stream",
+              artist: "Chrome",
+              is_playing: true,
+            },
+            { app_id: "Spotify.exe", title: "Midnight Drive", artist: "Lumen", is_playing: false },
+          ],
           volume_percent: 60,
           muted: false,
         }}
         banglaDigits={false}
         reduceMotion={false}
         onOpenMusicPage={vi.fn()}
-        onPlayPause={vi.fn()}
+        onPlayPause={onPlayPause}
         onPrev={vi.fn()}
         onNext={vi.fn()}
-        onMuteToggle={vi.fn()}
-        onVolumeDelta={vi.fn()}
+        onSeek={onSeek}
+        onMuteToggle={onMuteToggle}
+        onVolumeDelta={onVolumeDelta}
+        onSelectSession={onSelectSession}
       />,
     );
 
@@ -154,6 +170,48 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
       vi.advanceTimersByTime(3000);
     });
     expect(screen.getByText("0:13")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("slider", { name: "Seek track position" }), {
+      target: { value: "45000" },
+    });
+    expect(onSeek).toHaveBeenCalledWith(45000);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Switch active media player" }), {
+      target: { value: "Spotify.exe" },
+    });
+    expect(onSelectSession).toHaveBeenCalledWith("Spotify.exe");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mute system volume" }));
+    expect(onMuteToggle).toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole("slider", { name: "System volume" }), {
+      target: { value: "80" },
+    });
+    expect(onVolumeDelta).toHaveBeenCalledWith(80);
+
+    rerender(
+      <MusicCard
+        media={{
+          active: null,
+          sessions: [
+            { app_id: "Spotify.exe", title: "Midnight Drive", artist: "Lumen", is_playing: false },
+          ],
+          volume_percent: 60,
+          muted: false,
+        }}
+        banglaDigits={false}
+        reduceMotion={false}
+        onPlayPause={onPlayPause}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+        onMuteToggle={onMuteToggle}
+        onVolumeDelta={onVolumeDelta}
+        onSelectSession={onSelectSession}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(onSelectSession).toHaveBeenCalledWith("Spotify.exe");
+    expect(onPlayPause).toHaveBeenCalled();
     vi.useRealTimers();
   });
 });

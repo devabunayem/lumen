@@ -43,7 +43,9 @@ describe("Home Page & /dev/states 20 UI states", () => {
     fireEvent.click(zoomBtn);
     const emptyState = await screen.findByTestId("music-empty-state");
     expect(emptyState).toBeInTheDocument();
-    expect(within(emptyState).getByRole("button", { name: "Play" })).toBeInTheDocument();
+    expect(
+      within(emptyState).getByRole("button", { name: /Open Spotify|Resume/i }),
+    ).toBeInTheDocument();
   });
 
   it("supports Home interactions: Tasbih increment, Water +250ml, and Card navigation + Esc return", async () => {

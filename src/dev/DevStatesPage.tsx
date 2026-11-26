@@ -283,7 +283,7 @@ function buildAll20States(): StateSpec[] {
     },
     {
       id: "no-music",
-      label: "9. No music (Nothing playing + Play)",
+      label: "9. No music (Nothing playing + Open Spotify)",
       props: {
         ...b,
         media: { active: null, sessions: [], volume_percent: 48, muted: false },

@@ -81,8 +81,10 @@ export interface HomePageProps {
   onMediaPlayPause: () => void;
   onMediaPrev: () => void;
   onMediaNext: () => void;
+  onMediaSeek?: (positionMs: number) => void;
   onMediaMuteToggle: () => void;
   onMediaVolumeDelta: (pct: number) => void;
+  onMediaSelectSession?: (appId: string) => void;
   onLogWater: (ml: number) => void;
   onToggleFocusTimer: () => void;
   onToggleLedger: () => void;
@@ -186,12 +188,13 @@ export function HomePage(props: HomePageProps) {
           language={props.language}
           banglaDigits={props.banglaDigits}
           reduceMotion={props.reduceMotion}
-          onOpenMusicPage={() => props.onNavigateWidget("music")}
           onPlayPause={props.onMediaPlayPause}
           onPrev={props.onMediaPrev}
           onNext={props.onMediaNext}
+          onSeek={props.onMediaSeek}
           onMuteToggle={props.onMediaMuteToggle}
           onVolumeDelta={props.onMediaVolumeDelta}
+          onSelectSession={props.onMediaSelectSession}
         />
 
         <NextCard

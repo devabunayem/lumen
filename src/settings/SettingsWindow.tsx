@@ -125,12 +125,14 @@ export function SettingsWindow({
     }
   };
 
+  const visiblePageOrder = settings.pageOrder.filter((id) => id !== "music");
+
   const movePage = (idx: number, delta: -1 | 1) => {
     const target = idx + delta;
-    if (target < 0 || target >= settings.pageOrder.length) {
+    if (target < 0 || target >= visiblePageOrder.length) {
       return;
     }
-    const order = [...settings.pageOrder];
+    const order = [...visiblePageOrder];
     const [moved] = order.splice(idx, 1);
     order.splice(target, 0, moved);
     void commit({ ...settings, pageOrder: order });
@@ -976,7 +978,7 @@ export function SettingsWindow({
                   <div className="mb-3 text-xs text-[#8e8e93]">
                     {msg.settings.pagesTab.description}
                   </div>
-                  {settings.pageOrder.map((pageId, idx) => {
+                  {visiblePageOrder.map((pageId, idx) => {
                     const isHidden = settings.hiddenPages.includes(pageId);
                     return (
                       <div
@@ -1000,7 +1002,7 @@ export function SettingsWindow({
                           </button>
                           <button
                             type="button"
-                            disabled={idx === settings.pageOrder.length - 1}
+                            disabled={idx === visiblePageOrder.length - 1}
                             onClick={() => movePage(idx, 1)}
                             className="cursor-pointer rounded-lg border-0 bg-[#2c2c2e] px-2.5 py-1 text-xs text-white hover:bg-[#3a3a3c] disabled:opacity-30"
                           >

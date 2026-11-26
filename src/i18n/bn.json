@@ -162,9 +162,16 @@
     "music": {
       "nothingPlaying": "কিছু চলছে না",
       "play": "চালান",
+      "resume": "চালু করুন",
+      "openSpotify": "Spotify খুলুন",
       "pause": "বিরতি",
       "prev": "আগের গান",
       "next": "পরের গান",
+      "mute": "ভলিউম মিউট করুন",
+      "unmute": "মিউট খুলুন",
+      "volume": "সিস্টেম ভলিউম",
+      "seek": "গানের সময় পরিবর্তন করুন",
+      "switchPlayer": "মিডিয়া প্লেয়ার বদলান",
       "lastPlayed": "সর্বশেষ",
       "openPlayer": "মিউজিক প্লেয়ার খুলুন"
     },

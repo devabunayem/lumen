@@ -3,7 +3,6 @@ import type { LumenWidget } from "./types";
 
 export const BUILTIN_WIDGET_IDS = [
   "control",
-  "music",
   "calendar",
   "reminders",
   "todo",
@@ -44,7 +43,7 @@ export function resolveOrderedWidgetIds(
     }
   }
 
-  return ordered.length > 0 ? ordered : [builtinIds[0] ?? "music"];
+  return ordered.length > 0 ? ordered : [builtinIds[0] ?? "control"];
 }
 
 /**

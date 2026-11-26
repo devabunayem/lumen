@@ -10,7 +10,6 @@ import {
   GridIcon,
   InboxIcon,
   MoonIcon,
-  MusicNoteIcon,
   PinIcon,
   SettingsIcon,
   TimerIcon,
@@ -35,8 +34,6 @@ import {
   ledgerGet,
   ledgerToggle,
   type LoadedPlugin,
-  type LyricLine,
-  mediaGetLyrics,
   type MediaStateSnapshot,
   type NotificationPopup,
   type OpenMeteoWeather,
@@ -120,7 +117,6 @@ import { DEFAULT_SETTINGS, type ActionGlowMode } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
 import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
-import { MusicWidget } from "../widgets/music/MusicWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
 import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
 import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
@@ -272,9 +268,6 @@ export function IslandShell({
   const [lastPlayedTrack, setLastPlayedTrack] = useState<{ title: string; artist: string } | null>(
     null,
   );
-  const [hasStableMedia, setHasStableMedia] = useState(false);
-  const [lyricsOpen, setLyricsOpen] = useState(false);
-  const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [reminders, setReminders] = useState<ReminderItem[]>(() => loadLocalReminders());
   const remindersRef = useRef<ReminderItem[]>(reminders);
@@ -500,15 +493,6 @@ export function IslandShell({
         },
       ],
       [
-        "music",
-        {
-          id: "music",
-          titleLead: media?.active ? msg.pages.musicLead : isBn ? "মিডিয়া" : "Media",
-          titleAccent: media?.active ? msg.pages.musicAccent : "",
-          accentVar: media?.active?.accent_hex || "var(--accent-blue)",
-        },
-      ],
-      [
         "calendar",
         {
           id: "calendar",
@@ -590,14 +574,6 @@ export function IslandShell({
       hiddenPages,
     );
 
-    if (!hasStableMedia && pageOrder.length === 0) {
-      const idx = orderedIds.indexOf("music");
-      if (idx >= 0) {
-        orderedIds.splice(idx, 1);
-        orderedIds.push("music");
-      }
-    }
-
     const homePageMeta: IslandPageMeta = {
       id: "home",
       titleLead: msg.pages.homeLead,
@@ -611,17 +587,7 @@ export function IslandShell({
         .map((id) => catalog.get(id))
         .filter((item): item is IslandPageMeta => Boolean(item)),
     ];
-  }, [hasStableMedia, isBn, media?.active, msg.pages, pageOrder, hiddenPages, plugins]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => {
-        setHasStableMedia(Boolean(media?.active));
-      },
-      media?.active ? 0 : 1500,
-    );
-    return () => window.clearTimeout(timer);
-  }, [media?.active]);
+  }, [msg.pages, pageOrder, hiddenPages, plugins]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -688,14 +654,6 @@ export function IslandShell({
       cancelled = true;
     };
   }, [locationOptIn]);
-
-  useEffect(() => {
-    const active = media?.active;
-    if (!active?.title) {
-      return;
-    }
-    void mediaGetLyrics(active.artist, active.title).then(setLyricsLines);
-  }, [media?.active]);
 
   useEffect(() => {
     let unlistenFs: (() => void) | undefined;
@@ -904,7 +862,7 @@ export function IslandShell({
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
-  const isRichExpandedPage = activePage.id === "prayer" || activePage.id === "music";
+  const isRichExpandedPage = activePage.id === "prayer";
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1129,10 +1087,6 @@ export function IslandShell({
   const isNowPlaying = effectiveState === "hud" && activeNowPlaying !== null;
   const liveTrack = media?.active ?? null;
   const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
-  const activeLyricsLines = useMemo(
-    () => (liveTrack?.title ? lyricsLines : []),
-    [liveTrack?.title, lyricsLines],
-  );
 
   const sizeTransition = isHidden
     ? getMotionTransition("hideFullscreen", prefersReducedMotion)
@@ -1500,10 +1454,7 @@ export function IslandShell({
                       hudTimerRef.current = null;
                     }
                     setActiveNowPlaying(null);
-                    const musicIdx = pages.findIndex((p) => p.id === "music");
-                    if (musicIdx >= 0) {
-                      setActivePageIndex(musicIdx);
-                    }
+                    setActivePageIndex(0);
                     dispatch({ type: "HOVER_EXPAND" });
                   }}
                   onDismiss={() => {
@@ -1855,11 +1806,15 @@ export function IslandShell({
                     void sendMediaCommand("previous").then((n) => n && setMedia(n))
                   }
                   onMediaNext={() => void sendMediaCommand("next").then((n) => n && setMedia(n))}
+                  onMediaSeek={(pos) => void seekMedia(pos).then((n) => n && setMedia(n))}
                   onMediaMuteToggle={() =>
                     void sendMediaCommand("toggle_mute").then((n) => n && setMedia(n))
                   }
                   onMediaVolumeDelta={(pct) =>
                     void setSystemVolume(pct).then((n) => n && setMedia(n))
+                  }
+                  onMediaSelectSession={(appId) =>
+                    void selectMediaSession(appId).then((n) => n && setMedia(n))
                   }
                   onLogWater={(ml) => {
                     triggerLumiReaction("celebrate", 2200);
@@ -1929,14 +1884,12 @@ export function IslandShell({
               >
                 <div
                   className={
-                    (activePage.id === "music" && Boolean(media?.active)) ||
                     activePage.id === "prayer"
                       ? "grid grid-cols-[1fr_auto_1fr] items-center"
                       : "flex items-center justify-between"
                   }
                 >
-                  {(activePage.id === "music" && Boolean(media?.active)) ||
-                  activePage.id === "prayer" ? (
+                  {activePage.id === "prayer" ? (
                     <>
                       <h1 className="sr-only">
                         {activePage.titleLead} {activePage.titleAccent}
@@ -2042,8 +1995,7 @@ export function IslandShell({
                         dispatch({ type: "CLICK" });
                       }}
                       className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
-                        activePage.id === "control" ||
-                        (activePage.id === "music" && Boolean(liveTrack?.is_playing))
+                        activePage.id === "control"
                           ? "opacity-100"
                           : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
                       }`}
@@ -2152,29 +2104,6 @@ export function IslandShell({
                           }}
                         />
                       )}
-                      {activePage.id === "music" && (
-                        <div className="h-full w-full">
-                          <MusicWidget
-                            media={media}
-                            lyricsOpen={lyricsOpen}
-                            lyricsLines={activeLyricsLines}
-                            onToggleLyrics={() => setLyricsOpen((v) => !v)}
-                            onCommand={(cmd) => {
-                              void sendMediaCommand(cmd).then((next) => next && setMedia(next));
-                            }}
-                            onSeek={(pos) => {
-                              void seekMedia(pos).then((next) => next && setMedia(next));
-                            }}
-                            onVolumeChange={(vol) => {
-                              void setSystemVolume(vol).then((next) => next && setMedia(next));
-                            }}
-                            onSelectSession={(appId) => {
-                              void selectMediaSession(appId).then((next) => next && setMedia(next));
-                            }}
-                          />
-                        </div>
-                      )}
-
                       {activePage.id === "todo" && (
                         <TodoWidget
                           tasks={tasks}
@@ -2414,8 +2343,6 @@ export function IslandShell({
                         const icon =
                           page.id === "control" ? (
                             <GridIcon size={13} />
-                          ) : page.id === "music" ? (
-                            <MusicNoteIcon size={13} />
                           ) : page.id === "calendar" ? (
                             <CalendarIcon size={13} />
                           ) : page.id === "reminders" ? (

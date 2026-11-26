@@ -235,7 +235,7 @@ export function ControlPanelWidget({
       icon: quietMode ? <BellOffIcon size={20} /> : <BellIcon size={20} />,
       label: quietLabel,
       onClick: () => void handleToggleQuiet(),
-      onLongPress: () => onNavigatePage("music"),
+      onLongPress: () => onNavigatePage("reminders"),
     },
     {
       id: "caffeine",
@@ -267,7 +267,7 @@ export function ControlPanelWidget({
       activeColor: "var(--accent-green)",
       icon: <MusicNoteIcon size={20} />,
       label: mediaLabel,
-      onClick: () => onNavigatePage("music"),
+      onClick: () => onNavigatePage("home"),
       onLongPress: () => void sendMediaCommand("play_pause"),
     },
     {

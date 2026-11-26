@@ -162,9 +162,16 @@
     "music": {
       "nothingPlaying": "Nothing playing",
       "play": "Play",
+      "resume": "Resume",
+      "openSpotify": "Open Spotify",
       "pause": "Pause",
       "prev": "Previous track",
       "next": "Next track",
+      "mute": "Mute system volume",
+      "unmute": "Unmute system volume",
+      "volume": "System volume",
+      "seek": "Seek track position",
+      "switchPlayer": "Switch active media player",
       "lastPlayed": "Last played",
       "openPlayer": "Open music player"
     },

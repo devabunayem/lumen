@@ -22,9 +22,8 @@ describe("Phase 6 Settings, Mascot & Bangla i18n", () => {
     expect(onCommit).toHaveBeenLastCalledWith(
       expect.objectContaining({
         pageOrder: [
-          "music",
-          "control",
           "calendar",
+          "control",
           "reminders",
           "todo",
           "water",

@@ -7,16 +7,19 @@ import {
   type WheelEvent,
 } from "react";
 import {
+  HeadphonesIcon,
   MusicNoteIcon,
   PauseIcon,
   PlayIcon,
   SkipBackIcon,
   SkipForwardIcon,
+  VolumeOffIcon,
+  VolumeOnIcon,
 } from "../../design/icons";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages, type AppLanguage } from "../../i18n";
 import { formatDigits } from "../../i18n/digits";
-import type { MediaStateSnapshot } from "../../lib/ipc";
+import { type MediaStateSnapshot, shelfOpen } from "../../lib/ipc";
 
 export interface MusicCardProps {
   media: MediaStateSnapshot;
@@ -24,12 +27,14 @@ export interface MusicCardProps {
   language?: AppLanguage;
   banglaDigits: boolean;
   reduceMotion: boolean;
-  onOpenMusicPage: () => void;
+  onOpenMusicPage?: () => void;
   onPlayPause: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onSeek?: (positionMs: number) => void;
   onMuteToggle: () => void;
   onVolumeDelta: (nextPct: number) => void;
+  onSelectSession?: (appId: string) => void;
 }
 
 function formatTrackTime(ms: number, banglaDigits: boolean): string {
@@ -49,12 +54,15 @@ export function MusicCard({
   onPlayPause,
   onPrev,
   onNext,
+  onSeek,
   onMuteToggle,
   onVolumeDelta,
+  onSelectSession,
 }: MusicCardProps) {
   const msg = getMessages(language);
   const [volumeHudPct, setVolumeHudPct] = useState<number | null>(null);
   const session = media.active;
+  const lastSession = media.sessions?.[0] ?? null;
   const [livePosMs, setLivePosMs] = useState<number>(session?.position_ms ?? 0);
   const syncRef = useRef({
     posMs: session?.position_ms ?? 0,
@@ -112,7 +120,7 @@ export function MusicCard({
     if (e.key === " ") {
       e.preventDefault();
       onPlayPause();
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && onOpenMusicPage) {
       e.preventDefault();
       onOpenMusicPage();
     }
@@ -123,10 +131,8 @@ export function MusicCard({
       data-testid="home-music-card"
       role="button"
       tabIndex={0}
-      aria-label={
-        session ? `${session.title} — ${msg.home.music.openPlayer}` : msg.home.music.nothingPlaying
-      }
-      onClick={onOpenMusicPage}
+      aria-label={session ? session.title : msg.home.music.nothingPlaying}
+      onClick={() => onOpenMusicPage?.()}
       onWheel={handleWheel}
       onAuxClick={handleAuxClick}
       onKeyDown={handleCardKeyDown}
@@ -163,30 +169,86 @@ export function MusicCard({
 
       {session ? (
         <div className="flex min-w-0 flex-1 flex-col justify-between self-stretch">
-          <div className="min-w-0">
-            <div className="type-home-card-title truncate leading-tight text-white">
-              {session.title}
+          <div className="flex items-start justify-between gap-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="type-home-card-title truncate leading-tight text-white">
+                {session.title}
+              </div>
+              <div
+                className="type-home-micro truncate leading-tight"
+                style={{ color: COLOR_TOKENS.textSecondary }}
+              >
+                {session.artist || session.app_id}
+              </div>
             </div>
-            <div
-              className="type-home-micro truncate leading-tight"
-              style={{ color: COLOR_TOKENS.textSecondary }}
-            >
-              {session.artist || session.app_id}
+
+            <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="type-home-micro flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px]"
+                style={{
+                  backgroundColor: COLOR_TOKENS.chipGlassBg,
+                  border: `1px solid ${COLOR_TOKENS.chipGlassBorder}`,
+                  color: COLOR_TOKENS.textSecondary,
+                }}
+              >
+                <HeadphonesIcon size={9} />
+                <span className="max-w-[54px] truncate">{session.app_id || "Audio"}</span>
+              </div>
+              {media.sessions.length > 1 && (
+                <select
+                  aria-label={msg.home.music.switchPlayer}
+                  value={session.app_id}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onSelectSession?.(e.target.value);
+                  }}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                >
+                  {media.sessions.map((s) => (
+                    <option key={s.app_id} value={s.app_id}>
+                      {s.title || s.app_id}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
-          <div className="w-full">
-            <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/15">
-              <div
-                className="h-full rounded-full transition-[width,background-color] duration-300 ease-out"
-                style={{
-                  width: `${pct}%`,
-                  backgroundColor: session.accent_hex || "#ffffff",
+          <div
+            className="w-full"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="relative flex h-[10px] w-full items-center">
+              <div className="h-[3.5px] w-full overflow-hidden rounded-full bg-white/15">
+                <div
+                  className="h-full rounded-full transition-[width,background-color] duration-300 ease-out"
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: session.accent_hex || COLOR_TOKENS.textPrimary,
+                  }}
+                />
+              </div>
+              <input
+                type="range"
+                aria-label={msg.home.music.seek}
+                min={0}
+                max={duration}
+                value={position}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  syncRef.current = {
+                    posMs: next,
+                    syncedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+                  };
+                  setLivePosMs(next);
+                  onSeek?.(next);
                 }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
               />
             </div>
             <div
-              className="type-home-micro mt-0.5 flex items-center justify-between leading-none tabular-nums"
+              className="type-home-micro flex items-center justify-between leading-none tabular-nums"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               <span>{formatTrackTime(position, banglaDigits)}</span>
@@ -195,35 +257,65 @@ export function MusicCard({
           </div>
 
           <div
-            className="flex items-center justify-center gap-2"
+            className="flex items-center justify-between gap-1.5"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              aria-label={msg.home.music.prev}
-              onClick={onPrev}
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-full text-white/85 hover:text-white"
-            >
-              <SkipBackIcon size={13} />
-            </button>
-            <button
-              type="button"
-              aria-label={session.is_playing ? msg.home.music.pause : msg.home.music.play}
-              onClick={onPlayPause}
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-full"
-            >
-              <span className="flex h-[24px] w-[24px] items-center justify-center rounded-full bg-white text-black">
-                {session.is_playing ? <PauseIcon size={12} /> : <PlayIcon size={12} />}
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-label={msg.home.music.next}
-              onClick={onNext}
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-full text-white/85 hover:text-white"
-            >
-              <SkipForwardIcon size={13} />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                aria-label={msg.home.music.prev}
+                onClick={onPrev}
+                className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-white/85 hover:text-white"
+              >
+                <SkipBackIcon size={12} />
+              </button>
+              <button
+                type="button"
+                aria-label={session.is_playing ? msg.home.music.pause : msg.home.music.play}
+                onClick={onPlayPause}
+                className="flex h-[24px] w-[24px] items-center justify-center rounded-full"
+              >
+                <span className="flex h-[23px] w-[23px] items-center justify-center rounded-full bg-white text-black">
+                  {session.is_playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label={msg.home.music.next}
+                onClick={onNext}
+                className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-white/85 hover:text-white"
+              >
+                <SkipForwardIcon size={12} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label={media.muted ? msg.home.music.unmute : msg.home.music.mute}
+                onClick={onMuteToggle}
+                className="flex h-[20px] w-[20px] items-center justify-center rounded-full text-white/80 hover:text-white"
+              >
+                {media.muted ? <VolumeOffIcon size={12} /> : <VolumeOnIcon size={12} />}
+              </button>
+              <div className="relative flex h-4 w-[38px] items-center">
+                <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/20">
+                  <div
+                    className="h-full rounded-full bg-white"
+                    style={{ width: `${media.muted ? 0 : (media.volume_percent ?? 50)}%` }}
+                  />
+                </div>
+                <input
+                  type="range"
+                  aria-label={msg.home.music.volume}
+                  min={0}
+                  max={100}
+                  value={media.muted ? 0 : (media.volume_percent ?? 50)}
+                  onChange={(e) => onVolumeDelta(Number(e.target.value))}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -236,19 +328,30 @@ export function MusicCard({
               {msg.home.music.nothingPlaying}
             </div>
             <div className="type-home-micro truncate" style={{ color: COLOR_TOKENS.textSecondary }}>
-              {lastPlayedTrack
-                ? `${lastPlayedTrack.title} · ${lastPlayedTrack.artist}`
-                : msg.home.music.lastPlayed}
+              {lastSession
+                ? `${lastSession.title} · ${lastSession.artist}`
+                : lastPlayedTrack
+                  ? `${lastPlayedTrack.title} · ${lastPlayedTrack.artist}`
+                  : msg.home.music.lastPlayed}
             </div>
           </div>
           <div onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              onClick={onPlayPause}
+              onClick={() => {
+                if (lastSession) {
+                  onSelectSession?.(lastSession.app_id);
+                  onPlayPause();
+                } else {
+                  void shelfOpen("spotify:").catch(() => {
+                    window.open("spotify:", "_self");
+                  });
+                }
+              }}
               className="home-glass-chip type-home-micro inline-flex min-h-[26px] items-center gap-1.5 px-2.5 font-semibold text-white"
             >
-              <PlayIcon size={10} />
-              <span>{msg.home.music.play}</span>
+              {lastSession ? <PlayIcon size={10} /> : <MusicNoteIcon size={10} />}
+              <span>{lastSession ? msg.home.music.resume : msg.home.music.openSpotify}</span>
             </button>
           </div>
         </div>

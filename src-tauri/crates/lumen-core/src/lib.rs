@@ -359,9 +359,8 @@ impl PomodoroController {
     }
 }
 
-const BUILTIN_PAGE_ORDER: [&str; 9] = [
+const BUILTIN_PAGE_ORDER: [&str; 8] = [
     "control",
-    "music",
     "calendar",
     "reminders",
     "todo",
@@ -739,7 +738,7 @@ mod tests {
         assert_eq!(migrated.water_goal_ml, 10_000);
         assert_eq!(migrated.position_offset_x, -400);
         assert_eq!(migrated.scale, "auto");
-        assert_eq!(migrated.page_order.len(), 9);
+        assert_eq!(migrated.page_order.len(), 8);
         assert_eq!(migrated.reminder_snooze_minutes, 3);
         assert_eq!(migrated.reminder_default_lead_minutes, 10);
 

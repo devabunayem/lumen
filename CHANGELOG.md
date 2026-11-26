@@ -10,6 +10,12 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
   - Updated `IslandShell` and `ActionGlowLayer` so the bottom flowing aurora glow remains active and smoothly drifting in sync with the playing media's extracted artwork `accent_hex` (`color-mix` harmonized stops) throughout active playback, and immediately pauses/stops when music is paused.
   - Reworked `lumen-media`'s Windows SMTC thumbnail extractor (`read_stream_bytes` chunked reads -> `InMemoryRandomAccessStream` -> `BitmapDecoder::GetPixelDataTransformedAsync` into `64×64` `Rgba8` + MIME header detection) and eliminated redundant `TryGetMediaPropertiesAsync()` IPC calls per poll, preventing WebP/stream-seek decode drops so album art thumbnails and accent colors sync reliably across Chrome, Edge, and desktop players.
 
+### Changed
+
+- **Unified Home Music Card & Removed Standalone Music Page:**
+  - Brought interactive Seek progress scrubbing (`onSeek`), top-right source badge + multi-session player switcher (`onSelectSession`), visible Mute button + inline capsule Volume slider, and empty-state **Resume / Open Spotify** actions directly into Home's `MusicCard`.
+  - Removed the redundant standalone `music` island page (`MusicWidget` + `BUILTIN_WIDGET_IDS` / `BUILTIN_PAGE_ORDER` / `SettingsWindow` / `ControlPanelWidget` routing) so all media controls live cleanly inside Home.
+
 ### Added
 
 - **Home Bento Polish — Standard `NextCard` Hours/Minutes & Animated `WaterCard` Liquid Vessel:**
