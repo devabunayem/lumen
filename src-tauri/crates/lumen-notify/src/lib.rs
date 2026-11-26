@@ -496,6 +496,13 @@ mod platform {
     /// Safe runtime probe for WinRT `UserNotificationListener` package-identity support (`FR-NT-4`).
     #[must_use]
     pub fn listener_access_available() -> bool {
+        // Unpackaged desktop executables without AppX/MSIX package identity cannot subscribe via
+        // WinRT UserNotificationListener without risking dispatcher/COM crashes; probe safely only
+        // when LOCALAPPDATA lacks wpndatabase or fallback cleanly.
+        let has_wpn = wpndatabase_path().is_some();
+        if has_wpn {
+            return false;
+        }
         let Ok(listener) = UserNotificationListener::Current() else {
             return false;
         };
@@ -534,12 +541,7 @@ mod platform {
         Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
     }
 
-    /// Extracts a 48x48 PNG data URL for any installed Windows desktop/Store/browser app AUMID.
-    #[must_use]
-    pub fn extract_app_logo_data_url(aumid: &str) -> Option<String> {
-        if aumid.trim().is_empty() {
-            return None;
-        }
+    fn extract_app_logo_on_sta(aumid: &str) -> Option<String> {
         let parsing = HSTRING::from(format!("shell:AppsFolder\\{}", aumid.trim()));
         unsafe {
             let hr_co = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -558,7 +560,12 @@ mod platform {
                             std::mem::size_of::<BITMAP>() as i32,
                             Some((&mut bmp as *mut BITMAP).cast()),
                         );
-                        let png_opt = if got > 0 && bmp.bmWidth > 0 && bmp.bmHeight > 0 {
+                        let png_opt = if got > 0
+                            && bmp.bmWidth > 0
+                            && bmp.bmWidth <= 512
+                            && bmp.bmHeight > 0
+                            && bmp.bmHeight <= 512
+                        {
                             let w = bmp.bmWidth as u32;
                             let h = bmp.bmHeight as u32;
                             let mut bgra = vec![0u8; (w * h * 4) as usize];
@@ -575,16 +582,21 @@ mod platform {
                                 ..Default::default()
                             };
                             let hdc = CreateCompatibleDC(None);
-                            let lines = GetDIBits(
-                                hdc,
-                                hbmp,
-                                0,
-                                h,
-                                Some(bgra.as_mut_ptr().cast()),
-                                &mut bmi,
-                                DIB_RGB_COLORS,
-                            );
-                            let _ = DeleteDC(hdc);
+                            let lines = if !hdc.is_invalid() {
+                                let count = GetDIBits(
+                                    hdc,
+                                    hbmp,
+                                    0,
+                                    h,
+                                    Some(bgra.as_mut_ptr().cast()),
+                                    &mut bmi,
+                                    DIB_RGB_COLORS,
+                                );
+                                let _ = DeleteDC(hdc);
+                                count
+                            } else {
+                                0
+                            };
                             if lines > 0 {
                                 for px in bgra.as_chunks_mut::<4>().0 {
                                     px.swap(0, 2); // BGRA -> RGBA
@@ -608,6 +620,23 @@ mod platform {
             }
             result
         }
+    }
+
+    /// Extracts a 48x48 PNG data URL for any installed Windows desktop/Store/browser app AUMID
+    /// inside an isolated STA COM thread so Shell COM objects never run on a WinRT MTA pool thread.
+    #[must_use]
+    pub fn extract_app_logo_data_url(aumid: &str) -> Option<String> {
+        let trimmed = aumid.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let owned = trimmed.to_string();
+        std::thread::Builder::new()
+            .name("lumen-shell-icon".into())
+            .spawn(move || extract_app_logo_on_sta(&owned))
+            .ok()?
+            .join()
+            .ok()?
     }
 
     fn wpndatabase_path() -> Option<PathBuf> {

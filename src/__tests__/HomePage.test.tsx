@@ -62,7 +62,7 @@ describe("Home Page & /dev/states 20 UI states", () => {
     });
 
     fireEvent.click(screen.getByTestId("home-next-card"));
-    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(await screen.findByTestId("reminders-widget")).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(await screen.findByTestId("home-page")).toBeInTheDocument();

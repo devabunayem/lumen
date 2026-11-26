@@ -107,6 +107,14 @@ import {
   waterUndo,
   weatherGetCurrent,
 } from "../lib/ipc";
+import {
+  addLocalReminder,
+  loadLocalReminders,
+  pollDueLocalReminders,
+  saveLocalReminders,
+  snoozeLocalReminder,
+  stopLocalReminder,
+} from "../lib/remindersLocal";
 import { DEFAULT_SETTINGS } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
@@ -255,7 +263,11 @@ export function IslandShell({
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
-  const [reminders, setReminders] = useState<ReminderItem[]>([]);
+  const [reminders, setReminders] = useState<ReminderItem[]>(() => loadLocalReminders());
+  const remindersRef = useRef<ReminderItem[]>(reminders);
+  useEffect(() => {
+    remindersRef.current = reminders;
+  }, [reminders]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
   const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
@@ -306,6 +318,7 @@ export function IslandShell({
   const hudTimerRef = useRef<number | null>(null);
   const isHoveredRef = useRef(false);
   const isPinnedRef = useRef(false);
+  const editingLockRef = useRef(false);
   const expandedAtRef = useRef(0);
   const lastSurfaceBucketRef = useRef<string>("collapsed");
   const hoverOpenTimerRef = useRef<number | null>(null);
@@ -332,7 +345,7 @@ export function IslandShell({
 
   const scheduleAutoClose = useCallback(
     (graceMs = 350) => {
-      if (!hoverToOpen || isPinnedRef.current || isHoveredRef.current) {
+      if (!hoverToOpen || isPinnedRef.current || isHoveredRef.current || editingLockRef.current) {
         return;
       }
       if (isTypingInContainer(pillRef.current)) {
@@ -343,7 +356,12 @@ export function IslandShell({
       }
       leaveTimerRef.current = window.setTimeout(() => {
         leaveTimerRef.current = null;
-        if (isHoveredRef.current || isPinnedRef.current || isTypingInContainer(pillRef.current)) {
+        if (
+          isHoveredRef.current ||
+          isPinnedRef.current ||
+          editingLockRef.current ||
+          isTypingInContainer(pillRef.current)
+        ) {
           return;
         }
         if (hoverReturnSeconds <= 0) {
@@ -512,7 +530,13 @@ export function IslandShell({
   useEffect(() => {
     void tasksList().then(setTasks);
     void calendarList().then(setCalendarEvents);
-    void remindersList().then(setReminders);
+    void remindersList().then((items) => {
+      if (isTauriRuntime()) {
+        setReminders(saveLocalReminders(items));
+      } else {
+        setReminders(loadLocalReminders());
+      }
+    });
     void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
     void prayerListCities().then(setPrayerCities);
     void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
@@ -669,9 +693,11 @@ export function IslandShell({
     }).then((fn) => {
       unlistenReminderAlert = fn;
     });
-    void subscribeRemindersUpdated((items) => setReminders(items)).then((fn) => {
-      unlistenRemindersList = fn;
-    });
+    void subscribeRemindersUpdated((items) => setReminders(saveLocalReminders(items))).then(
+      (fn) => {
+        unlistenRemindersList = fn;
+      },
+    );
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
     }).then((fn) => {
@@ -713,6 +739,23 @@ export function IslandShell({
     };
   }, [dispatch, mediaExclusions]);
 
+  useEffect(() => {
+    if (isTauriRuntime()) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const { updated, due } = pollDueLocalReminders(remindersRef.current, Date.now());
+      if (due.length > 0) {
+        setReminders(updated);
+        setActiveHud(null);
+        setActiveNotification(null);
+        setActiveReminderAlert(due[0]);
+        dispatch({ type: "NOTIFICATION" });
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [dispatch]);
+
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
@@ -728,6 +771,7 @@ export function IslandShell({
           return;
         }
         setOpenedViaHomeCard(false);
+        editingLockRef.current = false;
         isPinnedRef.current = false;
         setIsPinned(false);
         setSlimReturnActive(false);
@@ -1083,7 +1127,13 @@ export function IslandShell({
                     window.clearTimeout(hudTimerRef.current);
                     hudTimerRef.current = null;
                   }
-                  void remindersStop(id, stage).then((list) => setReminders(list));
+                  if (isTauriRuntime()) {
+                    void remindersStop(id, stage).then((list) =>
+                      setReminders(saveLocalReminders(list)),
+                    );
+                  } else {
+                    setReminders((prev) => stopLocalReminder(prev, id, stage));
+                  }
                   setActiveReminderAlert(null);
                 }}
                 onSnooze={(id) => {
@@ -1091,7 +1141,11 @@ export function IslandShell({
                     window.clearTimeout(hudTimerRef.current);
                     hudTimerRef.current = null;
                   }
-                  void remindersSnooze(id).then((list) => setReminders(list));
+                  if (isTauriRuntime()) {
+                    void remindersSnooze(id).then((list) => setReminders(saveLocalReminders(list)));
+                  } else {
+                    setReminders((prev) => snoozeLocalReminder(prev, id, reminderSnoozeMinutes));
+                  }
                   setActiveReminderAlert(null);
                 }}
               />
@@ -1116,7 +1170,13 @@ export function IslandShell({
                       window.clearTimeout(hudTimerRef.current);
                       hudTimerRef.current = null;
                     }
-                    void remindersStop(id, stage).then((list) => setReminders(list));
+                    if (isTauriRuntime()) {
+                      void remindersStop(id, stage).then((list) =>
+                        setReminders(saveLocalReminders(list)),
+                      );
+                    } else {
+                      setReminders((prev) => stopLocalReminder(prev, id, stage));
+                    }
                     setActiveReminderAlert(null);
                     dispatch({ type: "HUD_DISMISS" });
                   }}
@@ -1125,7 +1185,13 @@ export function IslandShell({
                       window.clearTimeout(hudTimerRef.current);
                       hudTimerRef.current = null;
                     }
-                    void remindersSnooze(id).then((list) => setReminders(list));
+                    if (isTauriRuntime()) {
+                      void remindersSnooze(id).then((list) =>
+                        setReminders(saveLocalReminders(list)),
+                      );
+                    } else {
+                      setReminders((prev) => snoozeLocalReminder(prev, id, reminderSnoozeMinutes));
+                    }
                     setActiveReminderAlert(null);
                     dispatch({ type: "HUD_DISMISS" });
                   }}
@@ -1637,6 +1703,7 @@ export function IslandShell({
                       title={msg.pill.collapse}
                       onClick={() => {
                         clearHoverTimers();
+                        editingLockRef.current = false;
                         isPinnedRef.current = false;
                         setIsPinned(false);
                         setSlimReturnActive(false);
@@ -1720,43 +1787,35 @@ export function IslandShell({
                           defaultLeadMinutes={reminderDefaultLeadMinutes}
                           snoozeMinutes={reminderSnoozeMinutes}
                           language={language}
+                          onInputFocusChange={(focused) => {
+                            editingLockRef.current = focused;
+                          }}
                           onAdd={async (title, targetAtIso, leadMinutes) => {
-                            const next = await remindersAdd(title, targetAtIso, leadMinutes);
-                            if (next.length > 0 || isTauriRuntime()) {
-                              setReminders(next);
+                            if (isTauriRuntime()) {
+                              const next = await remindersAdd(title, targetAtIso, leadMinutes);
+                              setReminders(saveLocalReminders(next));
                             } else {
-                              setReminders((prev) => [
-                                {
-                                  id: Date.now(),
-                                  title,
-                                  target_at: targetAtIso,
-                                  lead_minutes: leadMinutes,
-                                  lead_dismissed: false,
-                                  snooze_until: null,
-                                  exact_fired: false,
-                                  completed: false,
-                                  created_at: new Date().toISOString(),
-                                },
-                                ...prev,
-                              ]);
+                              setReminders((prev) =>
+                                addLocalReminder(prev, title, targetAtIso, leadMinutes),
+                              );
                             }
                           }}
                           onDelete={async (id) => {
-                            const next = await remindersDelete(id);
                             if (isTauriRuntime()) {
-                              setReminders(next);
+                              const next = await remindersDelete(id);
+                              setReminders(saveLocalReminders(next));
                             } else {
-                              setReminders((prev) => prev.filter((r) => r.id !== id));
+                              setReminders((prev) =>
+                                saveLocalReminders(prev.filter((r) => r.id !== id)),
+                              );
                             }
                           }}
                           onMarkDone={async (id) => {
-                            const next = await remindersStop(id, "exact");
                             if (isTauriRuntime()) {
-                              setReminders(next);
+                              const next = await remindersStop(id, "exact");
+                              setReminders(saveLocalReminders(next));
                             } else {
-                              setReminders((prev) =>
-                                prev.map((r) => (r.id === id ? { ...r, completed: true } : r)),
-                              );
+                              setReminders((prev) => stopLocalReminder(prev, id, "exact"));
                             }
                           }}
                         />

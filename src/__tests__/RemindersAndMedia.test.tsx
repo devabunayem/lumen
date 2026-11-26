@@ -2,6 +2,13 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ReminderAlertOverlay } from "../app/ReminderAlertOverlay";
 import { MusicCard } from "../home/components/MusicCard";
+import {
+  addLocalReminder,
+  loadLocalReminders,
+  pollDueLocalReminders,
+  purgeExpiredLocalReminders,
+  stopLocalReminder,
+} from "../lib/remindersLocal";
 import { RemindersWidget } from "../widgets/reminders/RemindersWidget";
 
 describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
@@ -43,7 +50,7 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
     expect(onStop).toHaveBeenCalledWith(7, "lead");
   });
 
-  it("allows creating a manual reminder with custom target time and advance lead minutes", async () => {
+  it("allows creating a manual reminder with custom date, target time and advance lead minutes", async () => {
     const onAdd = vi.fn().mockResolvedValue(undefined);
     render(
       <RemindersWidget
@@ -60,6 +67,9 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
     fireEvent.change(screen.getByLabelText("Reminder title"), {
       target: { value: "Deploy build" },
     });
+    fireEvent.change(screen.getByLabelText("Target date"), {
+      target: { value: "2026-11-28" },
+    });
     fireEvent.change(screen.getByLabelText("Target time"), {
       target: { value: "21:00" },
     });
@@ -68,7 +78,44 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
       fireEvent.click(screen.getByTestId("reminder-submit-btn"));
     });
 
-    expect(onAdd).toHaveBeenCalledWith("Deploy build", expect.any(String), 15);
+    expect(onAdd).toHaveBeenCalledWith("Deploy build", expect.stringContaining("2026-11-28"), 15);
+  });
+
+  it("persists reminders in localStorage, honors exact-time fire, and auto-purges after 7 days", () => {
+    window.localStorage.clear();
+    const targetMs = Date.parse("2026-11-26T20:00:00.000Z");
+    const list = addLocalReminder(
+      [],
+      "Client Call",
+      "2026-11-26T20:00:00.000Z",
+      10,
+      targetMs - 30 * 60_000,
+    );
+    expect(loadLocalReminders(targetMs - 20 * 60_000)).toHaveLength(1);
+
+    // 10m before -> lead fires; stopping lead keeps exact-time trigger armed
+    const leadPoll = pollDueLocalReminders(list, targetMs - 10 * 60_000);
+    expect(leadPoll.due).toHaveLength(1);
+    expect(leadPoll.due[0].stage).toBe("lead");
+    const afterLeadStop = stopLocalReminder(
+      leadPoll.updated,
+      list[0].id,
+      "lead",
+      targetMs - 9 * 60_000,
+    );
+
+    // Exact target -> MUST still fire
+    const exactPoll = pollDueLocalReminders(afterLeadStop, targetMs);
+    expect(exactPoll.due).toHaveLength(1);
+    expect(exactPoll.due[0].stage).toBe("exact");
+
+    // Retained at 6 days, auto-deleted at >= 7 days after expiry
+    expect(purgeExpiredLocalReminders(exactPoll.updated, targetMs + 6 * 86_400_000)).toHaveLength(
+      1,
+    );
+    expect(purgeExpiredLocalReminders(exactPoll.updated, targetMs + 7 * 86_400_000)).toHaveLength(
+      0,
+    );
   });
 
   it("advances Home MusicCard timeline smoothly in real time while playing", () => {

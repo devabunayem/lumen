@@ -829,7 +829,37 @@ impl StorageRepo {
         self.get_active_ledger()
     }
 
+    /// Automatically deletes reminders whose scheduled target expired 7+ days ago.
+    pub fn purge_expired_reminders(&self, now: DateTime<Utc>) -> Result<usize, String> {
+        let cutoff = now - Duration::days(7);
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare("SELECT id, target_at FROM reminders")
+            .map_err(|e| format!("prepare purge reminders failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("query purge reminders failed: {e}"))?;
+        let mut expired_ids = Vec::new();
+        for row in rows.flatten() {
+            if let Ok(dt) = DateTime::parse_from_rfc3339(&row.1)
+                && dt.with_timezone(&Utc) <= cutoff
+            {
+                expired_ids.push(row.0);
+            }
+        }
+        drop(stmt);
+        let count = expired_ids.len();
+        for id in expired_ids {
+            conn.execute("DELETE FROM reminders WHERE id = ?1", params![id])
+                .map_err(|e| format!("delete expired reminder failed: {e}"))?;
+        }
+        Ok(count)
+    }
+
     pub fn list_reminders(&self) -> Result<Vec<ReminderItem>, String> {
+        let _ = self.purge_expired_reminders(Utc::now());
         let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
         let mut stmt = conn
             .prepare(
@@ -1230,5 +1260,15 @@ mod tests {
             .stop_reminder_alert_at(rem_id, "exact", target)
             .expect("stop exact");
         assert!(final_list[0].completed);
+
+        // Should persist before 7 days after expiry, then auto-delete at >= 7 days
+        let purged_early = repo
+            .purge_expired_reminders(target + Duration::days(6))
+            .expect("purge 6d");
+        assert_eq!(purged_early, 0);
+        let purged_7d = repo
+            .purge_expired_reminders(target + Duration::days(7))
+            .expect("purge 7d");
+        assert_eq!(purged_7d, 1);
     }
 }

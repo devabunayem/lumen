@@ -308,9 +308,17 @@ mod wave_out {
             unsafe {
                 if waveOutPrepareHeader(self.handle, &mut hdr, cb_hdr) == 0 {
                     if waveOutWrite(self.handle, &mut hdr, cb_hdr) == 0 {
-                        // Sleep slightly longer than buffer duration while playing, non-blocking to caller thread.
-                        let dur_ms = ((samples.len() as u64) * 1000 / 44_100).max(12) + 8;
-                        std::thread::sleep(std::time::Duration::from_millis(dur_ms));
+                        // Poll WHDR_DONE (bit 0) so the driver never reads freed PCM memory.
+                        let est_ms = ((samples.len() as u64) * 1000 / 44_100).max(12);
+                        let max_wait = std::time::Duration::from_millis(est_ms + 400);
+                        let start = std::time::Instant::now();
+                        while {
+                            std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+                            let flags = std::ptr::read_unaligned(std::ptr::addr_of!(hdr.dwFlags));
+                            (flags & 1) == 0 && start.elapsed() < max_wait
+                        } {
+                            std::thread::sleep(std::time::Duration::from_millis(8));
+                        }
                     }
                     let _ = waveOutUnprepareHeader(self.handle, &mut hdr, cb_hdr);
                 }

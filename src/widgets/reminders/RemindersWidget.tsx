@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { BellIcon } from "../../design/icons";
 import { requestKeyboardFocus, type ReminderItem } from "../../lib/ipc";
 
@@ -15,6 +15,14 @@ export interface RemindersWidgetProps {
 
 const LEAD_PRESETS = [0, 5, 10, 15, 30] as const;
 
+function defaultDateValue(): string {
+  const d = new Date(Date.now() + 30 * 60_000);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function defaultTimeValue(): string {
   const d = new Date(Date.now() + 30 * 60_000);
   const hh = String(d.getHours()).padStart(2, "0");
@@ -22,17 +30,41 @@ function defaultTimeValue(): string {
   return `${hh}:${mm}`;
 }
 
-function formatReminderTime(iso: string): string {
+function formatReminderDateTime(iso: string, language: "en" | "bn"): string {
   const ts = Date.parse(iso);
   if (Number.isNaN(ts)) {
     return iso;
   }
   const d = new Date(ts);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
   const h24 = d.getHours();
   const mins = String(d.getMinutes()).padStart(2, "0");
   const suffix = h24 >= 12 ? "PM" : "AM";
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12}:${mins} ${suffix}`;
+  const clock = `${h12}:${mins} ${suffix}`;
+  if (isToday) {
+    return clock;
+  }
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  return `${d.getDate()} ${months[d.getMonth()]} · ${clock}${language === "bn" ? "" : ""}`;
 }
 
 export function RemindersWidget({
@@ -48,24 +80,42 @@ export function RemindersWidget({
   const isBn = language === "bn";
   const [adding, setAdding] = useState(reminders.length === 0);
   const [title, setTitle] = useState("");
-  const [dayMode, setDayMode] = useState<"today" | "tomorrow">("today");
+  const [dateStr, setDateStr] = useState(defaultDateValue);
   const [timeStr, setTimeStr] = useState(defaultTimeValue);
   const [leadMinutes, setLeadMinutes] = useState<number>(defaultLeadMinutes);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   const activeReminders = reminders.filter((r) => !r.completed);
+
+  useEffect(() => {
+    onInputFocusChange?.(adding);
+    return () => {
+      onInputFocusChange?.(false);
+    };
+  }, [adding, onInputFocusChange]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) {
+      setErrorText(isBn ? "কাজের নাম লিখুন" : "Enter a title");
       return;
     }
-    const base = new Date();
-    if (dayMode === "tomorrow") {
-      base.setDate(base.getDate() + 1);
+    const [yyyy, mo, dd] = dateStr.split("-").map((n) => Number.parseInt(n, 10));
+    const [hh, mm] = timeStr.split(":").map((n) => Number.parseInt(n, 10));
+    const target = new Date(
+      Number.isFinite(yyyy) ? yyyy : new Date().getFullYear(),
+      Number.isFinite(mo) ? mo - 1 : new Date().getMonth(),
+      Number.isFinite(dd) ? dd : new Date().getDate(),
+      Number.isFinite(hh) ? hh : 9,
+      Number.isFinite(mm) ? mm : 0,
+      0,
+    );
+    if (Number.isNaN(target.getTime())) {
+      setErrorText(isBn ? "সঠিক তারিখ ও সময় দিন" : "Invalid date/time");
+      return;
     }
-    const [hh, mm] = timeStr.split(":").map((n) => Number.parseInt(n, 10) || 0);
-    const target = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hh, mm, 0);
+    setErrorText(null);
     await onAdd(trimmed, target.toISOString(), leadMinutes);
     setTitle("");
     setAdding(false);
@@ -88,13 +138,19 @@ export function RemindersWidget({
                 : "No scheduled reminders"}
           </span>
           <span className="text-[10px]" style={{ color: "var(--text-tertiary)" }}>
-            · {isBn ? `স্নুজ ${snoozeMinutes}মি` : `Snooze ${snoozeMinutes}m`}
+            ·{" "}
+            {isBn
+              ? `স্নুজ ${snoozeMinutes}মি · ৭ দিনে অটো-ক্লিয়ার`
+              : `Snooze ${snoozeMinutes}m · 7d auto-purge`}
           </span>
         </div>
         <button
           type="button"
           data-testid="reminder-toggle-add"
-          onClick={() => setAdding((v) => !v)}
+          onClick={() => {
+            setErrorText(null);
+            setAdding((v) => !v);
+          }}
           className="type-caption cursor-pointer rounded-full border-0 px-2.5 py-1 font-semibold"
           style={{
             backgroundColor: "var(--surface-button)",
@@ -121,7 +177,6 @@ export function RemindersWidget({
                 void requestKeyboardFocus(true);
               }}
               onBlur={() => {
-                onInputFocusChange?.(false);
                 void requestKeyboardFocus(false);
               }}
               placeholder={isBn ? "যেমন: রাত ৮টায় মিটিং..." : "e.g., Night 8 PM client meeting..."}
@@ -131,17 +186,25 @@ export function RemindersWidget({
                 color: "var(--text-primary)",
               }}
             />
-            <button
-              type="button"
-              onClick={() => setDayMode((d) => (d === "today" ? "tomorrow" : "today"))}
-              className="type-caption cursor-pointer rounded-full border-0 px-2.5 py-1.5 font-medium"
+            <input
+              type="date"
+              aria-label={isBn ? "তারিখ" : "Target date"}
+              value={dateStr}
+              onChange={(e) => setDateStr(e.target.value)}
+              onFocus={() => {
+                onInputFocusChange?.(true);
+                void requestKeyboardFocus(true);
+              }}
+              onBlur={() => {
+                void requestKeyboardFocus(false);
+              }}
+              className="type-caption w-[114px] rounded-full border-0 px-2 py-1.5 tabular-nums outline-none"
               style={{
                 backgroundColor: "var(--surface-raised)",
-                color: "var(--text-secondary)",
+                color: "var(--text-primary)",
+                colorScheme: "dark",
               }}
-            >
-              {dayMode === "today" ? (isBn ? "আজ" : "Today") : isBn ? "আগামীকাল" : "Tomorrow"}
-            </button>
+            />
             <input
               type="time"
               aria-label={isBn ? "কাজের সময়" : "Target time"}
@@ -152,13 +215,13 @@ export function RemindersWidget({
                 void requestKeyboardFocus(true);
               }}
               onBlur={() => {
-                onInputFocusChange?.(false);
                 void requestKeyboardFocus(false);
               }}
-              className="type-caption rounded-full border-0 px-2.5 py-1.5 tabular-nums outline-none"
+              className="type-caption w-[88px] rounded-full border-0 px-2 py-1.5 tabular-nums outline-none"
               style={{
                 backgroundColor: "var(--surface-raised)",
                 color: "var(--text-primary)",
+                colorScheme: "dark",
               }}
             />
           </div>
@@ -166,7 +229,13 @@ export function RemindersWidget({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1">
               <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                {isBn ? "আগে জানাবে:" : "Remind:"}
+                {errorText ? (
+                  <span style={{ color: "var(--accent-red)" }}>{errorText}</span>
+                ) : isBn ? (
+                  "আগে জানাবে:"
+                ) : (
+                  "Remind:"
+                )}
               </span>
               {LEAD_PRESETS.map((mins) => {
                 const selected = leadMinutes === mins;
@@ -212,7 +281,7 @@ export function RemindersWidget({
             >
               {isBn
                 ? "রিমাইন্ডার সেট করতে '+ রিমাইন্ডার' চাপুন"
-                : "Click '+ Reminder' to schedule an alert with lead time & alarm"}
+                : "Click '+ Reminder' to schedule an alert with date, time & alarm"}
             </div>
           ) : (
             activeReminders.slice(0, 3).map((rem) => (
@@ -239,7 +308,7 @@ export function RemindersWidget({
                     className="text-[11px] tabular-nums"
                     style={{ color: "var(--text-secondary)" }}
                   >
-                    · {formatReminderTime(rem.target_at)}
+                    · {formatReminderDateTime(rem.target_at, language)}
                   </span>
                   {rem.snooze_until ? (
                     <span
@@ -249,7 +318,9 @@ export function RemindersWidget({
                         color: "var(--accent-orange)",
                       }}
                     >
-                      {isBn ? "স্নুজড" : `Snoozed ${formatReminderTime(rem.snooze_until)}`}
+                      {isBn
+                        ? "স্নুজড"
+                        : `Snoozed ${formatReminderDateTime(rem.snooze_until, language)}`}
                     </span>
                   ) : rem.lead_minutes > 0 ? (
                     <span className="text-[10px]" style={{ color: "var(--accent-orange)" }}>

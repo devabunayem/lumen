@@ -6,7 +6,7 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
-- **Manual Timed Reminders, Medium Alarm Notch & Snooze:** Added SQLite-backed `reminders` storage, `RemindersWidget`, `ReminderSnoozeMinutes` (`2/3/5/10 min`) and `Default Lead Reminder` preferences in Settings, synthesized `reminder_alarm` tone, and the medium `380×108` `ReminderAlertOverlay` with **OK, Got it** (canceling the early alarm while keeping the exact-time notification armed) and **Snooze** actions.
+- **Manual Timed Reminders, Medium Alarm Notch & Snooze:** Added SQLite + `localStorage` persisted `reminders` storage (with automatic 7-day post-expiry deletion and non-Tauri preview scheduler), `RemindersWidget` with native `<input type="date">` / `<input type="time">` pickers and auto-collapse editing lock, `ReminderSnoozeMinutes` (`2/3/5/10 min`) and `Default Lead Reminder` preferences in Settings, synthesized `reminder_alarm` tone, and the medium `380×108` `ReminderAlertOverlay` with **OK, Got it** (canceling the early alarm while keeping the exact-time notification armed) and **Snooze** actions.
 - **All Windows App & Browser Notification Sync with Real App Logos:** Added `SystemNotificationWatcher` in `lumen-notify` capturing live desktop & browser toast notifications (`Chrome`, `Edge`, `Firefox`, `Brave`, `WhatsApp`, `Discord`, etc.) with Win32 `shell:AppsFolder` 48×48 PNG icon extraction and `<toast>` local image loading inside `NotificationToast`.
 - **Real-Time Audio/Video Player Sync & Continuous Timeline:** Upgraded `lumen-media` (`LastUpdatedTime` real-time timeline math, cached thumbnails, active playing session auto-priority across browsers & video players) and `MusicCard` / collapsed `live` pill progress strip (`2 Hz` backend + smooth UI tick).
 
@@ -14,6 +14,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 - **Fixed Canvas Size (`1220×612`):** Updated the zero-resize transparent overlay canvas to comfortably fit `150%` scaled Home (`1140×564`) plus margin with dynamic 30 Hz `SetWindowRgn` pass-through and Auto scale thresholds (`<=1440 -> 100%`, `1920+ -> 115%`, `2560+ -> 130%`).
 
 ### Fixed
+
+- **Win32 Access Violation (`0xc0000005`) Crash Fixes:**
+  - Updated `lumen-media::sounds` (`LazyWaveOut::play_blocking`) to synchronize `WAVEHDR.dwFlags` (`WHDR_DONE`) via unaligned reads + memory fence before calling `waveOutUnprepareHeader` and dropping the PCM buffer, preventing audio driver DMA read-after-free crashes.
+  - Updated `lumen-notify` to skip WinRT `UserNotificationListener` COM probing when `wpndatabase.db` is present and isolated Shell `SHCreateItemFromParsingName` / `IShellItemImageFactory::GetImage` icon extraction onto a dedicated STA COM thread with bitmap dimension bounds checking.
 
 - **Compact Home Size, Instant Open Speed & Zero Bottom Jitter:**
   - Compacted Home geometry from `760×376` (`r=40`) to `640×312` (`r=32`), shrunk the fixed transparent overlay canvas from `1220×612` to `1040×510` (fitting `150%` `960×468` + margin), and kept `Auto` scale at `100%` up to `1920px` displays (`2560+ -> 115%`, `3840+ -> 130%`).
