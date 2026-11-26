@@ -320,8 +320,8 @@ export function DayArc({
         ))}
       </ul>
 
-      {/* Left corner hero block */}
-      <div className="pointer-events-auto absolute top-0 left-0 z-20 w-[184px]">
+      {/* Left corner hero block — compact 2-line anchor clear of the arc slope */}
+      <div className="pointer-events-auto absolute top-0 left-0 z-20 max-w-[164px]">
         <div className="flex items-baseline gap-1.5">
           <div
             className="type-home-hero truncate leading-tight text-white"
@@ -336,90 +336,78 @@ export function DayArc({
           )}
         </div>
         <div
-          className="type-home-micro mt-0.5 leading-none"
+          className="type-home-micro mt-0.5 truncate leading-tight"
           style={{ color: COLOR_TOKENS.arcTimeMuted }}
         >
           {nextTimeText} · {nextCountdown}
         </div>
-        {schedule && (
-          <div
-            className="mt-1 h-[2px] w-[108px] overflow-hidden rounded-full"
-            style={{ backgroundColor: "rgba(255, 255, 255, 0.12)" }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(100, Math.max(4, schedule.progress_pct))}%`,
-                backgroundColor: COLOR_TOKENS.arcProgress,
-              }}
-            />
-          </div>
-        )}
-        <div className="mt-1 flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={(e) => {
-              if (e.shiftKey) {
-                onResetTasbih();
-              } else {
-                void playUiSound("toggle_on");
-                onIncrementTasbih();
-              }
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
+      </div>
+
+      {/* Centered dome utility chips — resting inside the open arch belly above the horizon */}
+      <div className="pointer-events-auto absolute bottom-[52px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap">
+        <button
+          type="button"
+          onClick={(e) => {
+            if (e.shiftKey) {
               onResetTasbih();
-            }}
-            aria-label={`${msg.home.arc.tasbih} ${tasbih.count}`}
-            className={`home-glass-chip type-home-micro inline-flex h-[20px] items-center gap-1 px-2 text-white ${
-              reduceMotion ? "" : "transition-transform duration-100 active:scale-95"
-            }`}
-            data-testid="tasbih-chip"
-          >
-            <span>{msg.home.arc.tasbih}</span>
-            <span className="font-semibold tabular-nums">
-              {formatDigits(tasbih.count, banglaDigits)}
-            </span>
-          </button>
-          <button
-            type="button"
-            data-testid="home-qibla-btn"
-            aria-pressed={qiblaOpen}
-            onClick={() => setQiblaOpen((v) => !v)}
-            className={`home-glass-chip type-home-micro inline-flex h-[20px] items-center gap-1 px-2 ${
-              reduceMotion ? "" : "transition-transform duration-100 active:scale-95"
-            }`}
+            } else {
+              void playUiSound("toggle_on");
+              onIncrementTasbih();
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onResetTasbih();
+          }}
+          aria-label={`${msg.home.arc.tasbih} ${tasbih.count}`}
+          className={`home-glass-chip type-home-micro inline-flex h-[20px] items-center gap-1 px-2.5 text-white ${
+            reduceMotion ? "" : "transition-transform duration-100 active:scale-95"
+          }`}
+          data-testid="tasbih-chip"
+        >
+          <span>{msg.home.arc.tasbih}</span>
+          <span className="font-semibold tabular-nums">
+            {formatDigits(tasbih.count, banglaDigits)}
+          </span>
+        </button>
+        <button
+          type="button"
+          data-testid="home-qibla-btn"
+          aria-pressed={qiblaOpen}
+          onClick={() => setQiblaOpen((v) => !v)}
+          className={`home-glass-chip type-home-micro inline-flex h-[20px] items-center gap-1 px-2.5 ${
+            reduceMotion ? "" : "transition-transform duration-100 active:scale-95"
+          }`}
+          style={{
+            color: qiblaOpen ? COLOR_TOKENS.accentGreen : COLOR_TOKENS.textPrimary,
+            borderColor: qiblaOpen ? COLOR_TOKENS.accentGreen : undefined,
+          }}
+        >
+          <CompassIcon size={10} />
+          <span className="tabular-nums">
+            {qiblaOpen
+              ? formatDigits(`${qiblaInfo.deg}° ${qiblaInfo.cardinal}`, banglaDigits)
+              : language === "bn"
+                ? "কিবলা"
+                : "Qibla"}
+          </span>
+        </button>
+        {schedule?.is_ramadan && schedule.sehri_iftar_label && (
+          <span
+            data-testid="ramadan-badge"
+            className="type-home-micro rounded-full px-2 py-0.5 font-medium"
             style={{
-              color: qiblaOpen ? COLOR_TOKENS.accentGreen : COLOR_TOKENS.textPrimary,
-              borderColor: qiblaOpen ? COLOR_TOKENS.accentGreen : undefined,
+              background: "rgba(255, 176, 32, 0.14)",
+              color: COLOR_TOKENS.arcSun,
             }}
           >
-            <CompassIcon size={10} />
-            <span className="tabular-nums">
-              {qiblaOpen
-                ? formatDigits(`${qiblaInfo.deg}° ${qiblaInfo.cardinal}`, banglaDigits)
-                : language === "bn"
-                  ? "কিবলা"
-                  : "Qibla"}
-            </span>
-          </button>
-          {schedule?.is_ramadan && schedule.sehri_iftar_label && (
-            <span
-              data-testid="ramadan-badge"
-              className="type-home-micro rounded-full px-2 py-0.5 font-medium"
-              style={{
-                background: "rgba(255, 176, 32, 0.14)",
-                color: COLOR_TOKENS.arcSun,
-              }}
-            >
-              {formatDigits(schedule.sehri_iftar_label, banglaDigits)}
-            </span>
-          )}
-        </div>
+            {formatDigits(schedule.sehri_iftar_label, banglaDigits)}
+          </span>
+        )}
       </div>
 
       {/* Right corner weather block */}
-      <div className="pointer-events-auto absolute top-0 right-0 z-20 w-[132px]">
+      <div className="pointer-events-auto absolute top-0 right-0 z-20 w-[136px]">
         {renderWeatherRight()}
       </div>
 
@@ -560,12 +548,13 @@ export function DayArc({
           <circle
             cx={activeNowPoint.x}
             cy={activeNowPoint.y}
-            r={16}
+            r={14}
             fill={haloColor}
             className={isVisible && !reduceMotion ? "lumen-halo-breath" : undefined}
           />
+          <circle cx={activeNowPoint.x} cy={activeNowPoint.y} r={9.5} fill={COLOR_TOKENS.surface} />
           <g
-            transform={`translate(${(activeNowPoint.x - 10).toFixed(2)}, ${(activeNowPoint.y - 10).toFixed(2)}) scale(${(20 / 24).toFixed(4)})`}
+            transform={`translate(${(activeNowPoint.x - 9).toFixed(2)}, ${(activeNowPoint.y - 9).toFixed(2)}) scale(${(18 / 24).toFixed(4)})`}
           >
             {geometry.isNightMode ? (
               <MoonStarGlyph twinkle={isVisible && !reduceMotion} />

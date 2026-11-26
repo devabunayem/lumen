@@ -39,9 +39,9 @@
   --arc-moon-progress: #818cf8;
   --arc-moon-glow: rgba(94, 92, 230, 0.32);
   --arc-moon-halo: rgba(129, 140, 248, 0.28);
-  --arc-track: rgba(255, 255, 255, 0.24);
-  --arc-horizon: rgba(255, 255, 255, 0.14);
-  --arc-guide: rgba(255, 255, 255, 0.18);
+  --arc-track: rgba(255, 255, 255, 0.2);
+  --arc-horizon: rgba(255, 255, 255, 0.12);
+  --arc-guide: rgba(255, 255, 255, 0.13);
   --arc-marker-ring: rgba(255, 255, 255, 0.6);
   --arc-time-muted: rgba(255, 255, 255, 0.62);
   --arc-tooltip-bg: rgba(20, 20, 24, 0.94);

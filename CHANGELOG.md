@@ -26,8 +26,9 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
-- **Custom Shaded Golden Sun & Two-Star Crescent Moon Celestial Icons (`DayArc` & Weather):**
+- **Custom Shaded Golden Sun & Two-Star Crescent Moon Celestial Icons (`DayArc` & Weather) + Decluttered Arch Layout:**
   - Replaced the flat circle marker on `DayArc` and plain outline weather glyphs with custom token-driven vector art (`SunGlyph` 8-ray shaded golden sun shifting warmer at dawn/dusk with subtle ray spin, plus `MoonStarGlyph` luminous silver-lavender crescent moon with twinkling 5-point stars and dark cutout stroke).
+  - Compacted the top-left next-prayer header into a clean 2-line block (removing the duplicate horizontal bar), centered `Tasbih`, `Qibla`, and Ramadan chips inside the open arch dome above the horizon, softened guide stroke contrast, and added a surface-matched backing disc behind the moving celestial glyph so the arc stroke terminates cleanly without text or chip overlap.
 
 - **Auto-Tracked Windows Location Across Weather, Prayer Times, Iftar/Sehri, Day Arc & Qibla:**
   - Enabled fast Windows Geolocation tracking (`locationOptIn` defaulting to `true` with `GetGeopositionWithAgeAndTimeoutAsync` 5s timeout & 10-min cache) on startup, settings toggle, weather refresh, and periodic 30-minute background checks.
