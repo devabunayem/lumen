@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BellIcon,
   BoltIcon,
   CalendarIcon,
   CheckListIcon,
@@ -50,6 +51,13 @@ import {
   prayerListCities,
   type PrayerSchedule,
   prayerSetCity,
+  type ReminderAlertPayload,
+  type ReminderItem,
+  remindersAdd,
+  remindersDelete,
+  remindersList,
+  remindersSnooze,
+  remindersStop,
   seekMedia,
   selectMediaSession,
   sendMediaCommand,
@@ -69,6 +77,8 @@ import {
   subscribeNotificationPopup,
   subscribePomodoroTick,
   subscribePrayerUpdated,
+  subscribeReminderAlert,
+  subscribeRemindersUpdated,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
@@ -105,6 +115,7 @@ import { MusicWidget } from "../widgets/music/MusicWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
 import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
 import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
+import { RemindersWidget } from "../widgets/reminders/RemindersWidget";
 import {
   BUILTIN_WIDGET_IDS,
   type IslandPageMeta,
@@ -116,6 +127,7 @@ import { WaterWidget } from "../widgets/water/WaterWidget";
 import { HudOverlay } from "./HudOverlay";
 import { LumenMascot } from "./LumenMascot";
 import { NotificationToast } from "./NotificationToast";
+import { ReminderAlertOverlay } from "./ReminderAlertOverlay";
 import { useIslandStore } from "./stateMachine";
 
 export interface IslandShellProps {
@@ -138,6 +150,8 @@ export interface IslandShellProps {
   chipLedgerEnabled?: boolean;
   chipClipboardEnabled?: boolean;
   chipDevPulseEnabled?: boolean;
+  reminderSnoozeMinutes?: number;
+  reminderDefaultLeadMinutes?: number;
   pageOrder?: string[];
   hiddenPages?: string[];
   initialWaterGoalMl?: number;
@@ -208,6 +222,8 @@ export function IslandShell({
   chipLedgerEnabled = true,
   chipClipboardEnabled = true,
   chipDevPulseEnabled = true,
+  reminderSnoozeMinutes = 3,
+  reminderDefaultLeadMinutes = 10,
   pageOrder = DEFAULT_SETTINGS.pageOrder,
   hiddenPages = DEFAULT_SETTINGS.hiddenPages,
   initialWaterGoalMl = 1500,
@@ -239,6 +255,7 @@ export function IslandShell({
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [reminders, setReminders] = useState<ReminderItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
   const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
@@ -266,6 +283,7 @@ export function IslandShell({
   const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
   const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
+  const [activeReminderAlert, setActiveReminderAlert] = useState<ReminderAlertPayload | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const [slimReturnActive, setSlimReturnActive] = useState(false);
   const [privacyDevices, setPrivacyDevices] = useState<[boolean, boolean]>([false, false]);
@@ -379,6 +397,15 @@ export function IslandShell({
         },
       ],
       [
+        "reminders",
+        {
+          id: "reminders",
+          titleLead: msg.pages.remindersLead ?? "Timed",
+          titleAccent: msg.pages.remindersAccent ?? "Reminders",
+          accentVar: "var(--accent-red)",
+        },
+      ],
+      [
         "todo",
         {
           id: "todo",
@@ -485,6 +512,7 @@ export function IslandShell({
   useEffect(() => {
     void tasksList().then(setTasks);
     void calendarList().then(setCalendarEvents);
+    void remindersList().then(setReminders);
     void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
     void prayerListCities().then(setPrayerCities);
     void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
@@ -553,6 +581,8 @@ export function IslandShell({
     let unlistenDevPulse: (() => void) | undefined;
     let unlistenClip: (() => void) | undefined;
     let unlistenPrayer: (() => void) | undefined;
+    let unlistenReminderAlert: (() => void) | undefined;
+    let unlistenRemindersList: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
@@ -611,6 +641,7 @@ export function IslandShell({
     });
     void subscribeNotificationPopup((popup) => {
       setActiveHud(null);
+      setActiveReminderAlert(null);
       setActiveNotification(popup);
       dispatch({ type: "NOTIFICATION" });
       if (hudTimerRef.current !== null) {
@@ -619,9 +650,27 @@ export function IslandShell({
       hudTimerRef.current = window.setTimeout(() => {
         setActiveNotification(null);
         dispatch({ type: "HUD_DISMISS" });
-      }, 4000);
+      }, 4500);
     }).then((fn) => {
       unlistenNotify = fn;
+    });
+    void subscribeReminderAlert((alert) => {
+      setActiveHud(null);
+      setActiveNotification(null);
+      setActiveReminderAlert(alert);
+      dispatch({ type: "NOTIFICATION" });
+      if (hudTimerRef.current !== null) {
+        window.clearTimeout(hudTimerRef.current);
+      }
+      hudTimerRef.current = window.setTimeout(() => {
+        setActiveReminderAlert(null);
+        dispatch({ type: "HUD_DISMISS" });
+      }, 45_000);
+    }).then((fn) => {
+      unlistenReminderAlert = fn;
+    });
+    void subscribeRemindersUpdated((items) => setReminders(items)).then((fn) => {
+      unlistenRemindersList = fn;
     });
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
@@ -659,6 +708,8 @@ export function IslandShell({
       unlistenDevPulse?.();
       unlistenClip?.();
       unlistenPrayer?.();
+      unlistenReminderAlert?.();
+      unlistenRemindersList?.();
     };
   }, [dispatch, mediaExclusions]);
 
@@ -760,11 +811,11 @@ export function IslandShell({
       case "expanded":
         return isHomePage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
       case "hud":
-        return BASE_GEOMETRY.hud;
+        return activeReminderAlert !== null ? BASE_GEOMETRY.reminder : BASE_GEOMETRY.hud;
       default:
         return BASE_GEOMETRY.collapsed;
     }
-  }, [effectiveState, isSlimQuiet, isHomePage]);
+  }, [effectiveState, isSlimQuiet, isHomePage, activeReminderAlert]);
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
@@ -783,10 +834,14 @@ export function IslandShell({
       cornerRadius: isFloatingPill
         ? isExpanded
           ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
-          : Math.round(height / 2)
+          : activeReminderAlert !== null && effectiveState === "hud"
+            ? 24 * scaleFactor
+            : Math.round(height / 2)
         : isExpanded
           ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
-          : Math.round(height / 2),
+          : activeReminderAlert !== null && effectiveState === "hud"
+            ? 24 * scaleFactor
+            : Math.round(height / 2),
       homeVisible: homeVisibleNow,
     });
 
@@ -829,7 +884,10 @@ export function IslandShell({
     isExpanded,
     isHomePage,
     homeVisibleNow,
+    activeReminderAlert,
+    effectiveState,
   ]);
+  const isReminderAlert = effectiveState === "hud" && activeReminderAlert !== null;
   const isHud = effectiveState === "hud" && activeHud !== null;
   const isNotify = effectiveState === "hud" && activeNotification !== null;
   const liveTrack = media?.active ?? null;
@@ -860,14 +918,16 @@ export function IslandShell({
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
   const surfaceBorderRadius = isFloatingPill
-    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : Math.round(height / 2), Math.round(height / 2))}px`
+    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : isReminderAlert ? 24 : Math.round(height / 2), Math.round(height / 2))}px`
     : isSlimQuiet
       ? "0px 0px 8px 8px"
       : isExpanded
         ? isHomePage
           ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
           : "0px 0px 24px 24px"
-        : "0px 0px 15px 15px";
+        : isReminderAlert
+          ? "0px 0px 24px 24px"
+          : "0px 0px 15px 15px";
 
   return (
     <div
@@ -1009,8 +1069,69 @@ export function IslandShell({
         )}
 
         <div className="relative h-full w-full overflow-hidden rounded-[inherit]">
+          {isExpanded && activeReminderAlert && (
+            <div
+              className="absolute inset-x-0 top-0 z-50 h-[108px] border-b border-white/10"
+              style={{ backgroundColor: "rgba(10, 10, 12, 0.96)" }}
+            >
+              <ReminderAlertOverlay
+                alert={activeReminderAlert}
+                snoozeMinutes={reminderSnoozeMinutes}
+                language={language}
+                onStop={(id, stage) => {
+                  if (hudTimerRef.current !== null) {
+                    window.clearTimeout(hudTimerRef.current);
+                    hudTimerRef.current = null;
+                  }
+                  void remindersStop(id, stage).then((list) => setReminders(list));
+                  setActiveReminderAlert(null);
+                }}
+                onSnooze={(id) => {
+                  if (hudTimerRef.current !== null) {
+                    window.clearTimeout(hudTimerRef.current);
+                    hudTimerRef.current = null;
+                  }
+                  void remindersSnooze(id).then((list) => setReminders(list));
+                  setActiveReminderAlert(null);
+                }}
+              />
+            </div>
+          )}
           <AnimatePresence initial={false}>
-            {isNotify && activeNotification ? (
+            {isReminderAlert && activeReminderAlert ? (
+              <motion.div
+                key="reminder-alert-overlay"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 h-full w-full"
+              >
+                <ReminderAlertOverlay
+                  alert={activeReminderAlert}
+                  snoozeMinutes={reminderSnoozeMinutes}
+                  language={language}
+                  onStop={(id, stage) => {
+                    if (hudTimerRef.current !== null) {
+                      window.clearTimeout(hudTimerRef.current);
+                      hudTimerRef.current = null;
+                    }
+                    void remindersStop(id, stage).then((list) => setReminders(list));
+                    setActiveReminderAlert(null);
+                    dispatch({ type: "HUD_DISMISS" });
+                  }}
+                  onSnooze={(id) => {
+                    if (hudTimerRef.current !== null) {
+                      window.clearTimeout(hudTimerRef.current);
+                      hudTimerRef.current = null;
+                    }
+                    void remindersSnooze(id).then((list) => setReminders(list));
+                    setActiveReminderAlert(null);
+                    dispatch({ type: "HUD_DISMISS" });
+                  }}
+                />
+              </motion.div>
+            ) : isNotify && activeNotification ? (
               <motion.div
                 key="notification-overlay"
                 initial={{ opacity: 0, scale: 0.98 }}
@@ -1117,6 +1238,17 @@ export function IslandShell({
                       </span>
                     </div>
                     <LiveWaveform playing={liveTrack.is_playing} accentColor={mediaAccent} />
+                    {liveTrack.duration_ms > 0 && (
+                      <div className="pointer-events-none absolute inset-x-3 bottom-0.5 h-[1.5px] overflow-hidden rounded-full bg-white/15">
+                        <div
+                          className="h-full rounded-full transition-[width] duration-300 ease-linear"
+                          style={{
+                            width: `${Math.min(100, Math.round((liveTrack.position_ms / liveTrack.duration_ms) * 100))}%`,
+                            backgroundColor: mediaAccent,
+                          }}
+                        />
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -1220,6 +1352,7 @@ export function IslandShell({
                   lastPlayedTrack={lastPlayedTrack}
                   calendarEvents={calendarEvents}
                   tasks={tasks}
+                  reminders={reminders}
                   water={
                     waterSummary ?? {
                       today_ml: 0,
@@ -1581,6 +1714,53 @@ export function IslandShell({
                           <CalendarWidget language={language} />
                         </div>
                       )}
+                      {activePage.id === "reminders" && (
+                        <RemindersWidget
+                          reminders={reminders}
+                          defaultLeadMinutes={reminderDefaultLeadMinutes}
+                          snoozeMinutes={reminderSnoozeMinutes}
+                          language={language}
+                          onAdd={async (title, targetAtIso, leadMinutes) => {
+                            const next = await remindersAdd(title, targetAtIso, leadMinutes);
+                            if (next.length > 0 || isTauriRuntime()) {
+                              setReminders(next);
+                            } else {
+                              setReminders((prev) => [
+                                {
+                                  id: Date.now(),
+                                  title,
+                                  target_at: targetAtIso,
+                                  lead_minutes: leadMinutes,
+                                  lead_dismissed: false,
+                                  snooze_until: null,
+                                  exact_fired: false,
+                                  completed: false,
+                                  created_at: new Date().toISOString(),
+                                },
+                                ...prev,
+                              ]);
+                            }
+                          }}
+                          onDelete={async (id) => {
+                            const next = await remindersDelete(id);
+                            if (isTauriRuntime()) {
+                              setReminders(next);
+                            } else {
+                              setReminders((prev) => prev.filter((r) => r.id !== id));
+                            }
+                          }}
+                          onMarkDone={async (id) => {
+                            const next = await remindersStop(id, "exact");
+                            if (isTauriRuntime()) {
+                              setReminders(next);
+                            } else {
+                              setReminders((prev) =>
+                                prev.map((r) => (r.id === id ? { ...r, completed: true } : r)),
+                              );
+                            }
+                          }}
+                        />
+                      )}
                       {activePage.id === "music" && (
                         <div className="h-full w-full">
                           <MusicWidget
@@ -1835,6 +2015,8 @@ export function IslandShell({
                             <MusicNoteIcon size={13} />
                           ) : page.id === "calendar" ? (
                             <CalendarIcon size={13} />
+                          ) : page.id === "reminders" ? (
+                            <BellIcon size={13} />
                           ) : page.id === "todo" ? (
                             <CheckListIcon size={13} />
                           ) : page.id === "water" ? (

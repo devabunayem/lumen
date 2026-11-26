@@ -125,6 +125,8 @@ export function App() {
       chipLedgerEnabled={settings.chipLedgerEnabled}
       chipClipboardEnabled={settings.chipClipboardEnabled}
       chipDevPulseEnabled={settings.chipDevPulseEnabled}
+      reminderSnoozeMinutes={settings.reminderSnoozeMinutes}
+      reminderDefaultLeadMinutes={settings.reminderDefaultLeadMinutes}
       pageOrder={settings.pageOrder}
       hiddenPages={settings.hiddenPages}
       initialWaterGoalMl={settings.waterGoalMl}

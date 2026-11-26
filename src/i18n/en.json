@@ -20,6 +20,8 @@
     "musicAccent": "Playing",
     "calendarLead": "Today",
     "calendarAccent": "Agenda",
+    "remindersLead": "Timed",
+    "remindersAccent": "Reminders",
     "todoLead": "Todo",
     "todoAccent": "List",
     "waterLead": "Water",

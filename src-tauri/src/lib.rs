@@ -16,7 +16,8 @@ use lumen_media::{
     set_system_volume, toggle_mic_mute,
 };
 use lumen_notify::{
-    NotificationPopup, NotificationPrivacyConfig, filter_notification, is_focus_assist_quiet,
+    NotificationPopup, NotificationPrivacyConfig, SystemNotificationWatcher,
+    filter_captured_notification, filter_notification, is_focus_assist_quiet,
     listener_access_available,
 };
 use lumen_plugins::{LoadedPlugin, discover_plugins};
@@ -25,7 +26,8 @@ use lumen_prayer::{
     compute_prayer_schedule,
 };
 use lumen_storage::{
-    CalendarEvent, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState, WaterSummary,
+    CalendarEvent, ReminderItem, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState,
+    WaterSummary,
 };
 use lumen_windows::{
     ClipboardChipSnapshot, GlobalHotkeyManager, HotkeyAction, HudEvent, OpenMeteoWeather,
@@ -96,9 +98,9 @@ struct AppState {
     storage: Arc<StorageRepo>,
     prayer_config: Mutex<PrayerConfig>,
     pomodoro: Arc<Mutex<PomodoroController>>,
-    notify_config: Mutex<NotificationPrivacyConfig>,
-    notify_seq: Mutex<u64>,
-    settings: Mutex<LumenSettings>,
+    notify_config: Arc<Mutex<NotificationPrivacyConfig>>,
+    notify_seq: Arc<Mutex<u64>>,
+    settings: Arc<Mutex<LumenSettings>>,
     settings_path: PathBuf,
     plugins_dir: PathBuf,
     surface_mode: Mutex<(bool, bool, bool)>,
@@ -341,6 +343,7 @@ async fn media_get_state(state: State<'_, AppState>) -> Result<MediaStateSnapsho
 #[tauri::command]
 async fn media_control(
     command: String,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<MediaStateSnapshot, String> {
     let cmd = MediaCommand::from_name(&command)
@@ -350,17 +353,22 @@ async fn media_control(
         .lock()
         .ok()
         .and_then(|g| g.clone());
-    tokio::task::spawn_blocking(move || {
+    let snap = tokio::task::spawn_blocking(move || {
         send_media_command(cmd, preferred.as_deref())?;
         Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
     })
     .await
-    .map_err(|e| format!("media control join error: {e}"))?
+    .map_err(|e| format!("media control join error: {e}"))??;
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.emit("lumen://media-updated", &snap);
+    }
+    Ok(snap)
 }
 
 #[tauri::command]
 async fn media_seek(
     position_ms: u64,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<MediaStateSnapshot, String> {
     let preferred = state
@@ -368,12 +376,16 @@ async fn media_seek(
         .lock()
         .ok()
         .and_then(|g| g.clone());
-    tokio::task::spawn_blocking(move || {
+    let snap = tokio::task::spawn_blocking(move || {
         seek_media(position_ms, preferred.as_deref())?;
         Ok::<MediaStateSnapshot, String>(read_media_state(preferred.as_deref()))
     })
     .await
-    .map_err(|e| format!("media seek join error: {e}"))?
+    .map_err(|e| format!("media seek join error: {e}"))??;
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.emit("lumen://media-updated", &snap);
+    }
+    Ok(snap)
 }
 
 #[tauri::command]
@@ -643,7 +655,25 @@ fn notify_set_config(
 
 #[tauri::command]
 fn notify_listener_status() -> bool {
-    listener_access_available()
+    listener_access_available() || {
+        #[cfg(windows)]
+        {
+            std::env::var_os("LOCALAPPDATA")
+                .map(|lad| {
+                    PathBuf::from(lad)
+                        .join("Microsoft")
+                        .join("Windows")
+                        .join("Notifications")
+                        .join("wpndatabase.db")
+                        .exists()
+                })
+                .unwrap_or(false)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    }
 }
 
 #[tauri::command]
@@ -905,8 +935,101 @@ fn calendar_delete(id: i64, state: State<'_, AppState>) -> Result<Vec<CalendarEv
 }
 
 #[tauri::command]
+fn reminders_list(state: State<'_, AppState>) -> Result<Vec<ReminderItem>, String> {
+    state.storage.list_reminders()
+}
+
+#[tauri::command]
+fn reminders_add(
+    title: String,
+    target_at: String,
+    lead_minutes: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReminderItem>, String> {
+    let list = state
+        .storage
+        .add_reminder(&title, &target_at, lead_minutes)?;
+    let _ = app.emit("lumen://reminders-updated", &list);
+    Ok(list)
+}
+
+#[tauri::command]
+fn reminders_delete(
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReminderItem>, String> {
+    let list = state.storage.delete_reminder(id)?;
+    let _ = app.emit("lumen://reminders-updated", &list);
+    Ok(list)
+}
+
+#[tauri::command]
+fn reminders_stop(
+    id: i64,
+    stage: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReminderItem>, String> {
+    let list = state.storage.stop_reminder_alert(id, &stage)?;
+    let _ = app.emit("lumen://reminders-updated", &list);
+    Ok(list)
+}
+
+#[tauri::command]
+fn reminders_snooze(
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReminderItem>, String> {
+    let snooze_mins = state
+        .settings
+        .lock()
+        .map(|g| i64::from(g.reminder_snooze_minutes))
+        .unwrap_or(3);
+    let list = state.storage.snooze_reminder_alert(id, snooze_mins)?;
+    let _ = app.emit("lumen://reminders-updated", &list);
+    Ok(list)
+}
+
+#[tauri::command]
 fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
     discover_plugins(&state.plugins_dir)
+}
+
+fn build_sound_ctx(
+    settings: &LumenSettings,
+    pomodoro: &Mutex<PomodoroController>,
+    is_fullscreen: bool,
+    allow_during_focus: bool,
+) -> SoundSilenceContext {
+    let focus_active = if allow_during_focus {
+        false
+    } else {
+        pomodoro
+            .lock()
+            .map(|p| {
+                let s = p.snapshot();
+                s.running && matches!(s.phase, PomodoroPhase::Focus)
+            })
+            .unwrap_or(false)
+    };
+    let (_, mic_in_use) = privacy_device_status();
+    let (_, windows_muted) = get_system_volume();
+    let quiet_hours = is_focus_assist_quiet();
+
+    SoundSilenceContext {
+        enabled: settings.sound_enabled,
+        interface_enabled: settings.sound_interface,
+        reminders_enabled: settings.sound_reminders,
+        volume_pct: settings.sound_volume,
+        mic_or_call_active: mic_in_use,
+        is_fullscreen,
+        focus_session_active: focus_active,
+        windows_muted,
+        quiet_hours_active: quiet_hours,
+    }
 }
 
 #[tauri::command]
@@ -915,30 +1038,9 @@ fn play_ui_sound(name: String, state: State<'_, AppState>) -> Result<bool, Strin
         return Ok(false);
     };
     let settings = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
-    let focus_active = state
-        .pomodoro
-        .lock()
-        .map(|p| {
-            let s = p.snapshot();
-            s.running && matches!(s.phase, PomodoroPhase::Focus)
-        })
-        .unwrap_or(false);
-    let (_, mic_in_use) = privacy_device_status();
-    let (_, windows_muted) = get_system_volume();
-    let quiet_hours = is_focus_assist_quiet();
     let is_fs = state.is_fullscreen.load(Ordering::Relaxed);
-
-    let ctx = SoundSilenceContext {
-        enabled: settings.sound_enabled,
-        interface_enabled: settings.sound_interface,
-        reminders_enabled: settings.sound_reminders,
-        volume_pct: settings.sound_volume,
-        mic_or_call_active: mic_in_use,
-        is_fullscreen: is_fs,
-        focus_session_active: focus_active,
-        windows_muted,
-        quiet_hours_active: quiet_hours,
-    };
+    let allow_focus = matches!(sound, UiSoundName::ReminderAlarm);
+    let ctx = build_sound_ctx(&settings, &state.pomodoro, is_fs, allow_focus);
     Ok(try_play_ui_sound(sound, &ctx))
 }
 
@@ -1227,6 +1329,10 @@ pub fn run() {
             .ok()
             .map(|(mgr, _warn)| mgr);
 
+            let shared_notify_config = Arc::new(Mutex::new(NotificationPrivacyConfig::default()));
+            let shared_notify_seq = Arc::new(Mutex::new(0u64));
+            let shared_settings = Arc::new(Mutex::new(initial_settings.clone()));
+
             app.manage(AppState {
                 machine: Mutex::new(machine),
                 config: Arc::clone(&shared_config),
@@ -1234,9 +1340,9 @@ pub fn run() {
                 storage: Arc::clone(&storage),
                 prayer_config: Mutex::new(PrayerConfig::default()),
                 pomodoro: Arc::clone(&pomodoro),
-                notify_config: Mutex::new(NotificationPrivacyConfig::default()),
-                notify_seq: Mutex::new(0),
-                settings: Mutex::new(initial_settings.clone()),
+                notify_config: Arc::clone(&shared_notify_config),
+                notify_seq: Arc::clone(&shared_notify_seq),
+                settings: Arc::clone(&shared_settings),
                 settings_path,
                 plugins_dir,
                 surface_mode: Mutex::new((false, false, false)),
@@ -1587,14 +1693,22 @@ pub fn run() {
                 }
             });
 
-            // Background SMTC + Pomodoro tick loop at 1 Hz (FR-MUS-1, FR-PO-2, NFR-PERF-3)
+            // Background SMTC (2 Hz real-time timeline sync) + Pomodoro + OS Notification & Reminder ticker
             let media_window = window.clone();
             let media_pref = Arc::clone(&preferred_media_app);
             let pom_ref = Arc::clone(&pomodoro);
             let storage_ref = Arc::clone(&storage);
+            let notify_cfg_ref = Arc::clone(&shared_notify_config);
+            let notify_seq_ref = Arc::clone(&shared_notify_seq);
+            let settings_ref = Arc::clone(&shared_settings);
+            let bg_fs_flag = Arc::clone(&is_fullscreen);
             tauri::async_runtime::spawn(async move {
                 let mut last_snapshot: Option<MediaStateSnapshot> = None;
+                let mut half_tick: u64 = 0;
+                let watcher = Arc::new(Mutex::new(SystemNotificationWatcher::new()));
+
                 loop {
+                    half_tick = half_tick.wrapping_add(1);
                     let pref = media_pref.lock().ok().and_then(|g| g.clone());
                     if let Ok(snapshot) =
                         tokio::task::spawn_blocking(move || read_media_state(pref.as_deref())).await
@@ -1604,38 +1718,92 @@ pub fn run() {
                         let _ = media_window.emit("lumen://media-updated", snapshot);
                     }
 
-                    let mut completed: Option<(PomodoroPhase, u32)> = None;
-                    let mut snap_to_emit: Option<PomodoroSnapshot> = None;
-                    if let Ok(mut guard) = pom_ref.lock()
-                        && guard.is_running()
-                    {
-                        completed = guard.tick();
-                        if completed.is_some() {
-                            let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
-                            guard.set_daily_focus_minutes(mins);
-                        }
-                        snap_to_emit = Some(guard.snapshot());
-                    }
-
-                    if let Some((phase, secs)) = completed {
-                        let kind = match phase {
-                            PomodoroPhase::Focus => "focus",
-                            PomodoroPhase::ShortBreak => "short_break",
-                            PomodoroPhase::LongBreak => "long_break",
-                        };
-                        let _ = storage_ref.record_pomodoro_session(kind, secs, true);
-                        if let Ok(mut guard) = pom_ref.lock() {
-                            let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
-                            guard.set_daily_focus_minutes(mins);
+                    if half_tick.is_multiple_of(2) {
+                        let mut completed: Option<(PomodoroPhase, u32)> = None;
+                        let mut snap_to_emit: Option<PomodoroSnapshot> = None;
+                        if let Ok(mut guard) = pom_ref.lock()
+                            && guard.is_running()
+                        {
+                            completed = guard.tick();
+                            if completed.is_some() {
+                                let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
+                                guard.set_daily_focus_minutes(mins);
+                            }
                             snap_to_emit = Some(guard.snapshot());
                         }
+
+                        if let Some((phase, secs)) = completed {
+                            let kind = match phase {
+                                PomodoroPhase::Focus => "focus",
+                                PomodoroPhase::ShortBreak => "short_break",
+                                PomodoroPhase::LongBreak => "long_break",
+                            };
+                            let _ = storage_ref.record_pomodoro_session(kind, secs, true);
+                            if let Ok(mut guard) = pom_ref.lock() {
+                                let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
+                                guard.set_daily_focus_minutes(mins);
+                                snap_to_emit = Some(guard.snapshot());
+                            }
+                        }
+
+                        if let Some(snap) = snap_to_emit {
+                            let _ = media_window.emit("lumen://pomodoro-tick", snap);
+                        }
+
+                        // Real-time Desktop + Browser Notification Sync with app logos
+                        let watcher_clone = Arc::clone(&watcher);
+                        if let Ok(captured) = tokio::task::spawn_blocking(move || {
+                            watcher_clone
+                                .lock()
+                                .map(|mut w| w.poll_new())
+                                .unwrap_or_default()
+                        })
+                        .await
+                            && !captured.is_empty()
+                        {
+                            let cfg = notify_cfg_ref.lock().map(|g| g.clone()).unwrap_or_default();
+                            let settings =
+                                settings_ref.lock().map(|g| g.clone()).unwrap_or_default();
+                            let is_fs = bg_fs_flag.load(Ordering::Relaxed);
+                            let quiet = is_focus_assist_quiet();
+                            for item in captured {
+                                let next_id = notify_seq_ref
+                                    .lock()
+                                    .map(|mut seq| {
+                                        *seq = seq.saturating_add(1);
+                                        *seq
+                                    })
+                                    .unwrap_or(1);
+                                if let Some(popup) =
+                                    filter_captured_notification(next_id, &item, &cfg, is_fs, quiet)
+                                {
+                                    let _ = media_window.emit("lumen://notification-popup", &popup);
+                                    let ctx = build_sound_ctx(&settings, &pom_ref, is_fs, false);
+                                    let _ = try_play_ui_sound(UiSoundName::MailArrival, &ctx);
+                                }
+                            }
+                        }
+
+                        // Manual Reminders scheduler (lead-time alert, snooze, and mandatory exact-time trigger)
+                        if let Ok(due_alerts) = storage_ref.poll_due_reminders(Utc::now())
+                            && !due_alerts.is_empty()
+                        {
+                            let settings =
+                                settings_ref.lock().map(|g| g.clone()).unwrap_or_default();
+                            let is_fs = bg_fs_flag.load(Ordering::Relaxed);
+                            let ctx = build_sound_ctx(&settings, &pom_ref, is_fs, true);
+                            for alert in &due_alerts {
+                                let _ = media_window.emit("lumen://reminder-alert", alert);
+                            }
+                            let _ = try_play_ui_sound(UiSoundName::ReminderAlarm, &ctx);
+                            if let Ok(updated_list) = storage_ref.list_reminders() {
+                                let _ =
+                                    media_window.emit("lumen://reminders-updated", &updated_list);
+                            }
+                        }
                     }
 
-                    if let Some(snap) = snap_to_emit {
-                        let _ = media_window.emit("lumen://pomodoro-tick", snap);
-                    }
-
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             });
 
@@ -1693,6 +1861,11 @@ pub fn run() {
             calendar_list,
             calendar_add,
             calendar_delete,
+            reminders_list,
+            reminders_add,
+            reminders_delete,
+            reminders_stop,
+            reminders_snooze,
             plugins_list,
             play_ui_sound,
             system_quick_toggles_state,

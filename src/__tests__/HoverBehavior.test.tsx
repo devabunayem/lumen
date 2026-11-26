@@ -74,8 +74,12 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 
-    // Unpin and switch to Todo page with a focused input (control -> music -> calendar -> todo)
+    // Unpin and switch to Todo page with a focused input (control -> music -> calendar -> reminders -> todo)
     fireEvent.click(screen.getByRole("button", { name: "Unpin island" }));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    fireEvent.wheel(pill, { deltaY: 120 });
     act(() => {
       vi.advanceTimersByTime(300);
     });

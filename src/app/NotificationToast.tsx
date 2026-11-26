@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from "motion/react";
+import { useState } from "react";
 import { BellIcon, CalendarIcon, MusicNoteIcon } from "../design/icons";
 import { getMotionTransition } from "../design/motion";
 import type { NotificationPopup } from "../lib/ipc";
@@ -144,7 +145,9 @@ function resolveAppIcon(appName: string): AppIconStyle {
  */
 export function NotificationToast({ notification, onDismiss }: NotificationToastProps) {
   const prefersReducedMotion = useReducedMotion() ?? false;
+  const [failedId, setFailedId] = useState<number | null>(null);
   const iconStyle = resolveAppIcon(notification.app_name);
+  const showRealLogo = Boolean(notification.app_icon_data_url) && failedId !== notification.id;
 
   return (
     <motion.div
@@ -162,14 +165,23 @@ export function NotificationToast({ notification, onDismiss }: NotificationToast
     >
       <div
         data-testid="notification-app-icon"
-        className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+        className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl"
         style={{
-          backgroundColor: "var(--surface-button)",
+          backgroundColor: showRealLogo ? "rgba(255,255,255,0.06)" : "var(--surface-button)",
           border: "1px solid var(--hairline-top)",
           color: iconStyle.accent,
         }}
       >
-        {iconStyle.render()}
+        {showRealLogo && notification.app_icon_data_url ? (
+          <img
+            src={notification.app_icon_data_url}
+            alt={notification.app_name}
+            onError={() => setFailedId(notification.id)}
+            className="h-6 w-6 rounded-md object-contain"
+          />
+        ) : (
+          iconStyle.render()
+        )}
         {notification.body.includes("••••") && (
           <span
             aria-label="Protected preview"

@@ -2,13 +2,14 @@ import type { KeyboardEvent } from "react";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages } from "../../i18n";
 import { formatDigits, interpolateMsg } from "../../i18n/digits";
-import type { CalendarEvent, PrayerSchedule, TaskItem } from "../../lib/ipc";
+import type { CalendarEvent, PrayerSchedule, ReminderItem, TaskItem } from "../../lib/ipc";
 import { resolveNextCountdown } from "../hooks/useDayArcGeometry";
 import { DigitRoll } from "./DigitRoll";
 
 export interface NextCardProps {
   calendarEvents: CalendarEvent[];
   tasks: TaskItem[];
+  reminders?: ReminderItem[];
   schedule: PrayerSchedule | null;
   nowDate: Date;
   language: "en" | "bn";
@@ -20,6 +21,7 @@ export interface NextCardProps {
 export function NextCard({
   calendarEvents,
   tasks,
+  reminders = [],
   schedule,
   nowDate,
   language,
@@ -35,6 +37,7 @@ export function NextCard({
     nowDate,
     language,
     msg.home.next.allClear,
+    reminders,
   );
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {

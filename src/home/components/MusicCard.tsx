@@ -1,4 +1,11 @@
-import { useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type WheelEvent,
+} from "react";
 import {
   MusicNoteIcon,
   PauseIcon,
@@ -48,8 +55,37 @@ export function MusicCard({
   const msg = getMessages(language);
   const [volumeHudPct, setVolumeHudPct] = useState<number | null>(null);
   const session = media.active;
+  const [livePosMs, setLivePosMs] = useState<number>(session?.position_ms ?? 0);
+  const syncRef = useRef({
+    posMs: session?.position_ms ?? 0,
+    syncedAt: 0,
+  });
+
+  useEffect(() => {
+    const pos = session?.position_ms ?? 0;
+    syncRef.current = {
+      posMs: pos,
+      syncedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+    };
+    const syncTimer = window.setTimeout(() => setLivePosMs(pos), 0);
+    return () => window.clearTimeout(syncTimer);
+  }, [session?.app_id, session?.title, session?.position_ms, session?.is_playing]);
+
+  useEffect(() => {
+    if (!session?.is_playing) {
+      return;
+    }
+    const maxDur = Math.max(1, session.duration_ms ?? 1);
+    const id = window.setInterval(() => {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const elapsed = Math.max(0, now - syncRef.current.syncedAt);
+      setLivePosMs(Math.min(maxDur, syncRef.current.posMs + elapsed));
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [session?.is_playing, session?.duration_ms]);
+
   const duration = Math.max(1, session?.duration_ms ?? 1);
-  const position = Math.min(duration, session?.position_ms ?? 0);
+  const position = Math.min(duration, livePosMs);
   const pct = session ? Math.round((position / duration) * 100) : 0;
   const remaining = Math.max(0, (session?.duration_ms ?? 0) - position);
 

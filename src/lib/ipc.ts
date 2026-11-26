@@ -234,6 +234,26 @@ export interface NotificationPopup {
   app_name: string;
   title: string;
   body: string;
+  app_icon_data_url?: string | null;
+  source_app_id?: string | null;
+}
+
+export interface ReminderItem {
+  id: number;
+  title: string;
+  target_at: string;
+  lead_minutes: number;
+  lead_dismissed: boolean;
+  snooze_until: string | null;
+  exact_fired: boolean;
+  completed: boolean;
+  created_at: string;
+}
+
+export interface ReminderAlertPayload {
+  reminder: ReminderItem;
+  stage: "lead" | "snooze" | "exact" | string;
+  is_exact_due: boolean;
 }
 
 export function isTauriRuntime(): boolean {
@@ -701,6 +721,67 @@ export async function calendarDelete(id: number): Promise<CalendarEvent[]> {
     return [];
   }
   return invoke<CalendarEvent[]>("calendar_delete", { id });
+}
+
+export async function remindersList(): Promise<ReminderItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ReminderItem[]>("reminders_list");
+}
+
+export async function remindersAdd(
+  title: string,
+  targetAt: string,
+  leadMinutes: number,
+): Promise<ReminderItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ReminderItem[]>("reminders_add", { title, targetAt, leadMinutes });
+}
+
+export async function remindersDelete(id: number): Promise<ReminderItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ReminderItem[]>("reminders_delete", { id });
+}
+
+export async function remindersStop(id: number, stage: string): Promise<ReminderItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ReminderItem[]>("reminders_stop", { id, stage });
+}
+
+export async function remindersSnooze(id: number): Promise<ReminderItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ReminderItem[]>("reminders_snooze", { id });
+}
+
+export async function subscribeReminderAlert(
+  onAlert: (alert: ReminderAlertPayload) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<ReminderAlertPayload>("lumen://reminder-alert", (event) => {
+    onAlert(event.payload);
+  });
+}
+
+export async function subscribeRemindersUpdated(
+  onUpdated: (items: ReminderItem[]) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<ReminderItem[]>("lumen://reminders-updated", (event) => {
+    onUpdated(event.payload);
+  });
 }
 
 export async function systemQuickTogglesState(): Promise<QuickTogglesState> {

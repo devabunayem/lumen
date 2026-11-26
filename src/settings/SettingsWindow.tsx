@@ -1116,19 +1116,82 @@ export function SettingsWindow({
 
                   <div className="h-[1px] bg-[#2c2c2e]/50" />
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void notifyPushTest(
-                        "Lumen",
-                        "Test Alert",
-                        "Your dynamic island notifications are active",
-                      )
-                    }
-                    className="rounded-lg bg-[#0a84ff] px-4 py-2 text-xs font-semibold text-white border-0 cursor-pointer hover:bg-[#0071e3]"
-                  >
-                    Send Test Notification
-                  </button>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[13px] font-medium text-white">Reminder Snooze</div>
+                      <div className="text-[12px] text-[#8e8e93]">
+                        Auto re-alert delay when clicking Snooze
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-lg bg-[#2c2c2e] p-0.5">
+                      {[2, 3, 5, 10].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => void commit({ ...settings, reminderSnoozeMinutes: mins })}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium border-0 cursor-pointer transition-colors ${
+                            settings.reminderSnoozeMinutes === mins
+                              ? "bg-[#636366] text-white shadow-sm"
+                              : "bg-transparent text-[#8e8e93] hover:text-white"
+                          }`}
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[13px] font-medium text-white">
+                        Default Lead Reminder
+                      </div>
+                      <div className="text-[12px] text-[#8e8e93]">
+                        How early to warn before a scheduled reminder
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-lg bg-[#2c2c2e] p-0.5">
+                      {[0, 5, 10, 15, 30].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() =>
+                            void commit({ ...settings, reminderDefaultLeadMinutes: mins })
+                          }
+                          className={`rounded-md px-2 py-1 text-xs font-medium border-0 cursor-pointer transition-colors ${
+                            settings.reminderDefaultLeadMinutes === mins
+                              ? "bg-[#636366] text-white shadow-sm"
+                              : "bg-transparent text-[#8e8e93] hover:text-white"
+                          }`}
+                        >
+                          {mins === 0 ? "Exact" : `${mins}m`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void notifyPushTest(
+                          "Lumen",
+                          "Test Alert",
+                          "Your dynamic island notifications are active",
+                        )
+                      }
+                      className="rounded-lg bg-[#0a84ff] px-4 py-2 text-xs font-semibold text-white border-0 cursor-pointer hover:bg-[#0071e3]"
+                    >
+                      Send Test Notification
+                    </button>
+                    <span className="text-[11px] text-[#30d158]">
+                      Desktop & Browser Logo Sync Active
+                    </span>
+                  </div>
                 </div>
               </AppleGroup>
             </div>

@@ -44,6 +44,8 @@ export interface LumenSettings {
   chipClipboardEnabled: boolean;
   chipDevPulseEnabled: boolean;
   devPulsePorts: number[];
+  reminderSnoozeMinutes: number;
+  reminderDefaultLeadMinutes: number;
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -64,7 +66,17 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   startWithWindows: false,
   hotkeyHide: "Ctrl+Alt+L",
   hotkeyExpand: "Ctrl+Alt+Space",
-  pageOrder: ["control", "music", "calendar", "todo", "water", "prayer", "pomodoro", "shelf"],
+  pageOrder: [
+    "control",
+    "music",
+    "calendar",
+    "reminders",
+    "todo",
+    "water",
+    "prayer",
+    "pomodoro",
+    "shelf",
+  ],
   hiddenPages: [],
   waterGoalMl: 1500,
   mediaExclusions: [],
@@ -83,6 +95,8 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   chipClipboardEnabled: true,
   chipDevPulseEnabled: true,
   devPulsePorts: [3000, 5173, 1420],
+  reminderSnoozeMinutes: 3,
+  reminderDefaultLeadMinutes: 10,
 };
 
 export function resolveSettingsScaleFactor(

@@ -64,6 +64,7 @@ export const BASE_GEOMETRY = {
   expanded: { width: 560, height: 172 },
   homeExpanded: { width: 640, height: 312 },
   hud: { width: 240, height: 56 },
+  reminder: { width: 380, height: 108 },
   notchBottomRadius: 24,
   homeBottomRadius: 32,
   pillFloatOffset: 8,

@@ -9,6 +9,7 @@ export type UiSoundName =
   | "task_done"
   | "arc_scrub_tick"
   | "reminder_chime"
+  | "reminder_alarm"
   | "mail_arrival"
   | "error";
 
@@ -111,6 +112,15 @@ export const SOUND_PRESETS: Record<UiSoundName, SoundPresetSpec> = {
     durationMs: 740,
     gain: 0.13,
     attackMs: 3,
+  },
+  reminder_alarm: {
+    name: "reminder_alarm",
+    category: "reminders",
+    waveform: "sine",
+    frequenciesHz: [659.25, 880, 1046.5],
+    durationMs: 920,
+    gain: 0.17,
+    attackMs: 4,
   },
   mail_arrival: {
     name: "mail_arrival",

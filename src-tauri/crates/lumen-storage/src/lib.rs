@@ -68,6 +68,18 @@ CREATE TABLE IF NOT EXISTS kv_state (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    target_at TEXT NOT NULL,
+    lead_minutes INTEGER NOT NULL DEFAULT 10,
+    lead_dismissed INTEGER NOT NULL DEFAULT 0,
+    snooze_until TEXT,
+    exact_fired INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +113,26 @@ pub struct TaskItem {
     pub done: bool,
     pub due_at: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReminderItem {
+    pub id: i64,
+    pub title: String,
+    pub target_at: String,
+    pub lead_minutes: i64,
+    pub lead_dismissed: bool,
+    pub snooze_until: Option<String>,
+    pub exact_fired: bool,
+    pub completed: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReminderAlertPayload {
+    pub reminder: ReminderItem,
+    pub stage: String,
+    pub is_exact_due: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -796,6 +828,223 @@ impl StorageRepo {
         drop(conn);
         self.get_active_ledger()
     }
+
+    pub fn list_reminders(&self) -> Result<Vec<ReminderItem>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, title, target_at, lead_minutes, lead_dismissed, snooze_until, exact_fired, completed, created_at
+                 FROM reminders
+                 ORDER BY completed ASC, target_at ASC, id DESC",
+            )
+            .map_err(|e| format!("prepare reminders failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ReminderItem {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    target_at: row.get(2)?,
+                    lead_minutes: row.get(3)?,
+                    lead_dismissed: row.get::<_, i64>(4)? != 0,
+                    snooze_until: row.get(5)?,
+                    exact_fired: row.get::<_, i64>(6)? != 0,
+                    completed: row.get::<_, i64>(7)? != 0,
+                    created_at: row.get(8)?,
+                })
+            })
+            .map_err(|e| format!("query reminders failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("reminder decode failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn add_reminder(
+        &self,
+        title: &str,
+        target_at: &str,
+        lead_minutes: i64,
+    ) -> Result<Vec<ReminderItem>, String> {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err("reminder title cannot be empty".into());
+        }
+        let parsed_target = DateTime::parse_from_rfc3339(target_at.trim())
+            .map_err(|e| format!("invalid reminder target_at timestamp: {e}"))?
+            .with_timezone(&Utc)
+            .to_rfc3339();
+        let clamped_lead = lead_minutes.clamp(0, 1440);
+        let now = Utc::now().to_rfc3339();
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute(
+                "INSERT INTO reminders (title, target_at, lead_minutes, lead_dismissed, snooze_until, exact_fired, completed, created_at)
+                 VALUES (?1, ?2, ?3, 0, NULL, 0, 0, ?4)",
+                params![trimmed, parsed_target, clamped_lead, now],
+            )
+            .map_err(|e| format!("insert reminder failed: {e}"))?;
+        }
+        self.list_reminders()
+    }
+
+    pub fn delete_reminder(&self, id: i64) -> Result<Vec<ReminderItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute("DELETE FROM reminders WHERE id = ?1", params![id])
+                .map_err(|e| format!("delete reminder failed: {e}"))?;
+        }
+        self.list_reminders()
+    }
+
+    pub fn stop_reminder_alert_at(
+        &self,
+        id: i64,
+        stage: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<ReminderItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            let existing: Option<(String, i64)> = conn
+                .query_row(
+                    "SELECT target_at, exact_fired FROM reminders WHERE id = ?1",
+                    params![id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|e| format!("query reminder for stop failed: {e}"))?;
+            if let Some((target_at_str, exact_fired)) = existing {
+                let target_passed = DateTime::parse_from_rfc3339(&target_at_str)
+                    .map(|dt| now >= dt.with_timezone(&Utc))
+                    .unwrap_or(false);
+                if stage == "exact" || exact_fired != 0 || target_passed {
+                    conn.execute(
+                        "UPDATE reminders SET lead_dismissed = 1, snooze_until = NULL, exact_fired = 1, completed = 1 WHERE id = ?1",
+                        params![id],
+                    )
+                    .map_err(|e| format!("complete reminder failed: {e}"))?;
+                } else {
+                    // Stopping an early lead/snooze alert keeps exact_fired = 0 so the final exact-time reminder still fires.
+                    conn.execute(
+                        "UPDATE reminders SET lead_dismissed = 1, snooze_until = NULL WHERE id = ?1",
+                        params![id],
+                    )
+                    .map_err(|e| format!("dismiss lead reminder failed: {e}"))?;
+                }
+            }
+        }
+        self.list_reminders()
+    }
+
+    pub fn stop_reminder_alert(&self, id: i64, stage: &str) -> Result<Vec<ReminderItem>, String> {
+        self.stop_reminder_alert_at(id, stage, Utc::now())
+    }
+
+    pub fn snooze_reminder_alert_at(
+        &self,
+        id: i64,
+        snooze_minutes: i64,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<ReminderItem>, String> {
+        let mins = snooze_minutes.clamp(1, 60);
+        let snooze_at = (now + Duration::minutes(mins)).to_rfc3339();
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute(
+                "UPDATE reminders SET lead_dismissed = 1, snooze_until = ?1 WHERE id = ?2",
+                params![snooze_at, id],
+            )
+            .map_err(|e| format!("snooze reminder failed: {e}"))?;
+        }
+        self.list_reminders()
+    }
+
+    pub fn snooze_reminder_alert(
+        &self,
+        id: i64,
+        snooze_minutes: i64,
+    ) -> Result<Vec<ReminderItem>, String> {
+        self.snooze_reminder_alert_at(id, snooze_minutes, Utc::now())
+    }
+
+    pub fn poll_due_reminders(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<ReminderAlertPayload>, String> {
+        let items = self.list_reminders()?;
+        let mut due = Vec::new();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+
+        for item in items {
+            if item.completed {
+                continue;
+            }
+            let Ok(target_dt) = DateTime::parse_from_rfc3339(&item.target_at) else {
+                continue;
+            };
+            let target_utc = target_dt.with_timezone(&Utc);
+
+            // Priority 1: Mandatory exact-time notification whenever scheduled time arrives.
+            if !item.exact_fired && now >= target_utc {
+                conn.execute(
+                    "UPDATE reminders SET exact_fired = 1, lead_dismissed = 1, snooze_until = NULL WHERE id = ?1",
+                    params![item.id],
+                )
+                .map_err(|e| format!("mark exact reminder fired failed: {e}"))?;
+                let mut updated = item.clone();
+                updated.exact_fired = true;
+                updated.lead_dismissed = true;
+                updated.snooze_until = None;
+                due.push(ReminderAlertPayload {
+                    reminder: updated,
+                    stage: "exact".into(),
+                    is_exact_due: true,
+                });
+                continue;
+            }
+
+            // Priority 2: Automatic snooze firing.
+            if let Some(ref snooze_str) = item.snooze_until
+                && let Ok(snooze_dt) = DateTime::parse_from_rfc3339(snooze_str)
+                && now >= snooze_dt.with_timezone(&Utc)
+            {
+                conn.execute(
+                    "UPDATE reminders SET snooze_until = NULL WHERE id = ?1",
+                    params![item.id],
+                )
+                .map_err(|e| format!("consume snooze reminder failed: {e}"))?;
+                let mut updated = item.clone();
+                updated.snooze_until = None;
+                due.push(ReminderAlertPayload {
+                    reminder: updated,
+                    stage: "snooze".into(),
+                    is_exact_due: item.exact_fired,
+                });
+                continue;
+            }
+
+            // Priority 3: Early lead-time notification (e.g. 10 min before).
+            if item.lead_minutes > 0 && !item.lead_dismissed && !item.exact_fired {
+                let lead_at = target_utc - Duration::minutes(item.lead_minutes);
+                if now >= lead_at && now < target_utc {
+                    conn.execute(
+                        "UPDATE reminders SET lead_dismissed = 1 WHERE id = ?1",
+                        params![item.id],
+                    )
+                    .map_err(|e| format!("mark lead reminder fired failed: {e}"))?;
+                    let mut updated = item.clone();
+                    updated.lead_dismissed = true;
+                    due.push(ReminderAlertPayload {
+                        reminder: updated,
+                        stage: "lead".into(),
+                        is_exact_due: false,
+                    });
+                }
+            }
+        }
+
+        Ok(due)
+    }
 }
 
 #[cfg(test)]
@@ -918,5 +1167,68 @@ mod tests {
         let l2 = repo.reset_ledger(None).expect("reset ledger");
         assert!(!l2.running);
         assert_eq!(l2.elapsed_secs, 0);
+    }
+
+    #[test]
+    fn fires_lead_snooze_and_mandatory_exact_time_reminders() {
+        let repo = StorageRepo::open_in_memory().expect("db");
+        let target = DateTime::parse_from_rfc3339("2026-11-26T20:00:00Z")
+            .expect("target")
+            .with_timezone(&Utc);
+        let list = repo
+            .add_reminder("Evening Meeting", &target.to_rfc3339(), 10)
+            .expect("add reminder");
+        assert_eq!(list.len(), 1);
+        let rem_id = list[0].id;
+
+        // 15 minutes before -> nothing due
+        assert!(
+            repo.poll_due_reminders(target - Duration::minutes(15))
+                .expect("poll")
+                .is_empty()
+        );
+
+        // 10 minutes before -> lead alert fires
+        let lead_due = repo
+            .poll_due_reminders(target - Duration::minutes(10))
+            .expect("lead");
+        assert_eq!(lead_due.len(), 1);
+        assert_eq!(lead_due[0].stage, "lead");
+        assert!(!lead_due[0].is_exact_due);
+
+        // User hits OK / Stop early: must clear early alert WITHOUT disabling exact-time alert.
+        let after_stop = repo
+            .stop_reminder_alert_at(rem_id, "lead", target - Duration::minutes(9))
+            .expect("stop lead");
+        assert!(!after_stop[0].completed);
+        assert!(!after_stop[0].exact_fired);
+
+        // Snooze case: user hits Snooze (3 min) at -10m -> fires at -7m
+        repo.snooze_reminder_alert_at(rem_id, 3, target - Duration::minutes(10))
+            .expect("snooze");
+        assert!(
+            repo.poll_due_reminders(target - Duration::minutes(8))
+                .expect("before snooze")
+                .is_empty()
+        );
+        let snooze_due = repo
+            .poll_due_reminders(target - Duration::minutes(7))
+            .expect("snooze due");
+        assert_eq!(snooze_due.len(), 1);
+        assert_eq!(snooze_due[0].stage, "snooze");
+
+        // User stops snooze -> exact time MUST still fire at target!
+        repo.stop_reminder_alert_at(rem_id, "snooze", target - Duration::minutes(6))
+            .expect("stop snooze");
+        let exact_due = repo.poll_due_reminders(target).expect("exact due");
+        assert_eq!(exact_due.len(), 1);
+        assert_eq!(exact_due[0].stage, "exact");
+        assert!(exact_due[0].is_exact_due);
+
+        // Final OK completes reminder
+        let final_list = repo
+            .stop_reminder_alert_at(rem_id, "exact", target)
+            .expect("stop exact");
+        assert!(final_list[0].completed);
     }
 }

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { CalendarEvent, PrayerSchedule, TaskItem } from "../../lib/ipc";
+import type { CalendarEvent, PrayerSchedule, ReminderItem, TaskItem } from "../../lib/ipc";
 
 export type ArcZoomMode = "day" | "next3h";
 
@@ -486,11 +486,26 @@ export function resolveNextCountdown(
   nowDate: Date,
   language: "en" | "bn",
   allClearLabel: string,
+  reminders: ReminderItem[] = [],
 ): NextCountdownSummary {
   const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
-  const tasksLeft = tasks.filter((t) => !t.done).length;
+  const tasksLeft =
+    tasks.filter((t) => !t.done).length + reminders.filter((r) => !r.completed).length;
 
   const upcoming: Array<{ title: string; mins: number }> = [];
+  const nowMs = nowDate.getTime();
+  for (const rem of reminders) {
+    if (rem.completed) {
+      continue;
+    }
+    const targetMs = Date.parse(rem.target_at);
+    if (!Number.isNaN(targetMs) && targetMs >= nowMs - 5 * 60_000) {
+      upcoming.push({
+        title: rem.title,
+        mins: Math.max(0, Math.round((targetMs - nowMs) / 60_000)),
+      });
+    }
+  }
   for (const ev of calendarEvents) {
     const startMin = parseMinuteOfDayFromIsoOrTime(ev.start_at, nowDate);
     if (startMin !== null && startMin >= nowMin - 5) {

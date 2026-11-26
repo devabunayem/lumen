@@ -100,6 +100,87 @@ pub fn active_lyric_index(lines: &[LyricLine], position_ms: u64) -> Option<usize
     lines.iter().rposition(|line| line.time_ms <= position_ms)
 }
 
+/// Derives a clean display label from a Windows SMTC `SourceAppUserModelId`.
+#[must_use]
+pub fn friendly_media_app_label(app_id: &str) -> String {
+    let lower = app_id.trim().to_ascii_lowercase();
+    if lower.contains("chrome") {
+        return "Google Chrome".into();
+    }
+    if lower.contains("msedge") {
+        return "Microsoft Edge".into();
+    }
+    if lower.contains("firefox") {
+        return "Firefox".into();
+    }
+    if lower.contains("brave") {
+        return "Brave".into();
+    }
+    if lower.contains("spotify") {
+        return "Spotify".into();
+    }
+    if lower.contains("vlc") {
+        return "VLC Media Player".into();
+    }
+    if lower.contains("potplayer") {
+        return "PotPlayer".into();
+    }
+    if lower.contains("mpv") {
+        return "mpv".into();
+    }
+    if lower.contains("mpc-hc") || lower.contains("mpc-be") {
+        return "Media Player Classic".into();
+    }
+    let tail = app_id
+        .trim()
+        .rsplit(['\\', '/', '!'])
+        .next()
+        .unwrap_or(app_id)
+        .trim_end_matches(".exe")
+        .trim_end_matches(".EXE");
+    if tail.is_empty() {
+        "Media Player".into()
+    } else {
+        tail.to_string()
+    }
+}
+
+/// Computes continuous SMTC playback position using `LastUpdatedTime` so browser/video timelines
+/// advance smoothly every second in real time even when a player only emits anchor timestamps.
+#[must_use]
+pub fn interpolate_smtc_position_ms(
+    raw_pos_ms: u64,
+    start_ms: u64,
+    end_ms: u64,
+    is_playing: bool,
+    last_updated_universal_time: i64,
+    now_filetime_100ns: i64,
+) -> (u64, u64) {
+    let base_pos = raw_pos_ms.saturating_sub(start_ms);
+    let duration_raw = end_ms.saturating_sub(start_ms);
+    let live_pos = if is_playing
+        && last_updated_universal_time > 0
+        && now_filetime_100ns > last_updated_universal_time
+    {
+        let elapsed_ms = ((now_filetime_100ns - last_updated_universal_time) / 10_000) as u64;
+        // Guard against stale suspended sessions without duration bounds.
+        let safe_elapsed = if duration_raw > 0 {
+            elapsed_ms.min(duration_raw)
+        } else {
+            elapsed_ms.min(12 * 3600 * 1000)
+        };
+        let advanced = base_pos.saturating_add(safe_elapsed);
+        if duration_raw > 0 {
+            advanced.min(duration_raw)
+        } else {
+            advanced
+        }
+    } else {
+        base_pos
+    };
+    (live_pos, duration_raw.max(live_pos))
+}
+
 fn percent_encode(input: &str) -> String {
     let mut out = String::with_capacity(input.len() * 2);
     for b in input.bytes() {
@@ -215,6 +296,9 @@ pub fn extract_dominant_accent_from_rgba(rgba: &[u8]) -> String {
 
 #[cfg(windows)]
 mod platform {
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use windows::Foundation::TimeSpan;
     use windows::Graphics::Imaging::BitmapDecoder;
@@ -235,8 +319,30 @@ mod platform {
 
     use super::{
         DEFAULT_MEDIA_ACCENT, MediaCommand, MediaSessionInfo, MediaSessionSummary,
-        MediaStateSnapshot, extract_dominant_accent_from_rgba,
+        MediaStateSnapshot, extract_dominant_accent_from_rgba, friendly_media_app_label,
+        interpolate_smtc_position_ms,
     };
+
+    type ThumbnailCacheEntry = (String, Option<String>, String);
+    static THUMB_CACHE: OnceLock<Mutex<Option<ThumbnailCacheEntry>>> = OnceLock::new();
+
+    fn current_windows_filetime_100ns() -> i64 {
+        let Ok(dur) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+            return 0;
+        };
+        let unix_100ns = (dur.as_secs() as i64)
+            .saturating_mul(10_000_000)
+            .saturating_add((dur.subsec_nanos() / 100) as i64);
+        unix_100ns.saturating_add(116_444_736_000_000_000)
+    }
+
+    fn session_is_playing(session: &GlobalSystemMediaTransportControlsSession) -> bool {
+        session
+            .GetPlaybackInfo()
+            .and_then(|p| p.PlaybackStatus())
+            .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+            .unwrap_or(false)
+    }
 
     fn get_sessions() -> Vec<GlobalSystemMediaTransportControlsSession> {
         let Ok(op) = GlobalSystemMediaTransportControlsSessionManager::RequestAsync() else {
@@ -268,21 +374,24 @@ mod platform {
                 s.SourceAppUserModelId()
                     .map(|id| id.to_string_lossy() == pref)
                     .unwrap_or(false)
+                    && session_is_playing(s)
             })
         {
             return Some(found);
         }
-        sessions
-            .iter()
-            .find(|s| {
-                s.GetPlaybackInfo()
-                    .and_then(|p| p.PlaybackStatus())
-                    .map(|st| {
-                        st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing
-                    })
+        if let Some(playing) = sessions.iter().find(|s| session_is_playing(s)) {
+            return Some(playing);
+        }
+        if let Some(pref) = preferred_app_id
+            && let Some(found) = sessions.iter().find(|s| {
+                s.SourceAppUserModelId()
+                    .map(|id| id.to_string_lossy() == pref)
                     .unwrap_or(false)
             })
-            .or_else(|| sessions.first())
+        {
+            return Some(found);
+        }
+        sessions.first()
     }
 
     fn read_thumbnail(
@@ -452,32 +561,36 @@ mod platform {
                 .SourceAppUserModelId()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let props = session.TryGetMediaPropertiesAsync().ok()?.join().ok()?;
-            let title = props
-                .Title()
-                .map(|t| t.to_string_lossy().to_string())
+            let props = session
+                .TryGetMediaPropertiesAsync()
+                .ok()
+                .and_then(|op| op.join().ok());
+            let raw_title = props
+                .as_ref()
+                .and_then(|p| p.Title().ok())
+                .map(|t| t.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
             let artist = props
-                .Artist()
-                .map(|a| a.to_string_lossy().to_string())
+                .as_ref()
+                .and_then(|p| p.Artist().ok())
+                .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
             let album_title = props
-                .AlbumTitle()
-                .map(|a| a.to_string_lossy().to_string())
+                .as_ref()
+                .and_then(|p| p.AlbumTitle().ok())
+                .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
-            if title.is_empty() && artist.is_empty() {
-                return None;
-            }
 
-            let is_playing = session
-                .GetPlaybackInfo()
-                .and_then(|p| p.PlaybackStatus())
-                .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
-                .unwrap_or(false);
+            let is_playing = session_is_playing(session);
+            let now_ft = current_windows_filetime_100ns();
 
             let (position_ms, duration_ms) = session
                 .GetTimelineProperties()
                 .map(|tl| {
+                    let start = tl
+                        .StartTime()
+                        .map(|d| (d.Duration.max(0) / 10_000) as u64)
+                        .unwrap_or(0);
                     let pos = tl
                         .Position()
                         .map(|d| (d.Duration.max(0) / 10_000) as u64)
@@ -486,16 +599,43 @@ mod platform {
                         .EndTime()
                         .map(|d| (d.Duration.max(0) / 10_000) as u64)
                         .unwrap_or(0);
-                    (pos, end.max(pos))
+                    let updated_ut = tl.LastUpdatedTime().map(|dt| dt.UniversalTime).unwrap_or(0);
+                    interpolate_smtc_position_ms(pos, start, end, is_playing, updated_ut, now_ft)
                 })
                 .unwrap_or((0, 0));
 
-            let (album_art_data_url, accent_hex) = read_thumbnail(session);
+            let friendly = friendly_media_app_label(&app_id);
+            let title = if !raw_title.is_empty() {
+                raw_title
+            } else if is_playing || duration_ms > 0 {
+                friendly.clone()
+            } else {
+                return None;
+            };
+            let display_artist = if !artist.is_empty() { artist } else { friendly };
+
+            let cache_key = format!("{app_id}::{title}::{display_artist}");
+            let cached = THUMB_CACHE
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .filter(|(k, _, _)| k == &cache_key);
+
+            let (album_art_data_url, accent_hex) = if let Some((_, art, acc)) = cached {
+                (art, acc)
+            } else {
+                let (art, acc) = read_thumbnail(session);
+                if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+                    *guard = Some((cache_key, art.clone(), acc.clone()));
+                }
+                (art, acc)
+            };
 
             Some(MediaSessionInfo {
                 app_id,
                 title,
-                artist,
+                artist: display_artist,
                 album_title,
                 is_playing,
                 position_ms,
@@ -690,5 +830,24 @@ mod tests {
         assert_eq!(active_lyric_index(&lines, 1500), Some(0));
         assert_eq!(active_lyric_index(&lines, 12_000), Some(1));
         assert_eq!(active_lyric_index(&lines, 30_000), Some(2));
+    }
+
+    #[test]
+    fn interpolates_smtc_position_and_formats_browser_video_apps() {
+        let base_ft = 134_000_000_000_000_000i64;
+        // 5 seconds elapsed since anchor at 12s while playing -> 17s
+        let (pos, dur) =
+            interpolate_smtc_position_ms(12_000, 0, 180_000, true, base_ft, base_ft + 50_000_000);
+        assert_eq!(pos, 17_000);
+        assert_eq!(dur, 180_000);
+
+        // Paused -> stays at anchor 12s
+        let (paused_pos, _) =
+            interpolate_smtc_position_ms(12_000, 0, 180_000, false, base_ft, base_ft + 50_000_000);
+        assert_eq!(paused_pos, 12_000);
+
+        assert_eq!(friendly_media_app_label("chrome.exe"), "Google Chrome");
+        assert_eq!(friendly_media_app_label("vlc.exe"), "VLC Media Player");
+        assert_eq!(friendly_media_app_label("MSEdge"), "Microsoft Edge");
     }
 }

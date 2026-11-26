@@ -7,6 +7,7 @@ import type {
   OpenMeteoWeather,
   PomodoroSnapshot,
   PrayerSchedule,
+  ReminderItem,
   TasbihState,
   TaskItem,
   TimeLedgerState,
@@ -32,6 +33,7 @@ export interface HomePageProps {
   lastPlayedTrack?: { title: string; artist: string } | null;
   calendarEvents: CalendarEvent[];
   tasks: TaskItem[];
+  reminders?: ReminderItem[];
   water: WaterSummary;
   pomodoro: PomodoroSnapshot;
   weather: OpenMeteoWeather | null;
@@ -218,12 +220,13 @@ export function HomePage(props: HomePageProps) {
         <NextCard
           calendarEvents={props.calendarEvents}
           tasks={props.tasks}
+          reminders={props.reminders}
           schedule={props.schedule}
           nowDate={props.nowDate}
           language={props.language}
           banglaDigits={props.banglaDigits}
           reduceMotion={props.reduceMotion}
-          onOpenAgenda={() => props.onNavigateWidget("calendar")}
+          onOpenAgenda={() => props.onNavigateWidget("reminders")}
         />
 
         <WaterCard

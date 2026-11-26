@@ -17,6 +17,7 @@ pub enum UiSoundName {
     TaskDone,
     ArcScrubTick,
     ReminderChime,
+    ReminderAlarm,
     MailArrival,
     Error,
 }
@@ -32,6 +33,7 @@ impl UiSoundName {
             "task_done" | "taskdone" => Some(Self::TaskDone),
             "arc_scrub_tick" | "arcscrubtick" => Some(Self::ArcScrubTick),
             "reminder_chime" | "reminderchime" => Some(Self::ReminderChime),
+            "reminder_alarm" | "reminderalarm" => Some(Self::ReminderAlarm),
             "mail_arrival" | "mailarrival" => Some(Self::MailArrival),
             "error" => Some(Self::Error),
             _ => None,
@@ -41,7 +43,9 @@ impl UiSoundName {
     #[must_use]
     pub const fn category(self) -> SoundCategory {
         match self {
-            Self::ReminderChime | Self::MailArrival => SoundCategory::Reminders,
+            Self::ReminderChime | Self::ReminderAlarm | Self::MailArrival => {
+                SoundCategory::Reminders
+            }
             _ => SoundCategory::Interface,
         }
     }
@@ -196,6 +200,33 @@ pub fn synthesize_ui_sound_pcm16(
                         phase += *freq / sample_rate as f32;
                         *slot +=
                             (std::f32::consts::TAU * phase).sin() * envelope(t, 0.5, 0.003) * 0.11;
+                    }
+                }
+            }
+        }
+        UiSoundName::ReminderAlarm => {
+            // Dual-pulse gentle yet clear alarm chime (~920 ms total, medium comfortable volume).
+            let total_samples = ((0.920) * sample_rate as f32) as usize;
+            fbuf.resize(total_samples, 0.0);
+            let pulses = [
+                (0.000f32, 659.25f32, 0.14f32),
+                (0.110f32, 880.00f32, 0.16f32),
+                (0.220f32, 1046.50f32, 0.17f32),
+                (0.460f32, 659.25f32, 0.14f32),
+                (0.570f32, 880.00f32, 0.16f32),
+                (0.680f32, 1046.50f32, 0.17f32),
+            ];
+            let note_len = ((0.210) * sample_rate as f32) as usize;
+            for (start_s, freq, gain) in pulses {
+                let start = (start_s * sample_rate as f32) as usize;
+                let mut phase = 0.0f32;
+                for i in 0..note_len {
+                    if let Some(slot) = fbuf.get_mut(start + i) {
+                        let t = i as f32 / sample_rate as f32;
+                        phase += freq / sample_rate as f32;
+                        let fundamental = (std::f32::consts::TAU * phase).sin();
+                        let harmonic = (std::f32::consts::TAU * phase * 2.0).sin() * 0.28;
+                        *slot += (fundamental + harmonic) * envelope(t, 0.21, 0.004) * gain;
                     }
                 }
             }
@@ -458,6 +489,7 @@ mod tests {
             UiSoundName::TaskDone,
             UiSoundName::ArcScrubTick,
             UiSoundName::ReminderChime,
+            UiSoundName::ReminderAlarm,
             UiSoundName::MailArrival,
             UiSoundName::Error,
         ] {

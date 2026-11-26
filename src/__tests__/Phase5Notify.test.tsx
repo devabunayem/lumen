@@ -22,4 +22,23 @@ describe("NotificationToast (FR-NT-1..2)", () => {
     fireEvent.click(screen.getByText("Payment Alert"));
     expect(onDismiss).toHaveBeenCalled();
   });
+
+  it("renders real extracted desktop/browser app logo when provided", () => {
+    render(
+      <NotificationToast
+        notification={{
+          id: 2,
+          app_name: "Google Chrome",
+          title: "New email on Gmail",
+          body: "Meeting link updated",
+          app_icon_data_url: "data:image/png;base64,iVBORw0KGgo=",
+          source_app_id: "Chrome",
+        }}
+        onDismiss={vi.fn()}
+      />,
+    );
+    const img = screen.getByRole("img", { name: "Google Chrome" });
+    expect(img).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+    expect(screen.getByText("Google Chrome")).toBeInTheDocument();
+  });
 });

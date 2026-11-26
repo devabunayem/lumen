@@ -359,8 +359,16 @@ impl PomodoroController {
     }
 }
 
-const BUILTIN_PAGE_ORDER: [&str; 8] = [
-    "control", "music", "calendar", "todo", "water", "prayer", "pomodoro", "shelf",
+const BUILTIN_PAGE_ORDER: [&str; 9] = [
+    "control",
+    "music",
+    "calendar",
+    "reminders",
+    "todo",
+    "water",
+    "prayer",
+    "pomodoro",
+    "shelf",
 ];
 
 fn default_version() -> u32 {
@@ -401,6 +409,12 @@ fn default_hover_return_seconds() -> u32 {
 }
 fn default_sound_volume() -> u8 {
     30
+}
+fn default_reminder_snooze_minutes() -> u32 {
+    3
+}
+fn default_reminder_default_lead_minutes() -> u32 {
+    10
 }
 fn default_dev_pulse_ports() -> Vec<u16> {
     vec![3000, 5173, 1420]
@@ -475,6 +489,10 @@ pub struct LumenSettings {
     pub chip_dev_pulse_enabled: bool,
     #[serde(default = "default_dev_pulse_ports")]
     pub dev_pulse_ports: Vec<u16>,
+    #[serde(default = "default_reminder_snooze_minutes")]
+    pub reminder_snooze_minutes: u32,
+    #[serde(default = "default_reminder_default_lead_minutes")]
+    pub reminder_default_lead_minutes: u32,
 }
 
 impl Default for LumenSettings {
@@ -516,6 +534,8 @@ impl Default for LumenSettings {
             chip_clipboard_enabled: true,
             chip_dev_pulse_enabled: true,
             dev_pulse_ports: default_dev_pulse_ports(),
+            reminder_snooze_minutes: default_reminder_snooze_minutes(),
+            reminder_default_lead_minutes: default_reminder_default_lead_minutes(),
         }
     }
 }
@@ -544,6 +564,8 @@ impl LumenSettings {
             self.language = default_language();
         }
         self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
+        self.reminder_snooze_minutes = self.reminder_snooze_minutes.clamp(1, 30);
+        self.reminder_default_lead_minutes = self.reminder_default_lead_minutes.clamp(0, 120);
         self.position_offset_x = self.position_offset_x.clamp(-400, 400);
         self.water_goal_ml = self.water_goal_ml.clamp(250, 10_000);
         self.sound_volume = self.sound_volume.clamp(0, 100);
@@ -679,7 +701,9 @@ mod tests {
         assert_eq!(migrated.water_goal_ml, 10_000);
         assert_eq!(migrated.position_offset_x, -400);
         assert_eq!(migrated.scale, "auto");
-        assert_eq!(migrated.page_order.len(), 8);
+        assert_eq!(migrated.page_order.len(), 9);
+        assert_eq!(migrated.reminder_snooze_minutes, 3);
+        assert_eq!(migrated.reminder_default_lead_minutes, 10);
 
         let fallback = LumenSettings::load_or_migrate("{invalid json");
         assert_eq!(fallback, LumenSettings::default());
