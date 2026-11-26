@@ -70,6 +70,7 @@ export const BASE_GEOMETRY = {
   minimal: { width: 110, height: 26 },
   slim: { width: 84, height: 12 },
   expanded: { width: 560, height: 172 },
+  richExpanded: { width: 580, height: 208 },
   homeExpanded: { width: 640, height: 312 },
   hud: { width: 240, height: 56 },
   nowPlaying: { width: 320, height: 60 },

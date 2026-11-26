@@ -150,5 +150,13 @@ describe("Phase 3 Core Widgets", () => {
     expect(screen.getByLabelText("Prayer sun-arc timeline")).toBeInTheDocument();
     expect(screen.getByText("Dhaka")).toBeInTheDocument();
     expect(screen.getByText("আসর · 4:15 PM")).toBeInTheDocument();
+
+    const tasbihBtn = screen.getByTestId("prayer-tasbih-btn");
+    expect(tasbihBtn).toHaveTextContent("33");
+    fireEvent.click(tasbihBtn);
+    expect(tasbihBtn).toHaveTextContent("34");
+
+    fireEvent.click(screen.getByTestId("prayer-qibla-btn"));
+    expect(screen.getByText("কিবলা · 278° W")).toBeInTheDocument();
   });
 });

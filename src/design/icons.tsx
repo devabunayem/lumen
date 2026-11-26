@@ -437,3 +437,47 @@ export function SkipForwardIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function CompassIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <circle cx="12" cy="12" r="9.5" />
+      <polygon points="15.8 8.2 13.8 13.8 8.2 15.8 10.2 10.2 15.8 8.2" />
+    </svg>
+  );
+}
+
+export function TasbihIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <circle cx="12" cy="4.5" r="1.4" />
+      <circle cx="17.3" cy="6.8" r="1.4" />
+      <circle cx="19.5" cy="12" r="1.4" />
+      <circle cx="17.3" cy="17.2" r="1.4" />
+      <circle cx="12" cy="19.5" r="1.4" />
+      <circle cx="6.7" cy="17.2" r="1.4" />
+      <circle cx="4.5" cy="12" r="1.4" />
+      <circle cx="6.7" cy="6.8" r="1.4" />
+    </svg>
+  );
+}
+
+export function HeadphonesIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+    </svg>
+  );
+}
+
+export function ShuffleIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <polyline points="16 3 21 3 21 8" />
+      <line x1="4" y1="20" x2="21" y2="3" />
+      <polyline points="21 16 21 21 16 21" />
+      <line x1="15" y1="15" x2="21" y2="21" />
+      <line x1="4" y1="4" x2="9" y2="9" />
+    </svg>
+  );
+}

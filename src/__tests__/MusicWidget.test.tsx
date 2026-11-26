@@ -69,4 +69,29 @@ describe("MusicWidget", () => {
     });
     expect(onSelectSession).toHaveBeenCalledWith("msedge.exe");
   });
+
+  it("renders waveform scrubber, two-line synced lyrics, shuffle, and lyrics toggle", () => {
+    const onToggleLyrics = vi.fn();
+    render(
+      <MusicWidget
+        media={SAMPLE_MEDIA}
+        lyricsOpen
+        lyricsLines={[
+          { time_ms: 0, text: "Current lyric line plays in sync" },
+          { time_ms: 90_000, text: "Next line fades in softly" },
+        ]}
+        onToggleLyrics={onToggleLyrics}
+        onCommand={vi.fn()}
+        onSeek={vi.fn()}
+        onVolumeChange={vi.fn()}
+        onSelectSession={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Current lyric line plays in sync")).toBeInTheDocument();
+    expect(screen.getByText("Next line fades in softly")).toBeInTheDocument();
+    expect(screen.getByLabelText("Seek track position")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Toggle shuffle" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle lyrics" }));
+    expect(onToggleLyrics).toHaveBeenCalled();
+  });
 });

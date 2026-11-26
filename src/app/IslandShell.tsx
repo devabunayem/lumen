@@ -904,6 +904,7 @@ export function IslandShell({
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
+  const isRichExpandedPage = activePage.id === "prayer" || activePage.id === "music";
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -998,7 +999,11 @@ export function IslandShell({
       case "live":
         return BASE_GEOMETRY.collapsed;
       case "expanded":
-        return isHomePage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
+        return isHomePage
+          ? BASE_GEOMETRY.homeExpanded
+          : isRichExpandedPage
+            ? BASE_GEOMETRY.richExpanded
+            : BASE_GEOMETRY.expanded;
       case "hud":
         if (activeReminderAlert !== null) {
           return BASE_GEOMETRY.reminder;
@@ -1035,6 +1040,7 @@ export function IslandShell({
     effectiveState,
     isSlimQuiet,
     isHomePage,
+    isRichExpandedPage,
     activeReminderAlert,
     activeNotification,
     notifyExpanded,
@@ -1901,8 +1907,8 @@ export function IslandShell({
                 style={{
                   left: "50%",
                   x: "-50%",
-                  width: `${Math.round(BASE_GEOMETRY.expanded.width * scaleFactor)}px`,
-                  height: `${Math.round(BASE_GEOMETRY.expanded.height * scaleFactor)}px`,
+                  width: `${Math.round((isRichExpandedPage ? BASE_GEOMETRY.richExpanded.width : BASE_GEOMETRY.expanded.width) * scaleFactor)}px`,
+                  height: `${Math.round((isRichExpandedPage ? BASE_GEOMETRY.richExpanded.height : BASE_GEOMETRY.expanded.height) * scaleFactor)}px`,
                   padding: "var(--island-padding)",
                   paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
                   paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
@@ -1912,12 +1918,14 @@ export function IslandShell({
               >
                 <div
                   className={
-                    activePage.id === "music" && Boolean(media?.active)
+                    (activePage.id === "music" && Boolean(media?.active)) ||
+                    activePage.id === "prayer"
                       ? "grid grid-cols-[1fr_auto_1fr] items-center"
                       : "flex items-center justify-between"
                   }
                 >
-                  {activePage.id === "music" && Boolean(media?.active) ? (
+                  {(activePage.id === "music" && Boolean(media?.active)) ||
+                  activePage.id === "prayer" ? (
                     <>
                       <h1 className="sr-only">
                         {activePage.titleLead} {activePage.titleAccent}
@@ -2245,12 +2253,22 @@ export function IslandShell({
                           schedule={prayerSchedule}
                           cities={prayerCities}
                           language={prayerLang}
+                          tasbih={tasbih}
                           onSelectCity={(cityId) => {
                             void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
                           }}
                           onToggleLanguage={() =>
                             setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
                           }
+                          onIncrementTasbih={() => {
+                            setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
+                            triggerLumiReaction("celebrate", 2000);
+                            void tasbihIncrement().then((ts) => ts && setTasbih(ts));
+                          }}
+                          onResetTasbih={() => {
+                            setTasbih((cur) => ({ ...cur, count: 0 }));
+                            void tasbihReset().then((ts) => ts && setTasbih(ts));
+                          }}
                         />
                       )}
 
