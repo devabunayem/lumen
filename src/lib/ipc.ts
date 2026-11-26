@@ -45,6 +45,8 @@ export interface PillBoundsPayload {
   topOffset: number;
   visible: boolean;
   hideInFullscreen: boolean;
+  cornerRadius?: number;
+  homeVisible?: boolean;
 }
 
 export interface MediaSessionSummary {
@@ -116,12 +118,68 @@ export interface PrayerSchedule {
   next_name_bn: string;
   next_time_12h: string;
   next_is_tomorrow: boolean;
+  next_diff_min?: number;
   countdown_text: string;
   progress_pct: number;
   sun_arc_ratio: number;
+  now_min?: number;
+  is_friday?: boolean;
+  is_ramadan?: boolean;
+  is_night_mode?: boolean;
+  sehri_min?: number;
+  iftar_min?: number;
+  night_start_min?: number;
+  night_end_min?: number;
+  tomorrow_fajr_min?: number;
   hijri_date: string;
   sehri_iftar_label: string;
   slots: PrayerSlot[];
+}
+
+export interface QuickTogglesState {
+  wifi: boolean | null;
+  bluetooth: boolean | null;
+  focus: boolean;
+  micMuted: boolean;
+  micInUse: boolean;
+  keepAwake: boolean;
+}
+
+export interface OpenMeteoWeather {
+  tempC: number;
+  weatherCode: number;
+  condition: string;
+  precipNote: string | null;
+  city: string;
+  fetchedAt: string;
+  offline: boolean;
+}
+
+export interface TasbihState {
+  count: number;
+  target: number;
+}
+
+export interface TimeLedgerState {
+  id: number;
+  client_name: string;
+  elapsed_secs: number;
+  running: boolean;
+  started_at: string | null;
+  updated_at: string;
+}
+
+export interface ClipboardChipSnapshot {
+  displayText: string;
+  sensitive: boolean;
+  rawHash: string;
+  hasContent: boolean;
+}
+
+export interface DevPulseSnapshot {
+  ports: number[];
+  primaryPort: number | null;
+  up: boolean;
 }
 
 export interface PrayerCityPreset {
@@ -206,6 +264,8 @@ export async function syncPillBounds(bounds: PillBoundsPayload): Promise<void> {
     topOffset: bounds.topOffset,
     visible: bounds.visible,
     hideInFullscreen: bounds.hideInFullscreen,
+    cornerRadius: bounds.cornerRadius ?? null,
+    homeVisible: bounds.homeVisible ?? null,
   });
 }
 
@@ -641,4 +701,166 @@ export async function calendarDelete(id: number): Promise<CalendarEvent[]> {
     return [];
   }
   return invoke<CalendarEvent[]>("calendar_delete", { id });
+}
+
+export async function systemQuickTogglesState(): Promise<QuickTogglesState> {
+  if (!isTauriRuntime()) {
+    return {
+      wifi: true,
+      bluetooth: true,
+      focus: false,
+      micMuted: false,
+      micInUse: false,
+      keepAwake: false,
+    };
+  }
+  return invoke<QuickTogglesState>("system_quick_toggles_state");
+}
+
+export async function systemToggleWifi(): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return false;
+  }
+  return invoke<boolean>("system_toggle_wifi");
+}
+
+export async function systemToggleBluetooth(): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return false;
+  }
+  return invoke<boolean>("system_toggle_bluetooth");
+}
+
+export async function systemToggleKeepAwake(enabled?: boolean): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return Boolean(enabled);
+  }
+  return invoke<boolean>("system_toggle_keep_awake", { enabled: enabled ?? null });
+}
+
+export async function prayerSetMethod(
+  method: string,
+  madhab: string,
+): Promise<PrayerSchedule | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<PrayerSchedule>("prayer_set_method", { method, madhab });
+}
+
+export async function weatherGetCurrent(): Promise<OpenMeteoWeather | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<OpenMeteoWeather>("weather_get_current");
+}
+
+export async function tasbihGet(): Promise<TasbihState> {
+  if (!isTauriRuntime()) {
+    return { count: 33, target: 33 };
+  }
+  return invoke<TasbihState>("tasbih_get");
+}
+
+export async function tasbihIncrement(): Promise<TasbihState> {
+  if (!isTauriRuntime()) {
+    return { count: 34, target: 33 };
+  }
+  return invoke<TasbihState>("tasbih_increment");
+}
+
+export async function tasbihReset(): Promise<TasbihState> {
+  if (!isTauriRuntime()) {
+    return { count: 0, target: 33 };
+  }
+  return invoke<TasbihState>("tasbih_reset");
+}
+
+export async function ledgerGet(): Promise<TimeLedgerState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<TimeLedgerState>("ledger_get");
+}
+
+export async function ledgerToggle(clientName?: string): Promise<TimeLedgerState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<TimeLedgerState>("ledger_toggle", { clientName: clientName ?? null });
+}
+
+export async function ledgerReset(clientName?: string): Promise<TimeLedgerState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<TimeLedgerState>("ledger_reset", { clientName: clientName ?? null });
+}
+
+export async function clipboardGetLatest(): Promise<ClipboardChipSnapshot> {
+  if (!isTauriRuntime()) {
+    return { displayText: "", sensitive: false, rawHash: "", hasContent: false };
+  }
+  return invoke<ClipboardChipSnapshot>("clipboard_get_latest");
+}
+
+export async function clipboardCopyLatest(): Promise<ClipboardChipSnapshot> {
+  if (!isTauriRuntime()) {
+    return { displayText: "", sensitive: false, rawHash: "", hasContent: false };
+  }
+  return invoke<ClipboardChipSnapshot>("clipboard_copy_latest");
+}
+
+export async function homeSetVisible(visible: boolean): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("home_set_visible", { visible });
+}
+
+export async function systemBatteryStatus(): Promise<[number, boolean] | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<[number, boolean] | null>("system_battery_status");
+}
+
+export async function monitorAutoScaleFactor(): Promise<number> {
+  if (!isTauriRuntime()) {
+    return 1;
+  }
+  return invoke<number>("monitor_auto_scale_factor");
+}
+
+export async function subscribeDevPulseUpdated(
+  onUpdate: (pulse: DevPulseSnapshot) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<DevPulseSnapshot>("lumen://dev-pulse-updated", (event) => {
+    onUpdate(event.payload);
+  });
+}
+
+export async function subscribeClipboardUpdated(
+  onUpdate: (clip: ClipboardChipSnapshot) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<ClipboardChipSnapshot>("lumen://clipboard-updated", (event) => {
+    onUpdate(event.payload);
+  });
+}
+
+export async function subscribePrayerUpdated(
+  onUpdate: (sched: PrayerSchedule) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<PrayerSchedule>("lumen://prayer-updated", (event) => {
+    onUpdate(event.payload);
+  });
 }

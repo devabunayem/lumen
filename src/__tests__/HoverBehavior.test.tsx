@@ -27,7 +27,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(70);
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
-    expect(pill).toHaveAttribute("data-target-width", "452");
+    expect(pill).toHaveAttribute("data-target-width", "760");
+    expect(pill).toHaveAttribute("data-target-height", "376");
 
     fireEvent.mouseLeave(pill);
     act(() => {
@@ -35,8 +36,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "minimal");
     expect(pill).toHaveAttribute("data-slim", "true");
-    expect(pill).toHaveAttribute("data-target-width", "72");
-    expect(pill).toHaveAttribute("data-target-height", "14");
+    expect(pill).toHaveAttribute("data-target-width", "84");
+    expect(pill).toHaveAttribute("data-target-height", "12");
     expect(screen.getByTestId("lumen-slim-indicator")).toBeInTheDocument();
 
     act(() => {
@@ -44,8 +45,8 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "idle");
     expect(pill).toHaveAttribute("data-slim", "false");
-    expect(pill).toHaveAttribute("data-target-width", "180");
-    expect(pill).toHaveAttribute("data-target-height", "42");
+    expect(pill).toHaveAttribute("data-target-width", "184");
+    expect(pill).toHaveAttribute("data-target-height", "30");
   });
 
   it("stays expanded on mouse leave when pinned or while typing inside an input", () => {
@@ -57,6 +58,11 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(70);
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
+
+    // Wheel from Home -> Control (560x172) where Pin button lives
+    fireEvent.wheel(pill, { deltaY: 120 });
+    expect(pill).toHaveAttribute("data-target-width", "560");
+    expect(pill).toHaveAttribute("data-target-height", "172");
 
     const pinBtn = screen.getByRole("button", { name: "Pin island open" });
     fireEvent.click(pinBtn);
@@ -70,6 +76,9 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
 
     // Unpin and switch to Todo page with a focused input (control -> music -> calendar -> todo)
     fireEvent.click(screen.getByRole("button", { name: "Unpin island" }));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
     fireEvent.wheel(pill, { deltaY: 120 });
     act(() => {
       vi.advanceTimersByTime(300);
@@ -91,13 +100,19 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(pill).toHaveAttribute("data-state", "expanded");
   });
 
-  it("switches expanded pages on mouse wheel scroll", () => {
+  it("switches expanded pages on mouse wheel scroll from Home -> Control -> Media", () => {
     render(<IslandShell hoverToOpen />);
     const pill = screen.getByTestId("lumen-island-pill");
 
     fireEvent.click(pill);
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+
+    fireEvent.wheel(pill, { deltaY: 120 });
     expect(screen.getByText("Control")).toBeInTheDocument();
 
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
     fireEvent.wheel(pill, { deltaY: 120 });
     expect(screen.getByText("Media")).toBeInTheDocument();
   });

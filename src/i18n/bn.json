@@ -12,6 +12,8 @@
     "shapePill": "পিল"
   },
   "pages": {
+    "homeLead": "দিন",
+    "homeAccent": "হোম",
     "controlLead": "কন্ট্রোল",
     "controlAccent": "প্যানেল",
     "musicLead": "এখন",
@@ -105,6 +107,84 @@
       "tagline": "Windows 10 ও 11-এর জন্য সম্পূর্ণ ফ্রি, ওপেন-সোর্স এবং জিরো-টেলিমেট্রি Dynamic Island।",
       "author": "নির্মাতা: আবু নায়েম · Etarnity Global Innovation",
       "license": "MIT লাইসেন্স · কোনো ট্র্যাকিং বা ক্লাউড নির্ভরতা নেই"
+    },
+    "homeTab": {
+      "soundsEnabled": "ইন্টারফেস ও রিমাইন্ডার সাউন্ড",
+      "soundVolume": "সাউন্ড ভলিউম",
+      "soundInterface": "ইন্টারফেস টিক ও টগল",
+      "soundReminders": "চাইম ও রিমাইন্ডার",
+      "customAdhan": "কাস্টম আজান অডিও ফাইল (ঐচ্ছিক)",
+      "locationOptIn": "Windows লোকেশন ব্যবহার করুন (ঐচ্ছিক)",
+      "reduceTransparency": "স্বচ্ছতা কমান (সলিড কার্ড)",
+      "glowEnabled": "লিভিং অ্যাম্বিয়েন্ট গ্লো",
+      "parallaxEnabled": "কার্সর প্যারালাক্স গ্লো",
+      "banglaDigits": "বাংলা সংখ্যা",
+      "chipsGroup": "হোম নিচের চিপস",
+      "chipFocus": "ফোকাস টাইমার চিপ",
+      "chipLedger": "টাইম লেজার চিপ",
+      "chipClipboard": "ক্লিপবোর্ড চিপ",
+      "chipDevPulse": "ডেভ সার্ভার পালস চিপ"
+    }
+  },
+  "home": {
+    "toggles": {
+      "wifi": "ওয়াই-ফাই",
+      "bluetooth": "ব্লুটুথ",
+      "focus": "ফোকাস",
+      "mic": "মাইক্রোফোন মিউট",
+      "keepAwake": "স্ক্রিন সচল রাখুন",
+      "lock": "লক করুন",
+      "settings": "সেটিংস খুলুন",
+      "radioError": "রেডিও পাওয়া যায়নি"
+    },
+    "arc": {
+      "tasbih": "তাসবিহ",
+      "locationUnset": "ম্যানুয়াল শহর",
+      "weatherOffline": "অফলাইন",
+      "updatedAgo": "{{age}} আগে আপডেট",
+      "rainIn": "{{min}} মি. পর বৃষ্টি",
+      "rainSoon": "শীঘ্রই বৃষ্টি",
+      "clear": "পরিষ্কার",
+      "cloudy": "মেঘলা",
+      "rain": "বৃষ্টি",
+      "storm": "ঝড়",
+      "sehri": "সেহরি",
+      "iftar": "ইফতার",
+      "nothingHere": "কিছু নেই",
+      "zoomDay": "পুরো দিন",
+      "zoom3h": "পরবর্তী ৩ ঘণ্টা",
+      "nightArc": "রাতের আর্ক",
+      "summary": "পরবর্তী নামাজ {{prayer}} {{time}}-এ, {{countdown}}। {{events}}টি ইভেন্ট।"
+    },
+    "music": {
+      "nothingPlaying": "কিছু চলছে না",
+      "play": "চালান",
+      "pause": "বিরতি",
+      "prev": "আগের গান",
+      "next": "পরের গান",
+      "lastPlayed": "সর্বশেষ",
+      "openPlayer": "মিউজিক প্লেয়ার খুলুন"
+    },
+    "next": {
+      "label": "পরবর্তী",
+      "min": "মি.",
+      "tasksLeft": "আজ {{count}}টি কাজ বাকি",
+      "allClear": "সব সম্পন্ন",
+      "openAgenda": "অ্যাজেন্ডা খুলুন"
+    },
+    "water": {
+      "title": "পানি",
+      "ofGoal": "লক্ষ্য {{goal}} লি. · ট্যাপ +{{step}} মি.লি.",
+      "goalReached": "লক্ষ্য পূর্ণ · {{goal}} লি.",
+      "pickSize": "পরিমাণ বেছে নিন"
+    },
+    "chips": {
+      "focus": "ফোকাস",
+      "copied": "কপি হয়েছে",
+      "otpMasked": "OTP কপি",
+      "clipboard": "ক্লিপবোর্ড",
+      "devUp": "সচল",
+      "devDown": "বন্ধ"
     }
   }
 }

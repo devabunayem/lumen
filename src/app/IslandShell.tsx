@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BoltIcon,
@@ -15,17 +15,29 @@ import {
   TimerIcon,
 } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
+import { playUiSound } from "../design/sounds";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
+import { HomePage } from "../home/HomePage";
 import { type AppLanguage, getMessages } from "../i18n";
 import {
+  calendarList,
+  type CalendarEvent,
+  clipboardCopyLatest,
+  clipboardGetLatest,
+  type ClipboardChipSnapshot,
+  type DevPulseSnapshot,
   getMediaState,
+  homeSetVisible,
   type HudEvent,
   isTauriRuntime,
+  ledgerGet,
+  ledgerToggle,
   type LoadedPlugin,
   type LyricLine,
   mediaGetLyrics,
   type MediaStateSnapshot,
   type NotificationPopup,
+  type OpenMeteoWeather,
   openSettingsWindow,
   pluginsList,
   pomodoroGetState,
@@ -49,24 +61,41 @@ import {
   shelfList,
   shelfOpen,
   shelfRemove,
+  subscribeClipboardUpdated,
+  subscribeDevPulseUpdated,
   subscribeFullscreenChange,
   subscribeHudEvent,
   subscribeMediaUpdated,
   subscribeNotificationPopup,
   subscribePomodoroTick,
+  subscribePrayerUpdated,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
+  systemBatteryStatus,
+  systemGetMicMuted,
+  systemLockWorkstation,
   systemPrivacyIndicators,
+  systemQuickTogglesState,
+  systemToggleBluetooth,
+  systemToggleKeepAwake,
+  systemToggleMicMute,
+  systemToggleWifi,
+  tasbihGet,
+  tasbihIncrement,
+  tasbihReset,
+  type TasbihState,
   type TaskItem,
   tasksAdd,
   tasksDelete,
   tasksList,
   tasksToggle,
+  type TimeLedgerState,
   waterGetSummary,
   waterLog,
   type WaterSummary,
   waterUndo,
+  weatherGetCurrent,
 } from "../lib/ipc";
 import { DEFAULT_SETTINGS } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
@@ -100,6 +129,15 @@ export interface IslandShellProps {
   showHeaderClockSetting?: boolean;
   language?: AppLanguage;
   reducedMotionOverride?: boolean;
+  reduceTransparency?: boolean;
+  glowEnabled?: boolean;
+  parallaxEnabled?: boolean;
+  banglaDigits?: boolean;
+  locationOptIn?: boolean;
+  chipFocusEnabled?: boolean;
+  chipLedgerEnabled?: boolean;
+  chipClipboardEnabled?: boolean;
+  chipDevPulseEnabled?: boolean;
   pageOrder?: string[];
   hiddenPages?: string[];
   initialWaterGoalMl?: number;
@@ -161,6 +199,15 @@ export function IslandShell({
   showHeaderClockSetting = true,
   language = "en",
   reducedMotionOverride = false,
+  reduceTransparency = false,
+  glowEnabled = true,
+  parallaxEnabled = true,
+  banglaDigits = false,
+  locationOptIn = false,
+  chipFocusEnabled = true,
+  chipLedgerEnabled = true,
+  chipClipboardEnabled = true,
+  chipDevPulseEnabled = true,
   pageOrder = DEFAULT_SETTINGS.pageOrder,
   hiddenPages = DEFAULT_SETTINGS.hiddenPages,
   initialWaterGoalMl = 1500,
@@ -173,19 +220,25 @@ export function IslandShell({
   const prefersReducedMotion = osReducedMotion || reducedMotionOverride;
   const msg = getMessages(language);
 
-  const [clock, setClock] = useState(() => formatClockParts(new Date()));
+  const [nowDate, setNowDate] = useState(() => new Date());
+  const clock = useMemo(() => formatClockParts(nowDate), [nowDate]);
   const [clockDateOverride, setClockDateOverride] = useState<boolean | null>(null);
   const showHeaderClock = clockDateOverride ?? showHeaderClockSetting;
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [openedViaHomeCard, setOpenedViaHomeCard] = useState(false);
   const [slideDirection, setSlideDirection] = useState<1 | -1>(1);
   const [pageGalleryOpen, setPageGalleryOpen] = useState(false);
   const [dockHovered, setDockHovered] = useState(false);
   const isBn = language === "bn";
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
+  const [lastPlayedTrack, setLastPlayedTrack] = useState<{ title: string; artist: string } | null>(
+    null,
+  );
   const [hasStableMedia, setHasStableMedia] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
   const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
@@ -196,6 +249,19 @@ export function IslandShell({
   const [prayerLangOverride, setPrayerLangOverride] = useState<"en" | "bn" | null>(null);
   const prayerLang = prayerLangOverride ?? language;
   const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
+  const [weather, setWeather] = useState<OpenMeteoWeather | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [tasbih, setTasbih] = useState<TasbihState>({ count: 33, target: 33 });
+  const [ledger, setLedger] = useState<TimeLedgerState | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardChipSnapshot | null>(null);
+  const [devPulse, setDevPulse] = useState<DevPulseSnapshot | null>(null);
+  const [wifiOn, setWifiOn] = useState<boolean | null>(true);
+  const [bluetoothOn, setBluetoothOn] = useState<boolean | null>(true);
+  const [focusOn, setFocusOn] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [keepAwakeOn, setKeepAwakeOn] = useState(false);
+  const [batteryState, setBatteryState] = useState<[number, boolean] | null>(null);
+  const [isFirstOpenOfDay, setIsFirstOpenOfDay] = useState(false);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
   const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
@@ -203,6 +269,7 @@ export function IslandShell({
   const [isPinned, setIsPinned] = useState(false);
   const [slimReturnActive, setSlimReturnActive] = useState(false);
   const [privacyDevices, setPrivacyDevices] = useState<[boolean, boolean]>([false, false]);
+  const prevExpandedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -383,9 +450,19 @@ export function IslandShell({
       }
     }
 
-    return orderedIds
-      .map((id) => catalog.get(id))
-      .filter((item): item is IslandPageMeta => Boolean(item));
+    const homePageMeta: IslandPageMeta = {
+      id: "home",
+      titleLead: msg.pages.homeLead,
+      titleAccent: msg.pages.homeAccent,
+      accentVar: "var(--accent-blue)",
+    };
+
+    return [
+      homePageMeta,
+      ...orderedIds
+        .map((id) => catalog.get(id))
+        .filter((item): item is IslandPageMeta => Boolean(item)),
+    ];
   }, [hasStableMedia, isBn, media?.active, msg.pages, pageOrder, hiddenPages, plugins]);
 
   useEffect(() => {
@@ -400,25 +477,62 @@ export function IslandShell({
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setClock(formatClockParts(new Date()));
+      setNowDate(new Date());
     }, 10_000);
     return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
     void tasksList().then(setTasks);
+    void calendarList().then(setCalendarEvents);
     void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
     void prayerListCities().then(setPrayerCities);
     void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
     void pomodoroGetState().then((p) => p && setPomodoro(p));
     void shelfList().then(setShelfItems);
     void pluginsList().then(setPlugins);
-
-    const prayerTimer = window.setInterval(() => {
-      void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
-    }, 30_000);
-    return () => window.clearInterval(prayerTimer);
+    void tasbihGet().then((ts) => ts && setTasbih(ts));
+    void ledgerGet().then((l) => l && setLedger(l));
+    void clipboardGetLatest().then((c) => c && setClipboard(c));
+    void systemBatteryStatus().then((b) => b && setBatteryState(b));
+    void systemQuickTogglesState().then((qt) => {
+      if (qt) {
+        setWifiOn(qt.wifi);
+        setBluetoothOn(qt.bluetooth);
+        setFocusOn(qt.focus);
+        setMicMuted(qt.micMuted);
+        setKeepAwakeOn(qt.keepAwake);
+      }
+    });
+    void systemGetMicMuted().then((muted) => setMicMuted(muted));
   }, [waterGoalMl]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => {
+        if (!cancelled) {
+          setWeatherLoading(true);
+        }
+        return weatherGetCurrent();
+      })
+      .then((w) => {
+        if (!cancelled && w) {
+          setWeather(w);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setWeatherLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locationOptIn]);
 
   useEffect(() => {
     const active = media?.active;
@@ -436,12 +550,21 @@ export function IslandShell({
     let unlistenPom: (() => void) | undefined;
     let unlistenHud: (() => void) | undefined;
     let unlistenNotify: (() => void) | undefined;
+    let unlistenDevPulse: (() => void) | undefined;
+    let unlistenClip: (() => void) | undefined;
+    let unlistenPrayer: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
         return;
       }
       setMedia(snapshot);
+      if (snapshot.active?.title) {
+        setLastPlayedTrack({
+          title: snapshot.active.title,
+          artist: snapshot.active.artist || snapshot.active.app_id,
+        });
+      }
       const activeTitle = snapshot.active?.title ?? "";
       const activeApp = snapshot.active?.app_id ?? "";
       const excluded = mediaExclusions.some((item) => {
@@ -462,11 +585,17 @@ export function IslandShell({
     });
     void subscribePomodoroTick((snap) => {
       setPomodoro(snap);
+      if (snap.running && snap.phase === "focus") {
+        setFocusOn(true);
+      }
       dispatch({ type: "TIMER_TICK", active: snap.running });
     }).then((fn) => {
       unlistenPom = fn;
     });
     void subscribeHudEvent((hud) => {
+      if (hud.kind === "battery" && typeof hud.value_pct === "number") {
+        setBatteryState([hud.value_pct, hud.active]);
+      }
       setActiveNotification(null);
       setActiveHud(hud);
       dispatch({ type: "NOTIFICATION" });
@@ -509,6 +638,15 @@ export function IslandShell({
     }).then((fn) => {
       unlistenHide = fn;
     });
+    void subscribeDevPulseUpdated((pulse) => setDevPulse(pulse)).then((fn) => {
+      unlistenDevPulse = fn;
+    });
+    void subscribeClipboardUpdated((clip) => setClipboard(clip)).then((fn) => {
+      unlistenClip = fn;
+    });
+    void subscribePrayerUpdated((sched) => setPrayerSchedule(sched)).then((fn) => {
+      unlistenPrayer = fn;
+    });
 
     return () => {
       unlistenFs?.();
@@ -518,31 +656,97 @@ export function IslandShell({
       unlistenPom?.();
       unlistenHud?.();
       unlistenNotify?.();
+      unlistenDevPulse?.();
+      unlistenClip?.();
+      unlistenPrayer?.();
     };
   }, [dispatch, mediaExclusions]);
+
+  const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
+  const activePage = pages[safePageIndex] ?? pages[0];
+  const isHomePage = activePage.id === "home";
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         clearHoverTimers();
+        if (state === "expanded" && openedViaHomeCard && activePage.id !== "home") {
+          setOpenedViaHomeCard(false);
+          setSlideDirection(-1);
+          setActivePageIndex(0);
+          return;
+        }
+        setOpenedViaHomeCard(false);
         isPinnedRef.current = false;
         setIsPinned(false);
         setSlimReturnActive(false);
         dispatch({ type: "ESCAPE" });
       } else if (state === "expanded" && event.key === "ArrowRight") {
+        const ae = document.activeElement as HTMLElement | null;
+        if (ae && ae.closest('[data-testid="day-arc-section"]')) {
+          return;
+        }
+        setOpenedViaHomeCard(false);
         setSlideDirection(1);
         setActivePageIndex((idx) => (idx + 1) % pages.length);
       } else if (state === "expanded" && event.key === "ArrowLeft") {
+        const ae = document.activeElement as HTMLElement | null;
+        if (ae && ae.closest('[data-testid="day-arc-section"]')) {
+          return;
+        }
+        setOpenedViaHomeCard(false);
         setSlideDirection(-1);
         setActivePageIndex((idx) => (idx - 1 + pages.length) % pages.length);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dispatch, state, pages.length, clearHoverTimers]);
+  }, [dispatch, state, pages.length, clearHoverTimers, openedViaHomeCard, activePage.id]);
 
   const effectiveState = state === "idle" && minimalNotch ? "minimal" : state;
   const isSlimQuiet = effectiveState === "minimal" && slimReturnActive;
+  const isExpanded = effectiveState === "expanded";
+  const isHidden = effectiveState === "hidden";
+
+  useEffect(() => {
+    let active = true;
+    if (isExpanded && !prevExpandedRef.current) {
+      void playUiSound("open");
+      void Promise.resolve().then(() => {
+        if (!active) {
+          return;
+        }
+        try {
+          const todayKey = new Date().toISOString().slice(0, 10);
+          const lastKey = window.localStorage.getItem("lumen_last_open_day");
+          if (lastKey !== todayKey) {
+            setIsFirstOpenOfDay(true);
+            window.localStorage.setItem("lumen_last_open_day", todayKey);
+          } else {
+            setIsFirstOpenOfDay(false);
+          }
+        } catch {
+          // ignore storage restrictions
+        }
+      });
+    } else if (!isExpanded && prevExpandedRef.current) {
+      void playUiSound("close");
+    }
+    prevExpandedRef.current = isExpanded;
+    return () => {
+      active = false;
+    };
+  }, [isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded || !isHomePage || !ledger?.running) {
+      return;
+    }
+    const t = window.setInterval(() => {
+      setLedger((cur) => (cur ? { ...cur, elapsed_secs: cur.elapsed_secs + 1 } : cur));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [isExpanded, isHomePage, ledger?.running]);
 
   const dimensions = useMemo(() => {
     if (isSlimQuiet) {
@@ -552,30 +756,38 @@ export function IslandShell({
       case "minimal":
         return BASE_GEOMETRY.minimal;
       case "live":
-        return { width: 180, height: 42 };
+        return BASE_GEOMETRY.collapsed;
       case "expanded":
-        return BASE_GEOMETRY.expanded;
+        return isHomePage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
       case "hud":
         return BASE_GEOMETRY.hud;
       default:
         return BASE_GEOMETRY.collapsed;
     }
-  }, [effectiveState, isSlimQuiet]);
+  }, [effectiveState, isSlimQuiet, isHomePage]);
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
-  const expandedW = Math.round(BASE_GEOMETRY.expanded.width * scaleFactor);
-  const expandedH = Math.round(BASE_GEOMETRY.expanded.height * scaleFactor);
   const isFloatingPill = shapeStyle === "pill";
   const topOffset = isFloatingPill ? Math.round(BASE_GEOMETRY.pillFloatOffset * scaleFactor) : 0;
+  const homeVisibleNow = isExpanded && isHomePage && !isHidden;
 
   useEffect(() => {
+    void homeSetVisible(homeVisibleNow);
     void syncPillBounds({
       width,
       height,
       topOffset,
       visible: state !== "hidden",
       hideInFullscreen,
+      cornerRadius: isFloatingPill
+        ? isExpanded
+          ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
+          : Math.round(height / 2)
+        : isExpanded
+          ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
+          : Math.round(height / 2),
+      homeVisible: homeVisibleNow,
     });
 
     const surfaceBucket =
@@ -606,12 +818,18 @@ export function IslandShell({
       void setIslandSurfaceMode(false, surfaceBucket === "hidden", false);
     }, delayMs);
     return () => window.clearTimeout(timer);
-  }, [width, height, topOffset, state, hideInFullscreen]);
-
-  const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
-  const activePage = pages[safePageIndex] ?? pages[0];
-  const isExpanded = effectiveState === "expanded";
-  const isHidden = effectiveState === "hidden";
+  }, [
+    width,
+    height,
+    topOffset,
+    state,
+    hideInFullscreen,
+    scaleFactor,
+    isFloatingPill,
+    isExpanded,
+    isHomePage,
+    homeVisibleNow,
+  ]);
   const isHud = effectiveState === "hud" && activeHud !== null;
   const isNotify = effectiveState === "hud" && activeNotification !== null;
   const liveTrack = media?.active ?? null;
@@ -642,12 +860,14 @@ export function IslandShell({
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
   const surfaceBorderRadius = isFloatingPill
-    ? `${Math.min(28, Math.round(height / 2))}px`
+    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : Math.round(height / 2), Math.round(height / 2))}px`
     : isSlimQuiet
       ? "0px 0px 8px 8px"
       : isExpanded
-        ? "0px 0px 28px 28px"
-        : "0px 0px 16px 16px";
+        ? isHomePage
+          ? "0px 0px 40px 40px"
+          : "0px 0px 24px 24px"
+        : "0px 0px 15px 15px";
 
   return (
     <div
@@ -789,746 +1009,960 @@ export function IslandShell({
         )}
 
         <div className="relative h-full w-full overflow-hidden rounded-[inherit]">
-          <AnimatePresence initial={false}>
-            {isNotify && activeNotification ? (
-              <motion.div
-                key="notification-overlay"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute inset-0 h-full w-full"
-              >
-                <NotificationToast
-                  notification={activeNotification}
-                  onDismiss={() => {
-                    setActiveNotification(null);
-                    dispatch({ type: "HUD_DISMISS" });
+          <LayoutGroup>
+            <AnimatePresence initial={false}>
+              {isNotify && activeNotification ? (
+                <motion.div
+                  key="notification-overlay"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-0 h-full w-full"
+                >
+                  <NotificationToast
+                    notification={activeNotification}
+                    onDismiss={() => {
+                      setActiveNotification(null);
+                      dispatch({ type: "HUD_DISMISS" });
+                    }}
+                  />
+                </motion.div>
+              ) : isHud && activeHud ? (
+                <motion.div
+                  key="hud-overlay"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-0 h-full w-full"
+                >
+                  <HudOverlay hud={activeHud} />
+                </motion.div>
+              ) : !isExpanded ? (
+                <motion.div
+                  key="collapsed-pill"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{
+                    opacity: 0,
+                    transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                   }}
-                />
-              </motion.div>
-            ) : isHud && activeHud ? (
-              <motion.div
-                key="hud-overlay"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute inset-0 h-full w-full"
-              >
-                <HudOverlay hud={activeHud} />
-              </motion.div>
-            ) : !isExpanded ? (
-              <motion.div
-                key="collapsed-pill"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{
-                  opacity: 0,
-                  transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
-                }}
-                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                className={`absolute inset-0 flex h-full w-full items-center whitespace-nowrap ${isSlimQuiet ? "justify-center px-2" : "justify-between px-3.5"}`}
-              >
-                {isSlimQuiet ? (
-                  <div
-                    data-testid="lumen-slim-indicator"
-                    className="flex h-full w-full items-center justify-center"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="h-[3px] w-7 rounded-full"
-                      style={{
-                        backgroundColor: liveTrack?.is_playing
-                          ? mediaAccent
-                          : pomodoro?.running
-                            ? "var(--accent-orange)"
-                            : "var(--text-tertiary)",
-                      }}
-                    />
-                  </div>
-                ) : pomodoro?.running ? (
-                  <>
-                    <div className="flex items-center gap-2">
+                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                  className={`absolute inset-0 flex h-full w-full items-center whitespace-nowrap ${isSlimQuiet ? "justify-center px-2" : "justify-between px-3.5"}`}
+                >
+                  {isSlimQuiet ? (
+                    <div
+                      data-testid="lumen-slim-indicator"
+                      className="flex h-full w-full items-center justify-center"
+                    >
                       <span
                         aria-hidden="true"
-                        className="inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: "var(--accent-orange)" }}
+                        className="h-[3px] w-7 rounded-full"
+                        style={{
+                          backgroundColor: liveTrack?.is_playing
+                            ? mediaAccent
+                            : pomodoro?.running
+                              ? "var(--accent-orange)"
+                              : "var(--text-tertiary)",
+                        }}
                       />
-                      <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                        {msg.pill.focus}
-                      </span>
                     </div>
-                    <span
-                      className="type-header-clock tabular-nums"
-                      style={{ color: "var(--accent-orange)" }}
-                    >
-                      {formatShortTimer(pomodoro.remaining_secs)}
-                    </span>
-                  </>
-                ) : liveTrack ? (
-                  <>
-                    <div className="flex min-w-0 items-center gap-2">
-                      {liveTrack.album_art_data_url ? (
-                        <img
-                          src={liveTrack.album_art_data_url}
-                          alt=""
-                          className="h-5 w-5 shrink-0 rounded-md object-cover"
-                        />
-                      ) : mascotEnabled ? (
-                        <LumenMascot
-                          enabled
-                          musicPlaying={liveTrack.is_playing}
-                          celebrating={celebratingMascot}
-                          accentColor={mediaAccent}
-                        />
-                      ) : (
+                  ) : pomodoro?.running ? (
+                    <>
+                      <div className="flex items-center gap-2">
                         <span
                           aria-hidden="true"
-                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: mediaAccent }}
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: "var(--accent-orange)" }}
                         />
-                      )}
-                      <span
-                        className="type-caption max-w-[125px] truncate"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {activeLyric ?? liveTrack.title}
-                      </span>
-                    </div>
-                    <LiveWaveform playing={liveTrack.is_playing} accentColor={mediaAccent} />
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      {mascotEnabled ? (
-                        <LumenMascot
-                          enabled
-                          celebrating={celebratingMascot}
-                          accentColor="var(--accent-blue)"
-                        />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{ backgroundColor: "var(--accent-blue)" }}
-                        />
-                      )}
-                      {effectiveState !== "minimal" && (
-                        <span
-                          className="type-caption tracking-wide"
-                          style={{ color: "var(--text-secondary)" }}
-                        >
-                          {msg.appName}
+                        <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
+                          {msg.pill.focus}
                         </span>
-                      )}
-                    </div>
-
-                    <div
-                      className={`flex items-center gap-1.5 transition-opacity duration-150 ${
-                        activePage.id === "control"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                      }`}
-                    >
-                      {(privacyDevices[0] || privacyDevices[1]) && (
-                        <span className="flex items-center gap-1" aria-label="Active sensor">
-                          {privacyDevices[0] && (
-                            <span
-                              title="Camera active"
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: "var(--accent-green)" }}
-                            />
-                          )}
-                          {privacyDevices[1] && (
-                            <span
-                              title="Microphone active"
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: "var(--accent-orange)" }}
-                            />
-                          )}
-                        </span>
-                      )}
+                      </div>
                       <span
                         className="type-header-clock tabular-nums"
-                        style={{ color: "var(--text-primary)" }}
+                        style={{ color: "var(--accent-orange)" }}
                       >
-                        {clock.timeText}
+                        {formatShortTimer(pomodoro.remaining_secs)}
                       </span>
-                    </div>
-                  </>
-                )}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="expanded-island"
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                  transition: {
-                    delay: prefersReducedMotion ? 0 : CONTENT_STAGGER.expandDelayMs / 1000,
-                    duration: 0.16,
-                    ease: [0.22, 1, 0.36, 1],
-                  },
-                }}
-                exit={{
-                  opacity: 0,
-                  scale: 0.95,
-                  transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
-                }}
-                className="group absolute top-0 flex flex-col justify-between"
-                style={{
-                  left: "50%",
-                  x: "-50%",
-                  width: `${expandedW}px`,
-                  height: `${expandedH}px`,
-                  padding: "var(--island-padding)",
-                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
-                  paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
-                  gap: "var(--island-gap)",
-                }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div
-                  className={
-                    activePage.id === "music" && Boolean(media?.active)
-                      ? "grid grid-cols-[1fr_auto_1fr] items-center"
-                      : "flex items-center justify-between"
-                  }
-                >
-                  {activePage.id === "music" && Boolean(media?.active) ? (
+                    </>
+                  ) : liveTrack ? (
                     <>
-                      <h1 className="sr-only">
-                        {activePage.titleLead} {activePage.titleAccent}
-                      </h1>
-                      <div />
+                      <div className="flex min-w-0 items-center gap-2">
+                        {liveTrack.album_art_data_url ? (
+                          <img
+                            src={liveTrack.album_art_data_url}
+                            alt=""
+                            className="h-5 w-5 shrink-0 rounded-md object-cover"
+                          />
+                        ) : mascotEnabled ? (
+                          <LumenMascot
+                            enabled
+                            musicPlaying={liveTrack.is_playing}
+                            celebrating={celebratingMascot}
+                            accentColor={mediaAccent}
+                          />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: mediaAccent }}
+                          />
+                        )}
+                        <span
+                          className="type-caption max-w-[125px] truncate"
+                          style={{ color: "var(--text-primary)" }}
+                        >
+                          {activeLyric ?? liveTrack.title}
+                        </span>
+                      </div>
+                      <LiveWaveform playing={liveTrack.is_playing} accentColor={mediaAccent} />
                     </>
                   ) : (
-                    <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
-                      <span className="truncate" style={{ color: "var(--text-primary)" }}>
-                        {activePage.titleLead}
-                      </span>
-                      <span className="truncate" style={{ color: activePage.accentVar }}>
-                        {activePage.titleAccent}
-                      </span>
-                    </h1>
-                  )}
+                    <>
+                      <div className="flex items-center gap-2">
+                        {mascotEnabled ? (
+                          <LumenMascot
+                            enabled
+                            celebrating={celebratingMascot}
+                            accentColor="var(--accent-blue)"
+                          />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-2 w-2 rounded-full"
+                            style={{ backgroundColor: "var(--accent-blue)" }}
+                          />
+                        )}
+                        {effectiveState !== "minimal" && (
+                          <span
+                            className="type-caption tracking-wide"
+                            style={{ color: "var(--text-secondary)" }}
+                          >
+                            {msg.appName}
+                          </span>
+                        )}
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setClockDateOverride(!showHeaderClock)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      onShapeChange?.(nextShape);
+                      <div
+                        className={`flex items-center gap-1.5 transition-opacity duration-150 ${
+                          activePage.id === "control"
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                        }`}
+                      >
+                        {(privacyDevices[0] || privacyDevices[1]) && (
+                          <span className="flex items-center gap-1" aria-label="Active sensor">
+                            {privacyDevices[0] && (
+                              <span
+                                title="Camera active"
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ backgroundColor: "var(--accent-green)" }}
+                              />
+                            )}
+                            {privacyDevices[1] && (
+                              <span
+                                title="Microphone active"
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ backgroundColor: "var(--accent-orange)" }}
+                              />
+                            )}
+                          </span>
+                        )}
+                        <span
+                          className="type-header-clock tabular-nums"
+                          style={{ color: "var(--text-primary)" }}
+                        >
+                          {clock.timeText}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </motion.div>
+              ) : isHomePage ? (
+                <motion.div
+                  key="expanded-home"
+                  initial={{
+                    opacity: 0,
+                    scale: prefersReducedMotion ? scaleFactor : 0.96 * scaleFactor,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    scale: scaleFactor,
+                    transition: prefersReducedMotion
+                      ? getMotionTransition("reducedMotionFade", true)
+                      : {
+                          delay: CONTENT_STAGGER.expandDelayMs / 1000,
+                          duration: 0.2,
+                          ease: [0.22, 1, 0.36, 1],
+                        },
+                  }}
+                  exit={{
+                    opacity: 0,
+                    transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
+                  }}
+                  className="absolute top-0 origin-top"
+                  style={{
+                    left: "50%",
+                    x: "-50%",
+                    width: `${BASE_GEOMETRY.homeExpanded.width}px`,
+                    height: `${BASE_GEOMETRY.homeExpanded.height}px`,
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <HomePage
+                    nowDate={nowDate}
+                    schedule={prayerSchedule}
+                    media={
+                      media ?? {
+                        active: null,
+                        sessions: [],
+                        volume_percent: 50,
+                        muted: false,
+                      }
+                    }
+                    lastPlayedTrack={lastPlayedTrack}
+                    calendarEvents={calendarEvents}
+                    tasks={tasks}
+                    water={
+                      waterSummary ?? {
+                        today_ml: 0,
+                        goal_ml: waterGoalMl,
+                        percentage: 0,
+                        goal_reached: false,
+                        last_entry_id: null,
+                        weekly: [],
+                      }
+                    }
+                    pomodoro={
+                      pomodoro ?? {
+                        phase: "focus",
+                        remaining_secs: 25 * 60,
+                        total_secs: 25 * 60,
+                        running: false,
+                        cycle_index: 0,
+                        cycles_before_long: 4,
+                        daily_focus_minutes: 0,
+                        chime_tick: 0,
+                      }
+                    }
+                    weather={weather}
+                    weatherLoading={weatherLoading}
+                    tasbih={tasbih}
+                    ledger={ledger}
+                    clipboard={clipboard}
+                    devPulse={devPulse}
+                    toggles={{
+                      wifi: wifiOn,
+                      bluetooth: bluetoothOn,
+                      focus: focusOn,
+                      micMuted,
+                      keepAwake: keepAwakeOn,
                     }}
-                    className="type-header-clock min-w-0 shrink cursor-pointer truncate rounded-full border-0 bg-transparent px-1.5 py-0.5 text-[11px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                    style={{ color: "var(--text-title-accent)" }}
-                    title={isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"}
+                    batteryPct={batteryState ? batteryState[0] : null}
+                    isCharging={batteryState ? batteryState[1] : false}
+                    language={language}
+                    banglaDigits={banglaDigits}
+                    reduceMotion={prefersReducedMotion}
+                    reduceTransparency={reduceTransparency}
+                    glowEnabled={glowEnabled}
+                    parallaxEnabled={parallaxEnabled}
+                    chipsConfig={{
+                      focus: chipFocusEnabled,
+                      ledger: chipLedgerEnabled,
+                      clipboard: chipClipboardEnabled,
+                      devPulse: chipDevPulseEnabled,
+                    }}
+                    pagesCount={pages.length}
+                    activePageIndex={safePageIndex}
+                    isVisible={homeVisibleNow}
+                    isFirstOpenOfDay={isFirstOpenOfDay}
+                    onNavigateWidget={(targetId) => {
+                      const targetIndex = pages.findIndex((p) => p.id === targetId);
+                      if (targetIndex >= 0) {
+                        setOpenedViaHomeCard(true);
+                        setSlideDirection(1);
+                        setActivePageIndex(targetIndex);
+                      }
+                    }}
+                    onSelectPage={(idx) => {
+                      setOpenedViaHomeCard(false);
+                      setSlideDirection(idx >= safePageIndex ? 1 : -1);
+                      setActivePageIndex(idx);
+                    }}
+                    onOpenSettings={() => {
+                      if (onOpenSettings) {
+                        onOpenSettings();
+                      } else {
+                        void openSettingsWindow();
+                      }
+                    }}
+                    onToggleWifi={async () => {
+                      const next = await systemToggleWifi();
+                      setWifiOn(next);
+                      return next;
+                    }}
+                    onToggleBluetooth={async () => {
+                      const next = await systemToggleBluetooth();
+                      setBluetoothOn(next);
+                      return next;
+                    }}
+                    onToggleFocus={() => {
+                      setFocusOn((f) => !f);
+                      void pomodoroToggle().then((p) => p && setPomodoro(p));
+                    }}
+                    onToggleMic={() => {
+                      setMicMuted((m) => !m);
+                      void systemToggleMicMute().then((m) => setMicMuted(m));
+                    }}
+                    onToggleKeepAwake={() => {
+                      setKeepAwakeOn((k) => !k);
+                      void systemToggleKeepAwake().then((k) => setKeepAwakeOn(k));
+                    }}
+                    onLockWorkstation={() => void systemLockWorkstation()}
+                    onIncrementTasbih={() => {
+                      setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
+                      void tasbihIncrement().then((ts) => ts && setTasbih(ts));
+                    }}
+                    onResetTasbih={() => {
+                      setTasbih((cur) => ({ ...cur, count: 0 }));
+                      void tasbihReset().then((ts) => ts && setTasbih(ts));
+                    }}
+                    onMediaPlayPause={() =>
+                      void sendMediaCommand("play_pause").then((n) => n && setMedia(n))
+                    }
+                    onMediaPrev={() =>
+                      void sendMediaCommand("previous").then((n) => n && setMedia(n))
+                    }
+                    onMediaNext={() => void sendMediaCommand("next").then((n) => n && setMedia(n))}
+                    onMediaMuteToggle={() =>
+                      void sendMediaCommand("toggle_mute").then((n) => n && setMedia(n))
+                    }
+                    onMediaVolumeDelta={(pct) =>
+                      void setSystemVolume(pct).then((n) => n && setMedia(n))
+                    }
+                    onLogWater={(ml) => {
+                      void waterLog(ml, waterGoalMl, 4).then((w) => {
+                        if (w) {
+                          setWaterSummary(w);
+                        } else {
+                          const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
+                          const pct = (nextTotal / waterGoalMl) * 100;
+                          setWaterSummary({
+                            today_ml: nextTotal,
+                            goal_ml: waterGoalMl,
+                            percentage: pct,
+                            goal_reached: pct >= 100,
+                            last_entry_id: Date.now(),
+                            weekly: [],
+                          });
+                        }
+                      });
+                    }}
+                    onToggleFocusTimer={() => {
+                      void pomodoroToggle().then((p) => p && setPomodoro(p));
+                    }}
+                    onToggleLedger={() => {
+                      void ledgerToggle().then((l) => l && setLedger(l));
+                    }}
+                    onCopyClipboard={async () => {
+                      const next = await clipboardCopyLatest();
+                      setClipboard(next);
+                    }}
+                    onToggleShape={() => onShapeChange?.(nextShape)}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="expanded-island"
+                  initial={{ opacity: 0, scale: 0.94 }}
+                  animate={{
+                    opacity: 1,
+                    scale: 1,
+                    transition: {
+                      delay: prefersReducedMotion ? 0 : CONTENT_STAGGER.expandDelayMs / 1000,
+                      duration: 0.16,
+                      ease: [0.22, 1, 0.36, 1],
+                    },
+                  }}
+                  exit={{
+                    opacity: 0,
+                    scale: 0.95,
+                    transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
+                  }}
+                  className="group absolute top-0 flex flex-col justify-between"
+                  style={{
+                    left: "50%",
+                    x: "-50%",
+                    width: `${Math.round(BASE_GEOMETRY.expanded.width * scaleFactor)}px`,
+                    height: `${Math.round(BASE_GEOMETRY.expanded.height * scaleFactor)}px`,
+                    padding: "var(--island-padding)",
+                    paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
+                    paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
+                    gap: "var(--island-gap)",
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div
+                    className={
+                      activePage.id === "music" && Boolean(media?.active)
+                        ? "grid grid-cols-[1fr_auto_1fr] items-center"
+                        : "flex items-center justify-between"
+                    }
                   >
-                    {showHeaderClock ? (
+                    {activePage.id === "music" && Boolean(media?.active) ? (
                       <>
-                        {clock.dateText.replace(/,\s*\d{4}$/, "")}{" "}
-                        <strong style={{ color: "var(--text-primary)" }}>{clock.timeText}</strong>
+                        <h1 className="sr-only">
+                          {activePage.titleLead} {activePage.titleAccent}
+                        </h1>
+                        <div />
                       </>
                     ) : (
-                      <span>{clock.timeText}</span>
+                      <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
+                        <span className="truncate" style={{ color: "var(--text-primary)" }}>
+                          {activePage.titleLead}
+                        </span>
+                        <span className="truncate" style={{ color: activePage.accentVar }}>
+                          {activePage.titleAccent}
+                        </span>
+                      </h1>
                     )}
-                  </button>
 
-                  <div className="flex items-center justify-self-end gap-1">
-                    <div
-                      className={`flex items-center gap-1 transition-opacity duration-150 ${
-                        activePage.id === "control"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => setClockDateOverride(!showHeaderClock)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onShapeChange?.(nextShape);
+                      }}
+                      className="type-header-clock min-w-0 shrink cursor-pointer truncate rounded-full border-0 bg-transparent px-1.5 py-0.5 text-[11px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                      style={{ color: "var(--text-title-accent)" }}
+                      title={isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"}
                     >
-                      <button
-                        type="button"
-                        aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
-                        title={isPinned ? msg.pill.unpin : msg.pill.pin}
-                        aria-pressed={isPinned}
-                        onClick={() => {
-                          const next = !isPinned;
-                          isPinnedRef.current = next;
-                          setIsPinned(next);
-                          if (next && leaveTimerRef.current !== null) {
-                            window.clearTimeout(leaveTimerRef.current);
-                            leaveTimerRef.current = null;
-                          }
-                        }}
-                        className={`type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
-                          isPinned ? "" : "bg-transparent hover:bg-[var(--surface-button)]"
+                      {showHeaderClock ? (
+                        <>
+                          {clock.dateText.replace(/,\s*\d{4}$/, "")}{" "}
+                          <strong style={{ color: "var(--text-primary)" }}>{clock.timeText}</strong>
+                        </>
+                      ) : (
+                        <span>{clock.timeText}</span>
+                      )}
+                    </button>
+
+                    <div className="flex items-center justify-self-end gap-1">
+                      <div
+                        className={`flex items-center gap-1 transition-opacity duration-150 ${
+                          activePage.id === "control"
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
                         }`}
-                        style={{
-                          backgroundColor: isPinned ? "var(--accent-orange)" : undefined,
-                          color: isPinned ? "#000000" : "var(--text-secondary)",
-                        }}
                       >
-                        <PinIcon size={13} />
-                      </button>
+                        <button
+                          type="button"
+                          aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
+                          title={isPinned ? msg.pill.unpin : msg.pill.pin}
+                          aria-pressed={isPinned}
+                          onClick={() => {
+                            const next = !isPinned;
+                            isPinnedRef.current = next;
+                            setIsPinned(next);
+                            if (next && leaveTimerRef.current !== null) {
+                              window.clearTimeout(leaveTimerRef.current);
+                              leaveTimerRef.current = null;
+                            }
+                          }}
+                          className={`type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+                            isPinned ? "" : "bg-transparent hover:bg-[var(--surface-button)]"
+                          }`}
+                          style={{
+                            backgroundColor: isPinned ? "var(--accent-orange)" : undefined,
+                            color: isPinned ? "#000000" : "var(--text-secondary)",
+                          }}
+                        >
+                          <PinIcon size={13} />
+                        </button>
+
+                        <button
+                          type="button"
+                          aria-label={msg.pill.openSettings}
+                          title={msg.pill.openSettings}
+                          onClick={() => {
+                            if (onOpenSettings) {
+                              onOpenSettings();
+                            } else {
+                              void openSettingsWindow();
+                            }
+                          }}
+                          className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                          style={{
+                            color: "var(--text-secondary)",
+                          }}
+                        >
+                          <SettingsIcon size={13} />
+                        </button>
+                      </div>
 
                       <button
                         type="button"
-                        aria-label={msg.pill.openSettings}
-                        title={msg.pill.openSettings}
+                        aria-label={msg.pill.collapse}
+                        title={msg.pill.collapse}
                         onClick={() => {
-                          if (onOpenSettings) {
-                            onOpenSettings();
-                          } else {
-                            void openSettingsWindow();
-                          }
+                          clearHoverTimers();
+                          isPinnedRef.current = false;
+                          setIsPinned(false);
+                          setSlimReturnActive(false);
+                          setPageGalleryOpen(false);
+                          dispatch({ type: "CLICK" });
                         }}
-                        className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                        className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+                          activePage.id === "control" ||
+                          (activePage.id === "music" && Boolean(liveTrack?.is_playing))
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                        }`}
                         style={{
                           color: "var(--text-secondary)",
                         }}
                       >
-                        <SettingsIcon size={13} />
+                        {liveTrack?.is_playing ? (
+                          <LiveWaveform playing accentColor={mediaAccent} />
+                        ) : (
+                          <ChevronUpIcon size={14} />
+                        )}
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      aria-label={msg.pill.collapse}
-                      title={msg.pill.collapse}
-                      onClick={() => {
-                        clearHoverTimers();
-                        isPinnedRef.current = false;
-                        setIsPinned(false);
-                        setSlimReturnActive(false);
-                        setPageGalleryOpen(false);
-                        dispatch({ type: "CLICK" });
-                      }}
-                      className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
-                        activePage.id === "control" ||
-                        (activePage.id === "music" && Boolean(liveTrack?.is_playing))
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                      }`}
-                      style={{
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {liveTrack?.is_playing ? (
-                        <LiveWaveform playing accentColor={mediaAccent} />
-                      ) : (
-                        <ChevronUpIcon size={14} />
-                      )}
-                    </button>
                   </div>
-                </div>
 
-                <div className="relative flex min-h-0 flex-1 items-center overflow-hidden">
-                  <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
-                    <motion.div
-                      key={activePage.id}
-                      custom={slideDirection}
-                      variants={{
-                        enter: (direction: number) => ({
-                          x: prefersReducedMotion ? 0 : direction > 0 ? 60 : -60,
-                          opacity: 0,
-                          scale: 0.98,
-                        }),
-                        center: {
-                          x: 0,
-                          opacity: 1,
-                          scale: 1,
-                        },
-                        exit: (direction: number) => ({
-                          x: prefersReducedMotion ? 0 : direction > 0 ? -60 : 60,
-                          opacity: 0,
-                          scale: 0.98,
-                        }),
-                      }}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
-                      className="flex h-full w-full items-center"
-                    >
-                      {activePage.id === "control" && (
-                        <ControlPanelWidget
-                          media={media}
-                          pomodoro={pomodoro}
-                          waterGoalMl={initialWaterGoalMl}
-                          cameraActive={privacyDevices[0]}
-                          micActive={privacyDevices[1]}
-                          language={language}
-                          onPomodoroChange={(nextPom) => setPomodoro(nextPom)}
-                          onNavigatePage={(targetId) => {
-                            const targetIndex = pages.findIndex((p) => p.id === targetId);
-                            if (targetIndex >= 0) {
-                              setPageGalleryOpen(false);
-                              setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
-                              setActivePageIndex(targetIndex);
-                            }
-                          }}
-                        />
-                      )}
-                      {activePage.id === "calendar" && <CalendarWidget language={language} />}
-                      {activePage.id === "music" && (
-                        <MusicWidget
-                          media={media}
-                          lyricsOpen={lyricsOpen}
-                          lyricsLines={activeLyricsLines}
-                          onToggleLyrics={() => setLyricsOpen((v) => !v)}
-                          onCommand={(cmd) => {
-                            void sendMediaCommand(cmd).then((next) => next && setMedia(next));
-                          }}
-                          onSeek={(pos) => {
-                            void seekMedia(pos).then((next) => next && setMedia(next));
-                          }}
-                          onVolumeChange={(vol) => {
-                            void setSystemVolume(vol).then((next) => next && setMedia(next));
-                          }}
-                          onSelectSession={(appId) => {
-                            void selectMediaSession(appId).then((next) => next && setMedia(next));
-                          }}
-                        />
-                      )}
-
-                      {activePage.id === "todo" && (
-                        <TodoWidget
-                          tasks={tasks}
-                          onAdd={(title, dueAt) => {
-                            void tasksAdd(title, dueAt).then((updated) => {
-                              if (updated.length > 0 || isTauriRuntime()) {
-                                setTasks(updated);
-                              } else {
-                                setTasks((prev) => [
-                                  {
-                                    id: Date.now(),
-                                    title,
-                                    done: false,
-                                    due_at: dueAt ?? null,
-                                    created_at: new Date().toISOString(),
-                                  },
-                                  ...prev,
-                                ]);
-                              }
-                            });
-                          }}
-                          onToggle={(id) => {
-                            void tasksToggle(id).then((updated) => {
-                              if (isTauriRuntime()) {
-                                setTasks(updated);
-                              } else {
-                                setTasks((prev) =>
-                                  prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-                                );
-                              }
-                            });
-                          }}
-                          onDelete={(id) => {
-                            void tasksDelete(id).then((updated) => {
-                              if (isTauriRuntime()) {
-                                setTasks(updated);
-                              } else {
-                                setTasks((prev) => prev.filter((t) => t.id !== id));
-                              }
-                            });
-                          }}
-                        />
-                      )}
-
-                      {activePage.id === "water" && (
-                        <WaterWidget
-                          summary={waterSummary}
-                          servingMl={250}
-                          remindersEnabled={waterReminders}
-                          onDrink={(ml) => {
-                            void waterLog(ml, waterGoalMl, 4).then((w) => {
-                              if (w) {
-                                setWaterSummary(w);
-                              } else {
-                                const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
-                                const pct = (nextTotal / waterGoalMl) * 100;
-                                setWaterSummary({
-                                  today_ml: nextTotal,
-                                  goal_ml: waterGoalMl,
-                                  percentage: pct,
-                                  goal_reached: pct >= 100,
-                                  last_entry_id: Date.now(),
-                                  weekly: [],
-                                });
-                              }
-                            });
-                          }}
-                          onUndo={(entryId) => {
-                            void waterUndo(entryId, waterGoalMl, 4).then(
-                              (w) => w && setWaterSummary(w),
-                            );
-                          }}
-                          onToggleReminders={() => setWaterReminders((v) => !v)}
-                          onChangeGoal={(goal) => {
-                            setWaterGoalOverride(goal);
-                            void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
-                          }}
-                        />
-                      )}
-
-                      {activePage.id === "prayer" && (
-                        <PrayerWidget
-                          schedule={prayerSchedule}
-                          cities={prayerCities}
-                          language={prayerLang}
-                          onSelectCity={(cityId) => {
-                            void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
-                          }}
-                          onToggleLanguage={() =>
-                            setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
-                          }
-                        />
-                      )}
-
-                      {activePage.id === "pomodoro" && (
-                        <PomodoroWidget
-                          pomodoro={pomodoro}
-                          onToggle={() => {
-                            void pomodoroToggle().then((p) => p && setPomodoro(p));
-                          }}
-                          onSkip={() => {
-                            void pomodoroSkip().then((p) => p && setPomodoro(p));
-                          }}
-                          onReset={() => {
-                            void pomodoroReset().then((p) => p && setPomodoro(p));
-                          }}
-                        />
-                      )}
-
-                      {activePage.id === "shelf" && (
-                        <ShelfWidget
-                          items={shelfItems}
-                          onAdd={(kind, val) => {
-                            void shelfAdd(kind, val).then((items) => {
-                              if (isTauriRuntime()) {
-                                setShelfItems(items);
-                              } else {
-                                setShelfItems((prev) => [
-                                  {
-                                    id: Date.now(),
-                                    kind,
-                                    path_or_text: val,
-                                    display_name: val.slice(0, 40),
-                                    available: true,
-                                    added_at: new Date().toISOString(),
-                                  },
-                                  ...prev,
-                                ]);
-                              }
-                            });
-                          }}
-                          onOpen={(target) => {
-                            void shelfOpen(target);
-                          }}
-                          onRemove={(id) => {
-                            void shelfRemove(id).then((items) => {
-                              if (isTauriRuntime()) {
-                                setShelfItems(items);
-                              } else {
-                                setShelfItems((prev) => prev.filter((i) => i.id !== id));
-                              }
-                            });
-                          }}
-                          onClear={() => {
-                            void shelfClear().then(() => setShelfItems([]));
-                          }}
-                        />
-                      )}
-
-                      {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
-                    </motion.div>
-                  </AnimatePresence>
-
-                  {pageGalleryOpen && (
-                    <div
-                      role="region"
-                      aria-label={isBn ? "সব পেজ গ্যালারি" : "All Pages Gallery"}
-                      className="absolute inset-0 z-30 grid grid-cols-4 gap-1.5 p-0.5"
-                      style={{ backgroundColor: "var(--surface)" }}
-                    >
-                      {pages.map((page, index) => {
-                        const active = index === safePageIndex;
-                        return (
-                          <button
-                            key={page.id}
-                            type="button"
-                            onClick={() => {
-                              setSlideDirection(index >= safePageIndex ? 1 : -1);
-                              setActivePageIndex(index);
-                              setPageGalleryOpen(false);
-                            }}
-                            className="flex cursor-pointer items-center gap-1.5 overflow-hidden border-0 px-2.5 py-1.5 text-left transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                            style={{
-                              backgroundColor: active
-                                ? "var(--surface-button)"
-                                : "var(--surface-raised)",
-                              borderRadius: "12px",
-                              border: active
-                                ? `1px solid ${page.accentVar}`
-                                : "1px solid var(--hairline)",
-                              color: "var(--text-primary)",
-                            }}
-                          >
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: page.accentVar }}
-                            />
-                            <span className="type-caption truncate font-medium">
-                              {page.titleLead}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  onMouseEnter={() => setDockHovered(true)}
-                  onMouseLeave={() => setDockHovered(false)}
-                  className="relative flex min-h-[24px] items-center justify-center px-6"
-                >
-                  {dockHovered ? (
-                    <motion.div
-                      key="shortcut-dock"
-                      initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={
-                        prefersReducedMotion
-                          ? { duration: 0.08 }
-                          : { type: "spring", stiffness: 480, damping: 30 }
-                      }
-                      role="navigation"
-                      aria-label={isBn ? "কুইক পেজ শর্টকাট" : "Quick page shortcuts"}
-                      className="flex items-center gap-1 rounded-full px-2.5 py-1 shadow-lg"
-                      style={{
-                        backgroundColor: "var(--surface-raised)",
-                        border: "1px solid var(--hairline-top)",
-                      }}
-                    >
-                      {pages.map((page, index) => {
-                        const active = index === safePageIndex && !pageGalleryOpen;
-                        const icon =
-                          page.id === "control" ? (
-                            <GridIcon size={13} />
-                          ) : page.id === "music" ? (
-                            <MusicNoteIcon size={13} />
-                          ) : page.id === "calendar" ? (
-                            <CalendarIcon size={13} />
-                          ) : page.id === "todo" ? (
-                            <CheckListIcon size={13} />
-                          ) : page.id === "water" ? (
-                            <DropletIcon size={13} />
-                          ) : page.id === "prayer" ? (
-                            <MoonIcon size={13} />
-                          ) : page.id === "pomodoro" ? (
-                            <TimerIcon size={13} />
-                          ) : page.id === "shelf" ? (
-                            <InboxIcon size={13} />
-                          ) : (
-                            <BoltIcon size={13} />
-                          );
-                        return (
-                          <button
-                            key={page.id}
-                            type="button"
-                            aria-label={`${page.titleLead} ${page.titleAccent}`.trim()}
-                            title={`${page.titleLead} ${page.titleAccent}`.trim()}
-                            onClick={() => {
-                              setPageGalleryOpen(false);
-                              setSlideDirection(index >= safePageIndex ? 1 : -1);
-                              setActivePageIndex(index);
-                            }}
-                            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                            style={{
-                              backgroundColor: active ? "rgba(255,255,255,0.08)" : "transparent",
-                              color: active ? page.accentVar : "var(--text-secondary)",
-                            }}
-                          >
-                            {icon}
-                          </button>
-                        );
-                      })}
-                      <span className="mx-0.5 h-3.5 w-px bg-white/15" aria-hidden="true" />
-                      <button
-                        type="button"
-                        aria-label={msg.pill.openSettings}
-                        title={msg.pill.openSettings}
-                        onClick={() => {
-                          if (onOpenSettings) {
-                            onOpenSettings();
-                          } else {
-                            void openSettingsWindow();
-                          }
+                  <div className="relative flex min-h-0 flex-1 items-center overflow-hidden">
+                    <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
+                      <motion.div
+                        key={activePage.id}
+                        custom={slideDirection}
+                        variants={{
+                          enter: (direction: number) => ({
+                            x: prefersReducedMotion ? 0 : direction > 0 ? 60 : -60,
+                            opacity: 0,
+                            scale: 0.98,
+                          }),
+                          center: {
+                            x: 0,
+                            opacity: 1,
+                            scale: 1,
+                          },
+                          exit: (direction: number) => ({
+                            x: prefersReducedMotion ? 0 : direction > 0 ? -60 : 60,
+                            opacity: 0,
+                            scale: 0.98,
+                          }),
                         }}
-                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                        style={{ color: "var(--text-secondary)" }}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
+                        className="flex h-full w-full items-center"
                       >
-                        <SettingsIcon size={13} />
-                      </button>
-                    </motion.div>
-                  ) : (
-                    <div className="flex items-center justify-center gap-1.5">
-                      {(pages.length <= 6
-                        ? pages.map((page, index) => ({ page, index }))
-                        : (() => {
-                            const maxDots = 5;
-                            const start = Math.min(
-                              Math.max(0, safePageIndex - 2),
-                              Math.max(0, pages.length - maxDots),
-                            );
-                            return pages
-                              .slice(start, start + maxDots)
-                              .map((page, offset) => ({ page, index: start + offset }));
-                          })()
-                      ).map(({ page, index }) => {
-                        const active = index === safePageIndex && !pageGalleryOpen;
-                        return (
-                          <button
-                            key={page.id}
-                            type="button"
-                            aria-label={`Page ${index + 1}`}
-                            onClick={() => {
-                              setPageGalleryOpen(false);
-                              setActivePageIndex(index);
-                            }}
-                            className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                            style={{
-                              width: active ? "18px" : "6px",
-                              backgroundColor: active
-                                ? activePage.accentVar
-                                : "var(--text-tertiary)",
+                        {activePage.id === "control" && (
+                          <ControlPanelWidget
+                            media={media}
+                            pomodoro={pomodoro}
+                            waterGoalMl={initialWaterGoalMl}
+                            cameraActive={privacyDevices[0]}
+                            micActive={privacyDevices[1]}
+                            language={language}
+                            onPomodoroChange={(nextPom) => setPomodoro(nextPom)}
+                            onNavigatePage={(targetId) => {
+                              const targetIndex = pages.findIndex((p) => p.id === targetId);
+                              if (targetIndex >= 0) {
+                                setPageGalleryOpen(false);
+                                setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
+                                setActivePageIndex(targetIndex);
+                              }
                             }}
                           />
-                        );
-                      })}
-                      {pages.length > 6 && (
+                        )}
+                        {activePage.id === "calendar" && (
+                          <motion.div
+                            layoutId={prefersReducedMotion ? undefined : "home-card-next"}
+                            className="h-full w-full"
+                          >
+                            <CalendarWidget language={language} />
+                          </motion.div>
+                        )}
+                        {activePage.id === "music" && (
+                          <motion.div
+                            layoutId={prefersReducedMotion ? undefined : "home-card-music"}
+                            className="h-full w-full"
+                          >
+                            <MusicWidget
+                              media={media}
+                              lyricsOpen={lyricsOpen}
+                              lyricsLines={activeLyricsLines}
+                              onToggleLyrics={() => setLyricsOpen((v) => !v)}
+                              onCommand={(cmd) => {
+                                void sendMediaCommand(cmd).then((next) => next && setMedia(next));
+                              }}
+                              onSeek={(pos) => {
+                                void seekMedia(pos).then((next) => next && setMedia(next));
+                              }}
+                              onVolumeChange={(vol) => {
+                                void setSystemVolume(vol).then((next) => next && setMedia(next));
+                              }}
+                              onSelectSession={(appId) => {
+                                void selectMediaSession(appId).then(
+                                  (next) => next && setMedia(next),
+                                );
+                              }}
+                            />
+                          </motion.div>
+                        )}
+
+                        {activePage.id === "todo" && (
+                          <TodoWidget
+                            tasks={tasks}
+                            onAdd={(title, dueAt) => {
+                              void tasksAdd(title, dueAt).then((updated) => {
+                                if (updated.length > 0 || isTauriRuntime()) {
+                                  setTasks(updated);
+                                } else {
+                                  setTasks((prev) => [
+                                    {
+                                      id: Date.now(),
+                                      title,
+                                      done: false,
+                                      due_at: dueAt ?? null,
+                                      created_at: new Date().toISOString(),
+                                    },
+                                    ...prev,
+                                  ]);
+                                }
+                              });
+                            }}
+                            onToggle={(id) => {
+                              void tasksToggle(id).then((updated) => {
+                                if (isTauriRuntime()) {
+                                  setTasks(updated);
+                                } else {
+                                  setTasks((prev) =>
+                                    prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+                                  );
+                                }
+                              });
+                            }}
+                            onDelete={(id) => {
+                              void tasksDelete(id).then((updated) => {
+                                if (isTauriRuntime()) {
+                                  setTasks(updated);
+                                } else {
+                                  setTasks((prev) => prev.filter((t) => t.id !== id));
+                                }
+                              });
+                            }}
+                          />
+                        )}
+
+                        {activePage.id === "water" && (
+                          <motion.div
+                            layoutId={prefersReducedMotion ? undefined : "home-card-water"}
+                            className="h-full w-full"
+                          >
+                            <WaterWidget
+                              summary={waterSummary}
+                              servingMl={250}
+                              remindersEnabled={waterReminders}
+                              onDrink={(ml) => {
+                                void waterLog(ml, waterGoalMl, 4).then((w) => {
+                                  if (w) {
+                                    setWaterSummary(w);
+                                  } else {
+                                    const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
+                                    const pct = (nextTotal / waterGoalMl) * 100;
+                                    setWaterSummary({
+                                      today_ml: nextTotal,
+                                      goal_ml: waterGoalMl,
+                                      percentage: pct,
+                                      goal_reached: pct >= 100,
+                                      last_entry_id: Date.now(),
+                                      weekly: [],
+                                    });
+                                  }
+                                });
+                              }}
+                              onUndo={(entryId) => {
+                                void waterUndo(entryId, waterGoalMl, 4).then(
+                                  (w) => w && setWaterSummary(w),
+                                );
+                              }}
+                              onToggleReminders={() => setWaterReminders((v) => !v)}
+                              onChangeGoal={(goal) => {
+                                setWaterGoalOverride(goal);
+                                void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
+                              }}
+                            />
+                          </motion.div>
+                        )}
+
+                        {activePage.id === "prayer" && (
+                          <PrayerWidget
+                            schedule={prayerSchedule}
+                            cities={prayerCities}
+                            language={prayerLang}
+                            onSelectCity={(cityId) => {
+                              void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
+                            }}
+                            onToggleLanguage={() =>
+                              setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
+                            }
+                          />
+                        )}
+
+                        {activePage.id === "pomodoro" && (
+                          <PomodoroWidget
+                            pomodoro={pomodoro}
+                            onToggle={() => {
+                              void pomodoroToggle().then((p) => p && setPomodoro(p));
+                            }}
+                            onSkip={() => {
+                              void pomodoroSkip().then((p) => p && setPomodoro(p));
+                            }}
+                            onReset={() => {
+                              void pomodoroReset().then((p) => p && setPomodoro(p));
+                            }}
+                          />
+                        )}
+
+                        {activePage.id === "shelf" && (
+                          <ShelfWidget
+                            items={shelfItems}
+                            onAdd={(kind, val) => {
+                              void shelfAdd(kind, val).then((items) => {
+                                if (isTauriRuntime()) {
+                                  setShelfItems(items);
+                                } else {
+                                  setShelfItems((prev) => [
+                                    {
+                                      id: Date.now(),
+                                      kind,
+                                      path_or_text: val,
+                                      display_name: val.slice(0, 40),
+                                      available: true,
+                                      added_at: new Date().toISOString(),
+                                    },
+                                    ...prev,
+                                  ]);
+                                }
+                              });
+                            }}
+                            onOpen={(target) => {
+                              void shelfOpen(target);
+                            }}
+                            onRemove={(id) => {
+                              void shelfRemove(id).then((items) => {
+                                if (isTauriRuntime()) {
+                                  setShelfItems(items);
+                                } else {
+                                  setShelfItems((prev) => prev.filter((i) => i.id !== id));
+                                }
+                              });
+                            }}
+                            onClear={() => {
+                              void shelfClear().then(() => setShelfItems([]));
+                            }}
+                          />
+                        )}
+
+                        {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
+                      </motion.div>
+                    </AnimatePresence>
+
+                    {pageGalleryOpen && (
+                      <div
+                        role="region"
+                        aria-label={isBn ? "সব পেজ গ্যালারি" : "All Pages Gallery"}
+                        className="absolute inset-0 z-30 grid grid-cols-4 gap-1.5 p-0.5"
+                        style={{ backgroundColor: "var(--surface)" }}
+                      >
+                        {pages.map((page, index) => {
+                          const active = index === safePageIndex;
+                          return (
+                            <button
+                              key={page.id}
+                              type="button"
+                              onClick={() => {
+                                setSlideDirection(index >= safePageIndex ? 1 : -1);
+                                setActivePageIndex(index);
+                                setPageGalleryOpen(false);
+                              }}
+                              className="flex cursor-pointer items-center gap-1.5 overflow-hidden border-0 px-2.5 py-1.5 text-left transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                              style={{
+                                backgroundColor: active
+                                  ? "var(--surface-button)"
+                                  : "var(--surface-raised)",
+                                borderRadius: "12px",
+                                border: active
+                                  ? `1px solid ${page.accentVar}`
+                                  : "1px solid var(--hairline)",
+                                color: "var(--text-primary)",
+                              }}
+                            >
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: page.accentVar }}
+                              />
+                              <span className="type-caption truncate font-medium">
+                                {page.titleLead}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    onMouseEnter={() => setDockHovered(true)}
+                    onMouseLeave={() => setDockHovered(false)}
+                    className="relative flex min-h-[24px] items-center justify-center px-6"
+                  >
+                    {dockHovered ? (
+                      <motion.div
+                        key="shortcut-dock"
+                        initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={
+                          prefersReducedMotion
+                            ? { duration: 0.08 }
+                            : { type: "spring", stiffness: 480, damping: 30 }
+                        }
+                        role="navigation"
+                        aria-label={isBn ? "কুইক পেজ শর্টকাট" : "Quick page shortcuts"}
+                        className="flex items-center gap-1 rounded-full px-2.5 py-1 shadow-lg"
+                        style={{
+                          backgroundColor: "var(--surface-raised)",
+                          border: "1px solid var(--hairline-top)",
+                        }}
+                      >
+                        {pages.map((page, index) => {
+                          const active = index === safePageIndex && !pageGalleryOpen;
+                          const icon =
+                            page.id === "control" ? (
+                              <GridIcon size={13} />
+                            ) : page.id === "music" ? (
+                              <MusicNoteIcon size={13} />
+                            ) : page.id === "calendar" ? (
+                              <CalendarIcon size={13} />
+                            ) : page.id === "todo" ? (
+                              <CheckListIcon size={13} />
+                            ) : page.id === "water" ? (
+                              <DropletIcon size={13} />
+                            ) : page.id === "prayer" ? (
+                              <MoonIcon size={13} />
+                            ) : page.id === "pomodoro" ? (
+                              <TimerIcon size={13} />
+                            ) : page.id === "shelf" ? (
+                              <InboxIcon size={13} />
+                            ) : (
+                              <BoltIcon size={13} />
+                            );
+                          return (
+                            <button
+                              key={page.id}
+                              type="button"
+                              aria-label={`${page.titleLead} ${page.titleAccent}`.trim()}
+                              title={`${page.titleLead} ${page.titleAccent}`.trim()}
+                              onClick={() => {
+                                setPageGalleryOpen(false);
+                                setSlideDirection(index >= safePageIndex ? 1 : -1);
+                                setActivePageIndex(index);
+                              }}
+                              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                              style={{
+                                backgroundColor: active ? "rgba(255,255,255,0.08)" : "transparent",
+                                color: active ? page.accentVar : "var(--text-secondary)",
+                              }}
+                            >
+                              {icon}
+                            </button>
+                          );
+                        })}
+                        <span className="mx-0.5 h-3.5 w-px bg-white/15" aria-hidden="true" />
                         <button
                           type="button"
-                          aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
-                          title={isBn ? "সব পেজ দেখুন" : "All pages"}
-                          aria-expanded={pageGalleryOpen}
-                          onClick={() => setPageGalleryOpen((v) => !v)}
-                          className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                          style={{
-                            backgroundColor: "transparent",
-                            color: pageGalleryOpen
-                              ? "var(--text-primary)"
-                              : "var(--text-secondary)",
+                          aria-label={msg.pill.openSettings}
+                          title={msg.pill.openSettings}
+                          onClick={() => {
+                            if (onOpenSettings) {
+                              onOpenSettings();
+                            } else {
+                              void openSettingsWindow();
+                            }
                           }}
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                          style={{ color: "var(--text-secondary)" }}
                         >
-                          <GridIcon size={10} />
+                          <SettingsIcon size={13} />
                         </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                      </motion.div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {(pages.length <= 6
+                          ? pages.map((page, index) => ({ page, index }))
+                          : (() => {
+                              const maxDots = 5;
+                              const start = Math.min(
+                                Math.max(0, safePageIndex - 2),
+                                Math.max(0, pages.length - maxDots),
+                              );
+                              return pages
+                                .slice(start, start + maxDots)
+                                .map((page, offset) => ({ page, index: start + offset }));
+                            })()
+                        ).map(({ page, index }) => {
+                          const active = index === safePageIndex && !pageGalleryOpen;
+                          return (
+                            <button
+                              key={page.id}
+                              type="button"
+                              aria-label={`Page ${index + 1}`}
+                              onClick={() => {
+                                setPageGalleryOpen(false);
+                                setActivePageIndex(index);
+                              }}
+                              className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                              style={{
+                                width: active ? "18px" : "6px",
+                                backgroundColor: active
+                                  ? activePage.accentVar
+                                  : "var(--text-tertiary)",
+                              }}
+                            />
+                          );
+                        })}
+                        {pages.length > 6 && (
+                          <button
+                            type="button"
+                            aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
+                            title={isBn ? "সব পেজ দেখুন" : "All pages"}
+                            aria-expanded={pageGalleryOpen}
+                            onClick={() => setPageGalleryOpen((v) => !v)}
+                            className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                            style={{
+                              backgroundColor: "transparent",
+                              color: pageGalleryOpen
+                                ? "var(--text-primary)"
+                                : "var(--text-secondary)",
+                            }}
+                          >
+                            <GridIcon size={10} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </LayoutGroup>
         </div>
       </motion.div>
     </div>

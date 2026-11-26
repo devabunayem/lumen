@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub mod sounds;
+
 pub const DEFAULT_MEDIA_ACCENT: &str = "#0A84FF";
 
 /// Summary entry for multi-session switching (`FR-MUS-7`).

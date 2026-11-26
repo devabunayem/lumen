@@ -1,13 +1,15 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use lumen_core::{
     IslandEvent, IslandMachine, IslandSnapshot, LumenSettings, PomodoroController, PomodoroPhase,
     PomodoroSnapshot,
 };
+use lumen_media::sounds::{SoundSilenceContext, UiSoundName, try_play_ui_sound};
 use lumen_media::{
     LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_mic_muted,
     get_system_volume, parse_lrc_lines, read_media_state, seek_media, send_media_command,
@@ -19,15 +21,22 @@ use lumen_notify::{
 };
 use lumen_plugins::{LoadedPlugin, discover_plugins};
 use lumen_prayer::{
-    BANGLADESH_CITIES, PrayerCityPreset, PrayerConfig, PrayerSchedule, compute_prayer_schedule,
+    BANGLADESH_CITIES, CalculationMethod, Madhab, PrayerCityPreset, PrayerConfig, PrayerSchedule,
+    compute_prayer_schedule,
 };
-use lumen_storage::{CalendarEvent, ShelfItem, StorageRepo, TaskItem, WaterSummary};
+use lumen_storage::{
+    CalendarEvent, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState, WaterSummary,
+};
 use lumen_windows::{
-    GlobalHotkeyManager, HotkeyAction, HudEvent, acquire_single_instance_mutex, battery_status,
-    capture_screen_to_png, compute_pill_screen_rect, compute_top_center_position,
-    cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
-    lock_workstation, ocr_screen_to_clipboard, open_shell_target, privacy_device_status,
-    set_autostart_enabled, set_click_through, set_window_bounds_atomic, set_window_pill_region,
+    ClipboardChipSnapshot, GlobalHotkeyManager, HotkeyAction, HudEvent, OpenMeteoWeather,
+    acquire_single_instance_mutex, battery_status, capture_screen_to_png, check_dev_ports,
+    classify_and_mask_clipboard, clear_clipboard_if_matching, compute_pill_screen_rect,
+    compute_top_center_position, cursor_screen_pos, fetch_open_meteo_weather,
+    get_windows_location_opt_in, is_autostart_enabled, is_caps_lock_on, is_keep_awake,
+    is_other_app_fullscreen, lock_workstation, ocr_screen_to_clipboard, open_shell_target,
+    privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
+    set_click_through, set_keep_awake, set_window_bounds_atomic, set_window_pill_region,
+    toggle_radio_kind, write_clipboard_text,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -37,8 +46,8 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-const CANVAS_WIN_W: f64 = 660.0;
-const CANVAS_WIN_H: f64 = 220.0;
+const CANVAS_WIN_W: f64 = 1220.0;
+const CANVAS_WIN_H: f64 = 612.0;
 
 #[derive(Debug, Clone, Copy)]
 struct IslandRuntimeConfig {
@@ -47,6 +56,7 @@ struct IslandRuntimeConfig {
     width_logical: f64,
     height_logical: f64,
     top_offset_logical: f64,
+    corner_radius_logical: f64,
 }
 
 impl Default for IslandRuntimeConfig {
@@ -54,9 +64,10 @@ impl Default for IslandRuntimeConfig {
         Self {
             hide_in_fullscreen: true,
             visible: true,
-            width_logical: 180.0,
-            height_logical: 42.0,
+            width_logical: 184.0,
+            height_logical: 30.0,
             top_offset_logical: 0.0,
+            corner_radius_logical: 15.0,
         }
     }
 }
@@ -92,6 +103,28 @@ struct AppState {
     plugins_dir: PathBuf,
     surface_mode: Mutex<(bool, bool, bool)>,
     hotkeys: Mutex<Option<GlobalHotkeyManager>>,
+    home_visible: Arc<AtomicBool>,
+    clipboard_secret: Arc<Mutex<Option<(String, Instant)>>>,
+    is_fullscreen: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QuickTogglesState {
+    wifi: Option<bool>,
+    bluetooth: Option<bool>,
+    focus: bool,
+    mic_muted: bool,
+    mic_in_use: bool,
+    keep_awake: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DevPulseSnapshot {
+    ports: Vec<u16>,
+    primary_port: Option<u16>,
+    up: bool,
 }
 
 fn append_log_line(log_dir: &Path, line: &str) {
@@ -176,9 +209,9 @@ fn recenter_window(
     base_height: f64,
     settings: &LumenSettings,
 ) {
-    let mult = settings.scale_multiplier();
-    let logical_width = (base_width * mult).round();
-    let logical_height = (base_height * mult).round();
+    // Keep canvas zero-resize across scale changes: fits 150% Home (1140x564) + 16px margin + ears.
+    let logical_width = base_width.round();
+    let logical_height = base_height.round();
 
     if let Some(monitor) = pick_target_monitor(window, settings) {
         let monitor_pos = monitor.position();
@@ -231,6 +264,7 @@ fn dispatch_island_event(
     Ok(guard.snapshot())
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 fn sync_pill_bounds(
     width: f64,
@@ -238,6 +272,8 @@ fn sync_pill_bounds(
     top_offset: f64,
     visible: bool,
     hide_in_fullscreen: bool,
+    corner_radius: Option<f64>,
+    home_visible: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut guard = state
@@ -249,6 +285,11 @@ fn sync_pill_bounds(
     guard.top_offset_logical = top_offset;
     guard.visible = visible;
     guard.hide_in_fullscreen = hide_in_fullscreen;
+    guard.corner_radius_logical =
+        corner_radius.unwrap_or(if height <= 40.0 { height * 0.5 } else { 24.0 });
+    if let Some(hv) = home_visible {
+        state.home_visible.store(hv, Ordering::Relaxed);
+    }
     Ok(())
 }
 
@@ -868,6 +909,260 @@ fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
     discover_plugins(&state.plugins_dir)
 }
 
+#[tauri::command]
+fn play_ui_sound(name: String, state: State<'_, AppState>) -> Result<bool, String> {
+    let Some(sound) = UiSoundName::from_str_name(&name) else {
+        return Ok(false);
+    };
+    let settings = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
+    let focus_active = state
+        .pomodoro
+        .lock()
+        .map(|p| {
+            let s = p.snapshot();
+            s.running && matches!(s.phase, PomodoroPhase::Focus)
+        })
+        .unwrap_or(false);
+    let (_, mic_in_use) = privacy_device_status();
+    let (_, windows_muted) = get_system_volume();
+    let quiet_hours = is_focus_assist_quiet();
+    let is_fs = state.is_fullscreen.load(Ordering::Relaxed);
+
+    let ctx = SoundSilenceContext {
+        enabled: settings.sound_enabled,
+        interface_enabled: settings.sound_interface,
+        reminders_enabled: settings.sound_reminders,
+        volume_pct: settings.sound_volume,
+        mic_or_call_active: mic_in_use,
+        is_fullscreen: is_fs,
+        focus_session_active: focus_active,
+        windows_muted,
+        quiet_hours_active: quiet_hours,
+    };
+    Ok(try_play_ui_sound(sound, &ctx))
+}
+
+#[tauri::command]
+async fn system_quick_toggles_state(
+    state: State<'_, AppState>,
+) -> Result<QuickTogglesState, String> {
+    let focus = is_focus_assist_quiet()
+        || state
+            .pomodoro
+            .lock()
+            .map(|p| {
+                let s = p.snapshot();
+                s.running && matches!(s.phase, PomodoroPhase::Focus)
+            })
+            .unwrap_or(false);
+    tokio::task::spawn_blocking(move || {
+        let (wifi, bluetooth) = quick_radios_status();
+        let mic_muted = get_mic_muted();
+        let (_, mic_in_use) = privacy_device_status();
+        let keep_awake = is_keep_awake();
+        QuickTogglesState {
+            wifi,
+            bluetooth,
+            focus,
+            mic_muted,
+            mic_in_use,
+            keep_awake,
+        }
+    })
+    .await
+    .map_err(|e| format!("toggles query error: {e}"))
+}
+
+#[tauri::command]
+async fn system_toggle_wifi() -> Result<bool, String> {
+    tokio::task::spawn_blocking(|| toggle_radio_kind(true))
+        .await
+        .map_err(|e| format!("wifi toggle error: {e}"))?
+}
+
+#[tauri::command]
+async fn system_toggle_bluetooth() -> Result<bool, String> {
+    tokio::task::spawn_blocking(|| toggle_radio_kind(false))
+        .await
+        .map_err(|e| format!("bluetooth toggle error: {e}"))?
+}
+
+#[tauri::command]
+fn system_toggle_keep_awake(enabled: Option<bool>) -> bool {
+    set_keep_awake(enabled.unwrap_or_else(|| !is_keep_awake()))
+}
+
+#[tauri::command]
+fn prayer_set_method(
+    method: CalculationMethod,
+    madhab: Madhab,
+    state: State<'_, AppState>,
+) -> Result<PrayerSchedule, String> {
+    let mut cfg = state
+        .prayer_config
+        .lock()
+        .map_err(|_| "prayer config mutex poisoned".to_string())?;
+    cfg.method = method;
+    cfg.madhab = madhab;
+    Ok(compute_prayer_schedule(Utc::now(), &cfg))
+}
+
+#[tauri::command]
+async fn weather_get_current(state: State<'_, AppState>) -> Result<OpenMeteoWeather, String> {
+    let (city_name, mut lat, mut lon) = {
+        let cfg = state
+            .prayer_config
+            .lock()
+            .map_err(|_| "prayer config mutex poisoned".to_string())?;
+        (cfg.city_name.clone(), cfg.latitude, cfg.longitude)
+    };
+    let location_opt_in = state
+        .settings
+        .lock()
+        .map(|s| s.location_opt_in)
+        .unwrap_or(false);
+
+    if location_opt_in
+        && let Ok(Ok((glat, glon))) = tokio::task::spawn_blocking(get_windows_location_opt_in).await
+    {
+        lat = glat;
+        lon = glon;
+    }
+
+    let city_key = city_name.to_ascii_lowercase();
+    if let Ok(Some((payload_json, fetched_at))) = state.storage.get_weather_cache(&city_key)
+        && let Ok(dt) = DateTime::parse_from_rfc3339(&fetched_at)
+        && (Utc::now() - dt.with_timezone(&Utc)).num_minutes() < 30
+        && let Ok(mut cached) = serde_json::from_str::<OpenMeteoWeather>(&payload_json)
+    {
+        cached.offline = false;
+        return Ok(cached);
+    }
+
+    let city_clone = city_name.clone();
+    match tokio::task::spawn_blocking(move || fetch_open_meteo_weather(&city_clone, lat, lon)).await
+    {
+        Ok(Ok(fresh)) => {
+            if let Ok(json) = serde_json::to_string(&fresh) {
+                let _ = state
+                    .storage
+                    .save_weather_cache(&city_key, &json, &fresh.fetched_at);
+            }
+            Ok(fresh)
+        }
+        _ => {
+            if let Ok(Some((payload_json, _))) = state.storage.get_weather_cache(&city_key)
+                && let Ok(mut stale) = serde_json::from_str::<OpenMeteoWeather>(&payload_json)
+            {
+                stale.offline = true;
+                return Ok(stale);
+            }
+            Err("weather unavailable offline".into())
+        }
+    }
+}
+
+#[tauri::command]
+fn tasbih_get(state: State<'_, AppState>) -> Result<TasbihState, String> {
+    state.storage.get_tasbih()
+}
+
+#[tauri::command]
+fn tasbih_increment(state: State<'_, AppState>) -> Result<TasbihState, String> {
+    state.storage.increment_tasbih()
+}
+
+#[tauri::command]
+fn tasbih_reset(state: State<'_, AppState>) -> Result<TasbihState, String> {
+    state.storage.reset_tasbih()
+}
+
+#[tauri::command]
+fn ledger_get(state: State<'_, AppState>) -> Result<TimeLedgerState, String> {
+    state.storage.get_active_ledger()
+}
+
+#[tauri::command]
+fn ledger_toggle(
+    client_name: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<TimeLedgerState, String> {
+    state.storage.toggle_ledger(client_name.as_deref())
+}
+
+#[tauri::command]
+fn ledger_reset(
+    client_name: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<TimeLedgerState, String> {
+    state.storage.reset_ledger(client_name.as_deref())
+}
+
+#[tauri::command]
+fn clipboard_get_latest(state: State<'_, AppState>) -> Result<ClipboardChipSnapshot, String> {
+    let raw = read_clipboard_text().unwrap_or_default();
+    let snap = classify_and_mask_clipboard(&raw);
+    if snap.has_content {
+        if snap.sensitive
+            && let Ok(mut guard) = state.clipboard_secret.lock()
+        {
+            *guard = Some((raw, Instant::now()));
+        }
+        return Ok(snap);
+    }
+    if let Ok(guard) = state.clipboard_secret.lock()
+        && let Some((ref stored, _)) = *guard
+    {
+        return Ok(classify_and_mask_clipboard(stored));
+    }
+    Ok(snap)
+}
+
+#[tauri::command]
+fn clipboard_copy_latest(state: State<'_, AppState>) -> Result<ClipboardChipSnapshot, String> {
+    if let Some(raw) = read_clipboard_text()
+        && !raw.trim().is_empty()
+    {
+        write_clipboard_text(&raw)?;
+        let snap = classify_and_mask_clipboard(&raw);
+        if snap.sensitive
+            && let Ok(mut guard) = state.clipboard_secret.lock()
+        {
+            *guard = Some((raw, Instant::now()));
+        }
+        return Ok(snap);
+    }
+    if let Ok(mut guard) = state.clipboard_secret.lock()
+        && let Some((ref stored, ref mut ts)) = *guard
+    {
+        write_clipboard_text(stored)?;
+        *ts = Instant::now();
+        return Ok(classify_and_mask_clipboard(stored));
+    }
+    Err("clipboard empty".into())
+}
+
+#[tauri::command]
+fn home_set_visible(visible: bool, state: State<'_, AppState>) {
+    state.home_visible.store(visible, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn system_battery_status() -> Option<(u8, bool)> {
+    battery_status()
+}
+
+#[tauri::command]
+fn monitor_auto_scale_factor(app: tauri::AppHandle, state: State<'_, AppState>) -> f64 {
+    let settings = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
+    if let Some(win) = app.get_webview_window("island")
+        && let Some(mon) = pick_target_monitor(&win, &settings)
+    {
+        return settings.scale_multiplier_for_width(mon.size().width as f64);
+    }
+    settings.scale_multiplier()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if !acquire_single_instance_mutex() {
@@ -911,6 +1206,10 @@ pub fn run() {
 
             let mut machine = IslandMachine::new();
             machine.set_minimal_mode(initial_settings.minimal_notch);
+            let home_visible = Arc::new(AtomicBool::new(false));
+            let clipboard_secret: Arc<Mutex<Option<(String, Instant)>>> =
+                Arc::new(Mutex::new(None));
+            let is_fullscreen = Arc::new(AtomicBool::new(false));
 
             let hotkey_app = app.handle().clone();
             let hotkeys = GlobalHotkeyManager::start(
@@ -942,6 +1241,9 @@ pub fn run() {
                 plugins_dir,
                 surface_mode: Mutex::new((false, false, false)),
                 hotkeys: Mutex::new(hotkeys),
+                home_visible: Arc::clone(&home_visible),
+                clipboard_secret: Arc::clone(&clipboard_secret),
+                is_fullscreen: Arc::clone(&is_fullscreen),
             });
 
             let Some(window) = app.get_webview_window("island") else {
@@ -1017,13 +1319,14 @@ pub fn run() {
                 let mut shrink_deadline: Option<tokio::time::Instant> = None;
 
                 loop {
-                    let (visible, w_logical, h_logical, top_logical) = {
+                    let (visible, w_logical, h_logical, top_logical, corner_logical) = {
                         let c = hit_config.lock().map(|cfg| *cfg).unwrap_or_default();
                         (
                             c.visible,
                             c.width_logical,
                             c.height_logical,
                             c.top_offset_logical,
+                            c.corner_radius_logical,
                         )
                     };
 
@@ -1047,11 +1350,7 @@ pub fn run() {
                         };
                         if is_expanding || applied_rgn.is_none() {
                             shrink_deadline = None;
-                            let corner_px = if h_logical <= 40.0 {
-                                (h_logical * 0.5 * scale).round() as i32
-                            } else {
-                                (24.0 * scale).round() as i32
-                            };
+                            let corner_px = (corner_logical * scale).round() as i32;
                             set_window_pill_region(
                                 own_hwnd, rel_x, top_px, pill_w_px, pill_h_px, corner_px, visible,
                             );
@@ -1062,11 +1361,7 @@ pub fn run() {
                             });
                             if tokio::time::Instant::now() >= *deadline {
                                 shrink_deadline = None;
-                                let corner_px = if h_logical <= 40.0 {
-                                    (h_logical * 0.5 * scale).round() as i32
-                                } else {
-                                    (24.0 * scale).round() as i32
-                                };
+                                let corner_px = (corner_logical * scale).round() as i32;
                                 set_window_pill_region(
                                     own_hwnd, rel_x, top_px, pill_w_px, pill_h_px, corner_px,
                                     visible,
@@ -1113,13 +1408,20 @@ pub fn run() {
             // Fullscreen & System HUD monitor loop at 2 Hz (FR-WIN-4, FR-HUD-1, NFR-PERF-3)
             let fs_window = window.clone();
             let fs_config = Arc::clone(&shared_config);
+            let fs_flag = Arc::clone(&is_fullscreen);
+            let fs_home_visible = Arc::clone(&home_visible);
+            let fs_clip_secret = Arc::clone(&clipboard_secret);
             tauri::async_runtime::spawn(async move {
                 let mut last_fullscreen = false;
                 let mut last_caps = is_caps_lock_on();
                 let mut last_vol = get_system_volume();
                 let mut last_battery = battery_status();
+                let mut tick_count: u64 = 0;
+                let mut last_clip_hash = String::new();
+                let mut last_dev_ports: Option<Vec<u16>> = None;
 
                 loop {
+                    tick_count = tick_count.wrapping_add(1);
                     let hide_in_fullscreen = fs_config
                         .lock()
                         .map(|c| c.hide_in_fullscreen)
@@ -1131,6 +1433,7 @@ pub fn run() {
                     };
                     if fullscreen != last_fullscreen {
                         last_fullscreen = fullscreen;
+                        fs_flag.store(fullscreen, Ordering::Relaxed);
                         let _ = fs_window.emit(
                             "lumen://fullscreen-changed",
                             FullscreenChangedPayload { active: fullscreen },
@@ -1176,7 +1479,9 @@ pub fn run() {
 
                     let bat = battery_status();
                     if let (Some((prev_pct, prev_chg)), Some((pct, chg))) = (last_battery, bat)
-                        && (chg != prev_chg || (pct <= 15 && prev_pct > 15))
+                        && (chg != prev_chg
+                            || (pct <= 10 && prev_pct > 10)
+                            || (pct <= 15 && prev_pct > 15))
                     {
                         let _ = fs_window.emit(
                             "lumen://hud-event",
@@ -1193,6 +1498,90 @@ pub fn run() {
                         );
                     }
                     last_battery = bat;
+
+                    // Clipboard OTP check every 1s & 30s privacy auto-clear
+                    if tick_count.is_multiple_of(2) && !fullscreen {
+                        let raw = read_clipboard_text().unwrap_or_default();
+                        let snap = classify_and_mask_clipboard(&raw);
+                        if snap.sensitive
+                            && snap.has_content
+                            && let Ok(mut guard) = fs_clip_secret.lock()
+                        {
+                            match *guard {
+                                Some((ref prev_secret, _)) if prev_secret == &raw => {}
+                                _ => *guard = Some((raw.clone(), Instant::now())),
+                            }
+                        }
+                        if snap.raw_hash != last_clip_hash {
+                            last_clip_hash = snap.raw_hash.clone();
+                            let _ = fs_window.emit("lumen://clipboard-updated", &snap);
+                        }
+                        let expired_secret = if let Ok(mut guard) = fs_clip_secret.lock() {
+                            if let Some((ref secret, started)) = *guard
+                                && started.elapsed() >= Duration::from_secs(30)
+                            {
+                                let owned = secret.clone();
+                                *guard = None;
+                                Some(owned)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        if let Some(secret) = expired_secret
+                            && clear_clipboard_if_matching(&secret)
+                        {
+                            last_clip_hash.clear();
+                            let _ = fs_window.emit(
+                                "lumen://clipboard-updated",
+                                ClipboardChipSnapshot {
+                                    display_text: String::new(),
+                                    sensitive: false,
+                                    raw_hash: String::new(),
+                                    has_content: false,
+                                },
+                            );
+                        }
+                    }
+
+                    // Dev Pulse check every 5s ONLY when Home is visible & not in fullscreen
+                    if tick_count.is_multiple_of(10)
+                        && fs_home_visible.load(Ordering::Relaxed)
+                        && !fullscreen
+                    {
+                        let ports = fs_window
+                            .try_state::<AppState>()
+                            .and_then(|s| s.settings.lock().ok().map(|g| g.dev_pulse_ports.clone()))
+                            .unwrap_or_else(|| vec![3000, 5173, 1420]);
+                        if let Ok(up_ports) =
+                            tokio::task::spawn_blocking(move || check_dev_ports(&ports)).await
+                            && last_dev_ports.as_ref() != Some(&up_ports)
+                        {
+                            last_dev_ports = Some(up_ports.clone());
+                            let _ = fs_window.emit(
+                                "lumen://dev-pulse-updated",
+                                DevPulseSnapshot {
+                                    primary_port: up_ports.first().copied(),
+                                    up: !up_ports.is_empty(),
+                                    ports: up_ports,
+                                },
+                            );
+                        }
+                    }
+
+                    // Prayer schedule recomputation every 60s when not hidden/fullscreen
+                    if tick_count.is_multiple_of(120)
+                        && !fullscreen
+                        && let Some(sched) = fs_window.try_state::<AppState>().and_then(|s| {
+                            s.prayer_config
+                                .lock()
+                                .ok()
+                                .map(|cfg| compute_prayer_schedule(Utc::now(), &cfg))
+                        })
+                    {
+                        let _ = fs_window.emit("lumen://prayer-updated", sched);
+                    }
 
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
@@ -1304,7 +1693,25 @@ pub fn run() {
             calendar_list,
             calendar_add,
             calendar_delete,
-            plugins_list
+            plugins_list,
+            play_ui_sound,
+            system_quick_toggles_state,
+            system_toggle_wifi,
+            system_toggle_bluetooth,
+            system_toggle_keep_awake,
+            prayer_set_method,
+            weather_get_current,
+            tasbih_get,
+            tasbih_increment,
+            tasbih_reset,
+            ledger_get,
+            ledger_toggle,
+            ledger_reset,
+            clipboard_get_latest,
+            clipboard_copy_latest,
+            home_set_visible,
+            system_battery_status,
+            monitor_auto_scale_factor
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

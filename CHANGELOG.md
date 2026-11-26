@@ -4,6 +4,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Home Page ("Day Arc + Living Glow", `760×376`):** Added the default `home` page (`page 0`) with a header quick-toggles row (`Wi-Fi`, `Bluetooth`, `Focus`, `Mic`, `Keep awake`, `Lock`), an interactive SVG `DayArc` (de Casteljau amber progress arc, prayer & Ramadan markers, Friday `Jumu'ah`, night-mode moon arc, event lanes, hover scrub cursor, `Full day / Next 3 h` zoom, Open-Meteo cached weather & Windows Location opt-in, `Tasbih` counter chip), 3 glass bento cards (`MusicCard` with wheel volume HUD & middle-click mute, `NextCard` with digit-roll countdowns, `WaterCard` with `+250 ml` tap & long-press picker) with shared-element `layoutId` morphs, optional status chips (`Focus`, `Time ledger`, OTP-masked 30s auto-clear `Clipboard`, and `Dev pulse` local port probe), 3-layer `Living Glow`, synthesized Win32 UI sounds (`play_ui_sound`, lazy 5s-idle stream, automatic silence rules), Bangla numerals option, and the `/dev/states` 20-state preview route.
+- **Fixed Canvas Size (`1220×612`):** Updated the zero-resize transparent overlay canvas to comfortably fit `150%` scaled Home (`1140×564`) plus margin with dynamic 30 Hz `SetWindowRgn` pass-through and Auto scale thresholds (`<=1440 -> 100%`, `1920+ -> 115%`, `2560+ -> 130%`).
+
 ### Fixed
 
 - **Responsive Fit Across All Notch Panels (`560×172`):** Adjusted `.type-display` (`28px`), `--capsule-height` (`28px`), and inner card/SVG heights across `MusicWidget`, `TodoWidget`, `WaterWidget`, `PomodoroWidget`, `PrayerWidget`, `ShelfWidget`, and `CalendarWidget` so all 7 panels fit cleanly inside the fixed `560×172` notch without vertical clipping.

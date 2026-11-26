@@ -1,4 +1,9 @@
-import type { IslandScaleSetting, ShapeStyle } from "../design/tokens";
+import {
+  resolveAutoScaleFactor,
+  resolveScaleFactor,
+  type IslandScaleSetting,
+  type ShapeStyle,
+} from "../design/tokens";
 
 export type MonitorMode = "primary" | "active" | "index";
 
@@ -24,6 +29,21 @@ export interface LumenSettings {
   hiddenPages: string[];
   waterGoalMl: number;
   mediaExclusions: string[];
+  soundEnabled: boolean;
+  soundVolume: number;
+  soundInterface: boolean;
+  soundReminders: boolean;
+  customAdhanPath: string | null;
+  locationOptIn: boolean;
+  reduceTransparency: boolean;
+  glowEnabled: boolean;
+  parallaxEnabled: boolean;
+  banglaDigits: boolean;
+  chipFocusEnabled: boolean;
+  chipLedgerEnabled: boolean;
+  chipClipboardEnabled: boolean;
+  chipDevPulseEnabled: boolean;
+  devPulsePorts: number[];
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -48,10 +68,35 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   hiddenPages: [],
   waterGoalMl: 1500,
   mediaExclusions: [],
+  soundEnabled: true,
+  soundVolume: 30,
+  soundInterface: true,
+  soundReminders: true,
+  customAdhanPath: null,
+  locationOptIn: false,
+  reduceTransparency: false,
+  glowEnabled: true,
+  parallaxEnabled: true,
+  banglaDigits: false,
+  chipFocusEnabled: true,
+  chipLedgerEnabled: true,
+  chipClipboardEnabled: true,
+  chipDevPulseEnabled: true,
+  devPulsePorts: [3000, 5173, 1420],
 };
 
-export function resolveSettingsScaleFactor(scale: LumenSettings["scale"]): number {
+export function resolveSettingsScaleFactor(
+  scale: LumenSettings["scale"],
+  autoScreenWidth?: number,
+): number {
   switch (String(scale)) {
+    case "auto":
+      return resolveScaleFactor(
+        "auto",
+        typeof autoScreenWidth === "number" ? resolveAutoScaleFactor(autoScreenWidth) : undefined,
+      );
+    case "100":
+      return 1;
     case "115":
       return 1.15;
     case "130":

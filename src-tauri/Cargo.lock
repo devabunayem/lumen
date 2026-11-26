@@ -1973,7 +1973,9 @@ dependencies = [
 name = "lumen-windows"
 version = "1.0.0"
 dependencies = [
+ "chrono",
  "serde",
+ "serde_json",
  "windows",
 ]
 

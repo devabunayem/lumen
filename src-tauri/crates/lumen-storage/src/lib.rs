@@ -47,7 +47,44 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     start_at TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS weather_cache (
+    city_key TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS time_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name TEXT NOT NULL,
+    elapsed_secs INTEGER NOT NULL DEFAULT 0,
+    running INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kv_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 ";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimeLedgerState {
+    pub id: i64,
+    pub client_name: String,
+    pub elapsed_secs: i64,
+    pub running: bool,
+    pub started_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TasbihState {
+    pub count: i64,
+    pub target: i64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarEvent {
@@ -578,6 +615,187 @@ impl StorageRepo {
         let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
         f(&conn)
     }
+
+    pub fn get_weather_cache(&self, city_key: &str) -> Result<Option<(String, String)>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.query_row(
+            "SELECT payload_json, fetched_at FROM weather_cache WHERE city_key = ?1",
+            params![city_key],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("query weather cache failed: {e}"))
+    }
+
+    pub fn save_weather_cache(
+        &self,
+        city_key: &str,
+        payload_json: &str,
+        fetched_at_rfc3339: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO weather_cache (city_key, payload_json, fetched_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(city_key) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                fetched_at = excluded.fetched_at",
+            params![city_key, payload_json, fetched_at_rfc3339],
+        )
+        .map_err(|e| format!("save weather cache failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn get_tasbih(&self) -> Result<TasbihState, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let count = conn
+            .query_row(
+                "SELECT value FROM kv_state WHERE key = 'tasbih_count'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| format!("query tasbih failed: {e}"))?
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(0);
+        let target = conn
+            .query_row(
+                "SELECT value FROM kv_state WHERE key = 'tasbih_target'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| format!("query tasbih target failed: {e}"))?
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(33);
+        Ok(TasbihState { count, target })
+    }
+
+    pub fn increment_tasbih(&self) -> Result<TasbihState, String> {
+        let current = self.get_tasbih()?;
+        let next_count = current.count + 1;
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO kv_state (key, value, updated_at) VALUES ('tasbih_count', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            params![next_count.to_string(), now],
+        )
+        .map_err(|e| format!("update tasbih failed: {e}"))?;
+        Ok(TasbihState {
+            count: next_count,
+            target: current.target,
+        })
+    }
+
+    pub fn reset_tasbih(&self) -> Result<TasbihState, String> {
+        let current = self.get_tasbih()?;
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO kv_state (key, value, updated_at) VALUES ('tasbih_count', '0', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = '0', updated_at = excluded.updated_at",
+            params![now],
+        )
+        .map_err(|e| format!("reset tasbih failed: {e}"))?;
+        Ok(TasbihState {
+            count: 0,
+            target: current.target,
+        })
+    }
+
+    pub fn get_active_ledger(&self) -> Result<TimeLedgerState, String> {
+        let now = Utc::now();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let existing: Option<TimeLedgerState> = conn
+            .query_row(
+                "SELECT id, client_name, elapsed_secs, running, started_at, updated_at
+                 FROM time_ledger ORDER BY id DESC LIMIT 1",
+                [],
+                |row| {
+                    Ok(TimeLedgerState {
+                        id: row.get(0)?,
+                        client_name: row.get(1)?,
+                        elapsed_secs: row.get(2)?,
+                        running: row.get::<_, i64>(3)? != 0,
+                        started_at: row.get(4)?,
+                        updated_at: row.get(5)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("query ledger failed: {e}"))?;
+
+        if let Some(mut item) = existing {
+            if item.running
+                && let Some(ref start_str) = item.started_at
+                && let Ok(dt) = DateTime::parse_from_rfc3339(start_str)
+            {
+                let live_delta = (now - dt.with_timezone(&Utc)).num_seconds().max(0);
+                item.elapsed_secs += live_delta;
+            }
+            return Ok(item);
+        }
+
+        let ts = now.to_rfc3339();
+        conn.execute(
+            "INSERT INTO time_ledger (client_name, elapsed_secs, running, started_at, updated_at)
+             VALUES (?1, 0, 0, NULL, ?2)",
+            params!["Client A", ts],
+        )
+        .map_err(|e| format!("seed ledger failed: {e}"))?;
+        let id = conn.last_insert_rowid();
+        Ok(TimeLedgerState {
+            id,
+            client_name: "Client A".into(),
+            elapsed_secs: 0,
+            running: false,
+            started_at: None,
+            updated_at: ts,
+        })
+    }
+
+    pub fn toggle_ledger(&self, client_name: Option<&str>) -> Result<TimeLedgerState, String> {
+        let current = self.get_active_ledger()?;
+        let now = Utc::now().to_rfc3339();
+        let next_client = client_name
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&current.client_name);
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        if current.running {
+            conn.execute(
+                "UPDATE time_ledger SET client_name = ?1, elapsed_secs = ?2, running = 0, started_at = NULL, updated_at = ?3 WHERE id = ?4",
+                params![next_client, current.elapsed_secs, now, current.id],
+            )
+            .map_err(|e| format!("pause ledger failed: {e}"))?;
+        } else {
+            conn.execute(
+                "UPDATE time_ledger SET client_name = ?1, running = 1, started_at = ?2, updated_at = ?2 WHERE id = ?3",
+                params![next_client, now, current.id],
+            )
+            .map_err(|e| format!("start ledger failed: {e}"))?;
+        }
+        drop(conn);
+        self.get_active_ledger()
+    }
+
+    pub fn reset_ledger(&self, client_name: Option<&str>) -> Result<TimeLedgerState, String> {
+        let current = self.get_active_ledger()?;
+        let now = Utc::now().to_rfc3339();
+        let next_client = client_name
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&current.client_name);
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "UPDATE time_ledger SET client_name = ?1, elapsed_secs = 0, running = 0, started_at = NULL, updated_at = ?2 WHERE id = ?3",
+            params![next_client, now, current.id],
+        )
+        .map_err(|e| format!("reset ledger failed: {e}"))?;
+        drop(conn);
+        self.get_active_ledger()
+    }
 }
 
 #[cfg(test)]
@@ -592,6 +810,9 @@ mod tests {
             "shelf_items",
             "lyrics_cache",
             "pomodoro_sessions",
+            "weather_cache",
+            "time_ledger",
+            "kv_state",
         ] {
             assert!(
                 INITIAL_SCHEMA_SQL.contains(table),
@@ -669,5 +890,33 @@ mod tests {
         repo.record_pomodoro_session("focus", 1500, true)
             .expect("record pomodoro");
         assert_eq!(repo.daily_focus_minutes(Utc::now()).expect("mins"), 25);
+    }
+
+    #[test]
+    fn persists_weather_cache_tasbih_and_ledger() {
+        let repo = StorageRepo::open_in_memory().expect("db");
+        repo.save_weather_cache("khulna", r#"{"tempC":29.0}"#, "2026-11-26T10:00:00Z")
+            .expect("save weather");
+        let cached = repo
+            .get_weather_cache("khulna")
+            .expect("get weather")
+            .expect("present");
+        assert!(cached.0.contains("29.0"));
+
+        let t0 = repo.get_tasbih().expect("tasbih0");
+        assert_eq!(t0.count, 0);
+        let t1 = repo.increment_tasbih().expect("inc");
+        assert_eq!(t1.count, 1);
+        let t_reset = repo.reset_tasbih().expect("reset");
+        assert_eq!(t_reset.count, 0);
+
+        let l0 = repo.get_active_ledger().expect("ledger0");
+        assert!(!l0.running);
+        let l1 = repo.toggle_ledger(Some("Client A")).expect("start");
+        assert!(l1.running);
+        assert_eq!(l1.client_name, "Client A");
+        let l2 = repo.reset_ledger(None).expect("reset ledger");
+        assert!(!l2.running);
+        assert_eq!(l2.elapsed_secs, 0);
     }
 }

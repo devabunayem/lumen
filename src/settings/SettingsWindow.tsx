@@ -19,6 +19,7 @@ import {
   notifyPushTest,
   notifySetConfig,
   pluginsList,
+  prayerSetMethod,
   settingsGet,
   settingsUpdate,
 } from "../lib/ipc";
@@ -896,6 +897,148 @@ export function SettingsWindow({
                       onChange={(v) => void commit({ ...settings, reducedMotionOverride: v })}
                     />
                   </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label={msg.settings.homeTab.reduceTransparency}
+                    hint="Use opaque card backgrounds without backdrop blur"
+                  >
+                    <AppleToggle
+                      checked={settings.reduceTransparency}
+                      onChange={(v) => void commit({ ...settings, reduceTransparency: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label={msg.settings.homeTab.glowEnabled}
+                    hint="Adaptive dawn, day, dusk, night, and album-art ambient glow"
+                  >
+                    <AppleToggle
+                      checked={settings.glowEnabled}
+                      onChange={(v) => void commit({ ...settings, glowEnabled: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label={msg.settings.homeTab.parallaxEnabled}
+                    hint="Gently shift ambient glows up to 12 px toward the pointer"
+                  >
+                    <AppleToggle
+                      checked={settings.parallaxEnabled}
+                      onChange={(v) => void commit({ ...settings, parallaxEnabled: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label={msg.settings.homeTab.banglaDigits}
+                    hint="Render clocks, countdowns, and hydration totals in Bangla digits"
+                  >
+                    <AppleToggle
+                      checked={settings.banglaDigits}
+                      onChange={(v) => void commit({ ...settings, banglaDigits: v })}
+                    />
+                  </AppleRow>
+                </div>
+              </AppleGroup>
+
+              <AppleGroup title="Sound Design">
+                <div className="p-4 space-y-4">
+                  <AppleRow
+                    label={msg.settings.homeTab.soundsEnabled}
+                    hint="Subtle synthesized UI tones — automatically silenced in calls, Focus, or mute"
+                  >
+                    <AppleToggle
+                      checked={settings.soundEnabled}
+                      onChange={(v) => void commit({ ...settings, soundEnabled: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-[13px] font-medium text-white">
+                        {msg.settings.homeTab.soundVolume}
+                      </div>
+                      <span className="text-xs font-mono text-[#0a84ff]">
+                        {settings.soundVolume}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={settings.soundVolume}
+                      onChange={(e) =>
+                        void commit({ ...settings, soundVolume: Number(e.target.value) })
+                      }
+                      className="mt-2 w-full accent-[#0a84ff]"
+                    />
+                  </div>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label={msg.settings.homeTab.soundInterface}
+                    hint="Expand, collapse, toggles, water drops, and arc scrub ticks"
+                  >
+                    <AppleToggle
+                      checked={settings.soundInterface}
+                      onChange={(v) => void commit({ ...settings, soundInterface: v })}
+                    />
+                  </AppleRow>
+
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+
+                  <AppleRow
+                    label={msg.settings.homeTab.soundReminders}
+                    hint="Prayer reminders and incoming alerts"
+                  >
+                    <AppleToggle
+                      checked={settings.soundReminders}
+                      onChange={(v) => void commit({ ...settings, soundReminders: v })}
+                    />
+                  </AppleRow>
+                </div>
+              </AppleGroup>
+
+              <AppleGroup title={msg.settings.homeTab.chipsGroup}>
+                <div className="p-4 space-y-4">
+                  <AppleRow label={msg.settings.homeTab.chipFocus}>
+                    <AppleToggle
+                      checked={settings.chipFocusEnabled}
+                      onChange={(v) => void commit({ ...settings, chipFocusEnabled: v })}
+                    />
+                  </AppleRow>
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+                  <AppleRow label={msg.settings.homeTab.chipLedger}>
+                    <AppleToggle
+                      checked={settings.chipLedgerEnabled}
+                      onChange={(v) => void commit({ ...settings, chipLedgerEnabled: v })}
+                    />
+                  </AppleRow>
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+                  <AppleRow label={msg.settings.homeTab.chipClipboard}>
+                    <AppleToggle
+                      checked={settings.chipClipboardEnabled}
+                      onChange={(v) => void commit({ ...settings, chipClipboardEnabled: v })}
+                    />
+                  </AppleRow>
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+                  <AppleRow label={msg.settings.homeTab.chipDevPulse}>
+                    <AppleToggle
+                      checked={settings.chipDevPulseEnabled}
+                      onChange={(v) => void commit({ ...settings, chipDevPulseEnabled: v })}
+                    />
+                  </AppleRow>
                 </div>
               </AppleGroup>
             </div>
@@ -1084,8 +1227,53 @@ export function SettingsWindow({
             </div>
           )}
 
+          {/* Section: PRAYER */}
+          {section === "prayer" && (
+            <div className="space-y-6">
+              <AppleGroup title="Prayer Times & Location">
+                <div className="p-4 space-y-4">
+                  <div>
+                    <div className="text-[13px] font-medium text-white mb-1.5">
+                      Calculation Method
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          ["karachi", "Karachi (Bangladesh)"],
+                          ["muslim_world_league", "MWL"],
+                          ["egyptian", "Egyptian"],
+                          ["umm_al_qura", "Umm al-Qura"],
+                          ["north_america", "ISNA"],
+                        ] as const
+                      ).map(([method, label]) => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => void prayerSetMethod(method, "hanafi")}
+                          className="rounded-lg bg-[#2c2c2e] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a3a3c] border-0 cursor-pointer"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="h-[1px] bg-[#2c2c2e]/50" />
+                  <AppleRow
+                    label={msg.settings.homeTab.locationOptIn}
+                    hint="When off, Day Arc and Weather use your selected manual city offline-first"
+                  >
+                    <AppleToggle
+                      checked={settings.locationOptIn}
+                      onChange={(v) => void commit({ ...settings, locationOptIn: v })}
+                    />
+                  </AppleRow>
+                </div>
+              </AppleGroup>
+            </div>
+          )}
+
           {/* Fallback for other widgets */}
-          {["widgets", "todo", "pomodoro", "prayer", "shelf", "hud"].includes(section) && (
+          {["widgets", "todo", "pomodoro", "shelf", "hud"].includes(section) && (
             <div className="space-y-6">
               <AppleGroup title={`${currentItem.label} Configuration`}>
                 <div className="p-4 text-xs text-[#8e8e93]">

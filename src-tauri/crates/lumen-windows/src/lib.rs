@@ -18,6 +18,137 @@ pub struct HudEvent {
     pub active: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardChipSnapshot {
+    pub display_text: String,
+    pub sensitive: bool,
+    pub raw_hash: String,
+    pub has_content: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenMeteoWeather {
+    pub temp_c: f64,
+    pub weather_code: i32,
+    pub condition: String,
+    pub precip_note: Option<String>,
+    pub city: String,
+    pub fetched_at: String,
+    pub offline: bool,
+}
+
+/// Detects OTP/password-like clipboard strings, masks them (e.g. `OTP 482 •••`), and flags auto-clear.
+#[must_use]
+pub fn classify_and_mask_clipboard(raw: &str) -> ClipboardChipSnapshot {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return ClipboardChipSnapshot {
+            display_text: String::new(),
+            sensitive: false,
+            raw_hash: String::new(),
+            has_content: false,
+        };
+    }
+
+    let hash = {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in trimmed.as_bytes() {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{h:016x}")
+    };
+
+    // Pure 4..8 digit OTP (or grouped `123 456` / `123-456`)
+    let compact: String = trimmed
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace() && *c != '-')
+        .collect();
+    if (4..=8).contains(&compact.len()) && compact.chars().all(|c| c.is_ascii_digit()) {
+        let prefix: String = compact.chars().take(3).collect();
+        return ClipboardChipSnapshot {
+            display_text: format!("OTP {prefix} •••"),
+            sensitive: true,
+            raw_hash: hash,
+            has_content: true,
+        };
+    }
+
+    // Extract 4..8 digit code adjacent to OTP / verification / code keywords
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("otp") || lower.contains("code") || lower.contains("verification") {
+        let digits: Vec<&str> = trimmed
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|s| (4..=8).contains(&s.len()))
+            .collect();
+        if let Some(code) = digits.first() {
+            let prefix: String = code.chars().take(3).collect();
+            return ClipboardChipSnapshot {
+                display_text: format!("OTP {prefix} •••"),
+                sensitive: true,
+                raw_hash: hash,
+                has_content: true,
+            };
+        }
+    }
+
+    // Token/password-like single-token secrets (e.g. API keys or mixed symbol+digit tokens >= 12 chars)
+    let is_single_token = !trimmed.chars().any(char::is_whitespace);
+    let has_secret_prefix = lower.starts_with("sk_")
+        || lower.starts_with("ghp_")
+        || lower.starts_with("glpat-")
+        || lower.starts_with("bearer ");
+    let has_upper = trimmed.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = trimmed.chars().any(|c| c.is_ascii_lowercase());
+    let has_digit = trimmed.chars().any(|c| c.is_ascii_digit());
+    let has_symbol = trimmed.chars().any(|c| !c.is_ascii_alphanumeric());
+    let looks_like_password = is_single_token
+        && trimmed.len() >= 10
+        && !trimmed.starts_with("http")
+        && (u8::from(has_upper) + u8::from(has_lower) + u8::from(has_digit) + u8::from(has_symbol)
+            >= 3);
+
+    if has_secret_prefix || looks_like_password {
+        let prefix: String = trimmed.chars().take(3).collect();
+        return ClipboardChipSnapshot {
+            display_text: format!("{prefix} •••"),
+            sensitive: true,
+            raw_hash: hash,
+            has_content: true,
+        };
+    }
+
+    let preview: String = trimmed.chars().take(24).collect();
+    ClipboardChipSnapshot {
+        display_text: if trimmed.chars().count() > 24 {
+            format!("{preview}…")
+        } else {
+            preview
+        },
+        sensitive: false,
+        raw_hash: hash,
+        has_content: true,
+    }
+}
+
+/// Checks local TCP dev ports (`127.0.0.1:port`) with a short non-blocking timeout.
+#[must_use]
+pub fn check_dev_ports(ports: &[u16]) -> Vec<u16> {
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+
+    ports
+        .iter()
+        .copied()
+        .filter(|port| {
+            let addr = SocketAddr::from(([127, 0, 0, 1], *port));
+            TcpStream::connect_timeout(&addr, Duration::from_millis(55)).is_ok()
+        })
+        .collect()
+}
+
 /// Action triggered by a registered global hotkey (`FR-WIN-6`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HotkeyAction {
@@ -709,6 +840,249 @@ mod win32 {
         Ok(())
     }
 
+    pub fn write_clipboard_text(text: &str) -> Result<(), String> {
+        copy_unicode_to_clipboard(text)
+    }
+
+    #[must_use]
+    pub fn read_clipboard_text() -> Option<String> {
+        use windows::Win32::System::DataExchange::{
+            CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        };
+        use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+
+        const CF_UNICODETEXT: u32 = 13;
+        unsafe {
+            if IsClipboardFormatAvailable(CF_UNICODETEXT).is_err() {
+                return None;
+            }
+            if OpenClipboard(None).is_err() {
+                return None;
+            }
+            let result = (|| {
+                let handle = GetClipboardData(CF_UNICODETEXT).ok()?;
+                let hmem = windows::Win32::Foundation::HGLOBAL(handle.0);
+                let ptr = GlobalLock(hmem);
+                if ptr.is_null() {
+                    return None;
+                }
+                let wide_ptr = ptr.cast::<u16>();
+                let mut len = 0usize;
+                while len < 4096 && *wide_ptr.add(len) != 0 {
+                    len += 1;
+                }
+                let slice = core::slice::from_raw_parts(wide_ptr, len);
+                let text = String::from_utf16_lossy(slice);
+                let _ = GlobalUnlock(hmem);
+                Some(text)
+            })();
+            let _ = CloseClipboard();
+            result
+        }
+    }
+
+    pub fn clear_clipboard_if_matching(expected_text: &str) -> bool {
+        use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard};
+
+        let Some(current) = read_clipboard_text() else {
+            return false;
+        };
+        if current.trim() != expected_text.trim() {
+            return false;
+        }
+        unsafe {
+            if OpenClipboard(None).is_err() {
+                return false;
+            }
+            let cleared = EmptyClipboard().is_ok();
+            let _ = CloseClipboard();
+            cleared
+        }
+    }
+
+    #[must_use]
+    pub fn quick_radios_status() -> (Option<bool>, Option<bool>) {
+        use windows::Devices::Radios::{Radio, RadioKind, RadioState};
+
+        let Ok(op) = Radio::GetRadiosAsync() else {
+            return (None, None);
+        };
+        let Ok(radios) = op.join() else {
+            return (None, None);
+        };
+        let mut wifi: Option<bool> = None;
+        let mut bt: Option<bool> = None;
+        for radio in radios {
+            let Ok(kind) = radio.Kind() else {
+                continue;
+            };
+            let is_on = radio.State().ok().map(|s| s == RadioState::On);
+            if kind == RadioKind::WiFi {
+                wifi = is_on;
+            } else if kind == RadioKind::Bluetooth {
+                bt = is_on;
+            }
+        }
+        (wifi, bt)
+    }
+
+    pub fn toggle_radio_kind(wifi: bool) -> Result<bool, String> {
+        use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
+
+        let _ = Radio::RequestAccessAsync()
+            .map_err(|e| format!("radio access request failed: {e}"))?
+            .join()
+            .map_err(|e| format!("radio access join failed: {e}"))?;
+        let radios = Radio::GetRadiosAsync()
+            .map_err(|e| format!("enumerate radios failed: {e}"))?
+            .join()
+            .map_err(|e| format!("enumerate radios join failed: {e}"))?;
+        let target_kind = if wifi {
+            RadioKind::WiFi
+        } else {
+            RadioKind::Bluetooth
+        };
+        for radio in radios {
+            if radio.Kind().ok() == Some(target_kind) {
+                let current = radio.State().unwrap_or(RadioState::Off);
+                let next = if current == RadioState::On {
+                    RadioState::Off
+                } else {
+                    RadioState::On
+                };
+                let status = radio
+                    .SetStateAsync(next)
+                    .map_err(|e| format!("set radio state failed: {e}"))?
+                    .join()
+                    .map_err(|e| format!("set radio state join failed: {e}"))?;
+                if status != RadioAccessStatus::Allowed {
+                    return Err("radio control denied by Windows".into());
+                }
+                return Ok(next == RadioState::On);
+            }
+        }
+        Err("requested radio adapter not found".into())
+    }
+
+    static KEEP_AWAKE_TX: std::sync::OnceLock<std::sync::mpsc::Sender<bool>> =
+        std::sync::OnceLock::new();
+    static KEEP_AWAKE_ACTIVE: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+
+    /// Controls Windows display/system idle sleep prevention on a persistent thread (`SetThreadExecutionState`).
+    pub fn set_keep_awake(enabled: bool) -> bool {
+        use std::sync::atomic::Ordering;
+        use windows::Win32::System::Power::{
+            ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, SetThreadExecutionState,
+        };
+
+        KEEP_AWAKE_ACTIVE.store(enabled, Ordering::Relaxed);
+        let tx = KEEP_AWAKE_TX.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<bool>();
+            let _ = std::thread::Builder::new()
+                .name("lumen-keep-awake".into())
+                .spawn(move || {
+                    while let Ok(on) = rx.recv() {
+                        unsafe {
+                            let flags = if on {
+                                ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED
+                            } else {
+                                ES_CONTINUOUS
+                            };
+                            let _ = SetThreadExecutionState(flags);
+                        }
+                    }
+                });
+            tx
+        });
+        let _ = tx.send(enabled);
+        enabled
+    }
+
+    #[must_use]
+    pub fn is_keep_awake() -> bool {
+        KEEP_AWAKE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Reads current Windows Geolocation coordinates ONLY when the user explicitly opts in.
+    pub fn get_windows_location_opt_in() -> Result<(f64, f64), String> {
+        use windows::Devices::Geolocation::Geolocator;
+
+        let locator = Geolocator::new().map_err(|e| format!("Geolocator init failed: {e}"))?;
+        let pos = locator
+            .GetGeopositionAsync()
+            .map_err(|e| format!("GetGeopositionAsync failed: {e}"))?
+            .join()
+            .map_err(|e| format!("Geoposition join failed: {e}"))?;
+        let coord = pos
+            .Coordinate()
+            .map_err(|e| format!("Coordinate failed: {e}"))?;
+        let point = coord.Point().map_err(|e| format!("Point failed: {e}"))?;
+        let basic = point
+            .Position()
+            .map_err(|e| format!("Position failed: {e}"))?;
+        Ok((basic.Latitude, basic.Longitude))
+    }
+
+    /// Fetches local current temperature and 15-min precipitation forecast from Open-Meteo.
+    pub fn fetch_open_meteo_weather(
+        city: &str,
+        lat: f64,
+        lon: f64,
+    ) -> Result<crate::OpenMeteoWeather, String> {
+        use windows::Foundation::Uri;
+        use windows::Web::Http::HttpClient;
+
+        let url = format!(
+            "https://api.open-meteo.com/v1/forecast?latitude={lat:.4}&longitude={lon:.4}&current=temperature_2m,weather_code&minutely_15=precipitation&forecast_minutely_15=4&timezone=auto"
+        );
+        let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| format!("uri error: {e}"))?;
+        let client = HttpClient::new().map_err(|e| format!("http client error: {e}"))?;
+        let body = client
+            .GetStringAsync(&uri)
+            .map_err(|e| format!("weather request failed: {e}"))?
+            .join()
+            .map_err(|e| format!("weather fetch failed: {e}"))?
+            .to_string_lossy()
+            .to_string();
+
+        let json: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("invalid weather json: {e}"))?;
+        let temp_c = json["current"]["temperature_2m"]
+            .as_f64()
+            .ok_or_else(|| "missing temperature_2m".to_string())?;
+        let code = json["current"]["weather_code"].as_i64().unwrap_or(0) as i32;
+        let condition = match code {
+            0 | 1 => "clear",
+            2 | 3 | 45 | 48 => "cloudy",
+            51..=67 | 80..=82 => "rain",
+            95..=99 => "storm",
+            _ => "clear",
+        }
+        .to_string();
+
+        let mut precip_note = None;
+        if let Some(arr) = json["minutely_15"]["precipitation"].as_array() {
+            for (idx, v) in arr.iter().enumerate() {
+                if v.as_f64().unwrap_or(0.0) >= 0.1 {
+                    let mins = (idx as i32 + 1) * 15;
+                    precip_note = Some(format!("rain in {mins} min"));
+                    break;
+                }
+            }
+        }
+
+        Ok(crate::OpenMeteoWeather {
+            temp_c,
+            weather_code: code,
+            condition,
+            precip_note,
+            city: city.to_string(),
+            fetched_at: chrono::Utc::now().to_rfc3339(),
+            offline: false,
+        })
+    }
+
     /// Captures the primary screen, writes a PNG file to `output_path`, and copies its path.
     pub fn capture_screen_to_png(output_path: &std::path::Path) -> Result<String, String> {
         use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapEncoder, BitmapPixelFormat};
@@ -1061,13 +1435,59 @@ mod win32 {
     pub const fn privacy_device_status() -> (bool, bool) {
         (false, false)
     }
+
+    pub fn write_clipboard_text(_text: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    #[must_use]
+    pub const fn read_clipboard_text() -> Option<String> {
+        None
+    }
+
+    pub const fn clear_clipboard_if_matching(_expected_text: &str) -> bool {
+        false
+    }
+
+    #[must_use]
+    pub const fn quick_radios_status() -> (Option<bool>, Option<bool>) {
+        (None, None)
+    }
+
+    pub fn toggle_radio_kind(_wifi: bool) -> Result<bool, String> {
+        Err("unavailable".into())
+    }
+
+    pub const fn set_keep_awake(_enabled: bool) -> bool {
+        false
+    }
+
+    #[must_use]
+    pub const fn is_keep_awake() -> bool {
+        false
+    }
+
+    pub fn get_windows_location_opt_in() -> Result<(f64, f64), String> {
+        Err("unavailable".into())
+    }
+
+    pub fn fetch_open_meteo_weather(
+        _city: &str,
+        _lat: f64,
+        _lon: f64,
+    ) -> Result<crate::OpenMeteoWeather, String> {
+        Err("unavailable".into())
+    }
 }
 
 pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, capture_screen_to_png,
-    cursor_screen_pos, is_autostart_enabled, is_caps_lock_on, is_other_app_fullscreen,
-    lock_workstation, ocr_screen_to_clipboard, open_shell_target, privacy_device_status,
-    set_autostart_enabled, set_click_through, set_window_bounds_atomic, set_window_pill_region,
+    clear_clipboard_if_matching, cursor_screen_pos, fetch_open_meteo_weather,
+    get_windows_location_opt_in, is_autostart_enabled, is_caps_lock_on, is_keep_awake,
+    is_other_app_fullscreen, lock_workstation, ocr_screen_to_clipboard, open_shell_target,
+    privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
+    set_click_through, set_keep_awake, set_window_bounds_atomic, set_window_pill_region,
+    toggle_radio_kind, write_clipboard_text,
 };
 
 #[cfg(test)]
@@ -1119,5 +1539,20 @@ mod tests {
 
         assert!(parse_hotkey_spec("Space").is_none());
         assert!(parse_hotkey_spec("Ctrl+Alt+UnknownKey").is_none());
+    }
+
+    #[test]
+    fn masks_otp_and_secret_clipboard_items() {
+        let otp = classify_and_mask_clipboard("482910");
+        assert!(otp.sensitive);
+        assert_eq!(otp.display_text, "OTP 482 •••");
+
+        let msg = classify_and_mask_clipboard("Your verification code is 719304");
+        assert!(msg.sensitive);
+        assert_eq!(msg.display_text, "OTP 719 •••");
+
+        let plain = classify_and_mask_clipboard("Standup meeting notes");
+        assert!(!plain.sensitive);
+        assert_eq!(plain.display_text, "Standup meeting notes");
     }
 }

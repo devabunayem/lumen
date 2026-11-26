@@ -399,6 +399,12 @@ fn default_water_goal_ml() -> i64 {
 fn default_hover_return_seconds() -> u32 {
     5
 }
+fn default_sound_volume() -> u8 {
+    30
+}
+fn default_dev_pulse_ports() -> Vec<u16> {
+    vec![3000, 5173, 1420]
+}
 
 /// Versioned user preferences persisted in `%APPDATA%/Lumen/settings.json` (`NFR-REL-2`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -439,6 +445,36 @@ pub struct LumenSettings {
     #[serde(default = "default_water_goal_ml")]
     pub water_goal_ml: i64,
     pub media_exclusions: Vec<String>,
+    #[serde(default = "default_true")]
+    pub sound_enabled: bool,
+    #[serde(default = "default_sound_volume")]
+    pub sound_volume: u8,
+    #[serde(default = "default_true")]
+    pub sound_interface: bool,
+    #[serde(default = "default_true")]
+    pub sound_reminders: bool,
+    #[serde(default)]
+    pub custom_adhan_path: Option<String>,
+    #[serde(default)]
+    pub location_opt_in: bool,
+    #[serde(default)]
+    pub reduce_transparency: bool,
+    #[serde(default = "default_true")]
+    pub glow_enabled: bool,
+    #[serde(default = "default_true")]
+    pub parallax_enabled: bool,
+    #[serde(default)]
+    pub bangla_digits: bool,
+    #[serde(default = "default_true")]
+    pub chip_focus_enabled: bool,
+    #[serde(default = "default_true")]
+    pub chip_ledger_enabled: bool,
+    #[serde(default = "default_true")]
+    pub chip_clipboard_enabled: bool,
+    #[serde(default = "default_true")]
+    pub chip_dev_pulse_enabled: bool,
+    #[serde(default = "default_dev_pulse_ports")]
+    pub dev_pulse_ports: Vec<u16>,
 }
 
 impl Default for LumenSettings {
@@ -465,6 +501,21 @@ impl Default for LumenSettings {
             hidden_pages: Vec::new(),
             water_goal_ml: default_water_goal_ml(),
             media_exclusions: Vec::new(),
+            sound_enabled: true,
+            sound_volume: default_sound_volume(),
+            sound_interface: true,
+            sound_reminders: true,
+            custom_adhan_path: None,
+            location_opt_in: false,
+            reduce_transparency: false,
+            glow_enabled: true,
+            parallax_enabled: true,
+            bangla_digits: false,
+            chip_focus_enabled: true,
+            chip_ledger_enabled: true,
+            chip_clipboard_enabled: true,
+            chip_dev_pulse_enabled: true,
+            dev_pulse_ports: default_dev_pulse_ports(),
         }
     }
 }
@@ -495,6 +546,10 @@ impl LumenSettings {
         self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
         self.position_offset_x = self.position_offset_x.clamp(-400, 400);
         self.water_goal_ml = self.water_goal_ml.clamp(250, 10_000);
+        self.sound_volume = self.sound_volume.clamp(0, 100);
+        if self.dev_pulse_ports.is_empty() {
+            self.dev_pulse_ports = default_dev_pulse_ports();
+        }
         if self.hotkey_hide.trim().is_empty() {
             self.hotkey_hide = default_hotkey_hide();
         }
@@ -517,13 +572,27 @@ impl LumenSettings {
     }
 
     #[must_use]
-    pub fn scale_multiplier(&self) -> f64 {
+    pub fn scale_multiplier_for_width(&self, screen_width_logical: f64) -> f64 {
         match self.scale.as_str() {
+            "100" => 1.0,
             "115" => 1.15,
             "130" => 1.30,
             "150" => 1.50,
-            _ => 1.0,
+            _ => {
+                if screen_width_logical >= 2560.0 {
+                    1.30
+                } else if screen_width_logical >= 1920.0 {
+                    1.15
+                } else {
+                    1.0
+                }
+            }
         }
+    }
+
+    #[must_use]
+    pub fn scale_multiplier(&self) -> f64 {
+        self.scale_multiplier_for_width(1440.0)
     }
 
     pub fn load_from_path(path: &Path) -> Self {

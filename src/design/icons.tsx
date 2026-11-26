@@ -353,3 +353,87 @@ export function CheckListIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function WifiIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M12 20h.01" />
+      <path d="M2 8.82a15 15 0 0 1 20 0" />
+      <path d="M5 12.859a10 10 0 0 1 14 0" />
+      <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+    </svg>
+  );
+}
+
+export function BluetoothIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="m7 7 10 10-5 5V2l5 5L7 17" />
+    </svg>
+  );
+}
+
+export function ClipboardIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </svg>
+  );
+}
+
+export function ClockLedgerIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15.5 14" />
+    </svg>
+  );
+}
+
+export function CloudIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </svg>
+  );
+}
+
+export function CloudRainIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+      <path d="M16 14v6" />
+      <path d="M8 14v6" />
+      <path d="M12 16v6" />
+    </svg>
+  );
+}
+
+export function MoonStarIcon({ size = 15, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9" />
+      <path d="M20 3v4" />
+      <path d="M22 5h-4" />
+    </svg>
+  );
+}
+
+export function SkipBackIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <polygon points="19 20 9 12 19 4 19 20" fill="currentColor" stroke="none" />
+      <line x1="5" y1="19" x2="5" y2="5" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+export function SkipForwardIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" stroke="none" />
+      <line x1="19" y1="5" x2="19" y2="19" strokeWidth="1.8" />
+    </svg>
+  );
+}

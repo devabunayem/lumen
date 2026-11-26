@@ -1,5 +1,5 @@
 use adhan::{Madhab as AdhanMadhab, Method as AdhanMethod, Parameters, prayer_times};
-use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 
 /// Supported calculation methods (Bangladesh defaults to Karachi per SRS Section 5.4).
@@ -170,9 +170,19 @@ pub struct PrayerSchedule {
     pub next_name_bn: String,
     pub next_time_12h: String,
     pub next_is_tomorrow: bool,
+    pub next_diff_min: i32,
     pub countdown_text: String,
     pub progress_pct: f64,
     pub sun_arc_ratio: f64,
+    pub now_min: i32,
+    pub is_friday: bool,
+    pub is_ramadan: bool,
+    pub is_night_mode: bool,
+    pub sehri_min: i32,
+    pub iftar_min: i32,
+    pub night_start_min: i32,
+    pub night_end_min: i32,
+    pub tomorrow_fajr_min: i32,
     pub hijri_date: String,
     pub sehri_iftar_label: String,
     pub slots: Vec<PrayerSlot>,
@@ -291,9 +301,40 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
     );
     let isha = to_local_minute(today.isha, config.tz_offset_minutes, config.isha_offset_min);
 
+    let tomorrow_date = date + Duration::days(1);
+    let tmr = prayer_times(
+        tomorrow_date.year(),
+        tomorrow_date.month(),
+        tomorrow_date.day(),
+        config.latitude,
+        config.longitude,
+        &params,
+    );
+    let tomorrow_fajr = to_local_minute(tmr.fajr, config.tz_offset_minutes, config.fajr_offset_min);
+    let tmr_fajr_rel = tomorrow_fajr + 1440;
+
+    let yesterday_date = date - Duration::days(1);
+    let yest = prayer_times(
+        yesterday_date.year(),
+        yesterday_date.month(),
+        yesterday_date.day(),
+        config.latitude,
+        config.longitude,
+        &params,
+    );
+    let yest_isha = to_local_minute(yest.isha, config.tz_offset_minutes, config.isha_offset_min);
+
+    let is_friday = local_now.weekday() == Weekday::Fri;
+    let dhuhr_en = if is_friday { "Jumu'ah" } else { "Dhuhr" };
+    let dhuhr_bn = if is_friday {
+        "জুমা"
+    } else {
+        "যোহর"
+    };
+
     let raw_slots = [
         ("fajr", "Fajr", "ফজর", fajr),
-        ("dhuhr", "Dhuhr", "যোহর", dhuhr),
+        ("dhuhr", dhuhr_en, dhuhr_bn, dhuhr),
         ("asr", "Asr", "আসর", asr),
         ("maghrib", "Maghrib", "মাগরিব", maghrib),
         ("isha", "Isha", "এশা", isha),
@@ -319,7 +360,7 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
             let prev = if idx > 0 {
                 slots[idx - 1].minute_of_day
             } else {
-                slots[4].minute_of_day - 1440
+                yest_isha - 1440
             };
             (
                 next.name_en.clone(),
@@ -329,33 +370,34 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
                 false,
             )
         } else {
-            let tomorrow_date = date + Duration::days(1);
-            let tmr = prayer_times(
-                tomorrow_date.year(),
-                tomorrow_date.month(),
-                tomorrow_date.day(),
-                config.latitude,
-                config.longitude,
-                &params,
-            );
-            let tmr_fajr =
-                to_local_minute(tmr.fajr, config.tz_offset_minutes, config.fajr_offset_min) + 1440;
-            ("Fajr".into(), "ফজর".into(), tmr_fajr, isha, true)
+            ("Fajr".into(), "ফজর".into(), tmr_fajr_rel, isha, true)
         };
 
     let diff_mins = (next_min - now_min).max(0);
     let interval_span = (next_min - prev_min).max(1) as f64;
     let progress_pct = (((now_min - prev_min) as f64) / interval_span * 100.0).clamp(0.0, 100.0);
-    let sun_arc_ratio = (((now_min - fajr) as f64) / arc_span).clamp(0.0, 1.0);
+    let is_night_mode = now_min >= isha || now_min < fajr;
+    let (night_start_min, night_end_min) = if now_min >= isha {
+        (isha, tmr_fajr_rel)
+    } else {
+        (yest_isha - 1440, fajr)
+    };
+    let sun_arc_ratio = if is_night_mode {
+        (((now_min - night_start_min) as f64) / (night_end_min - night_start_min).max(1) as f64)
+            .clamp(0.0, 1.0)
+    } else {
+        (((now_min - fajr) as f64) / arc_span).clamp(0.0, 1.0)
+    };
 
     let (hijri_month, hijri_date) = approximate_hijri_date(date);
-    let sehri_iftar_label = if hijri_month == 9 {
+    let is_ramadan = hijri_month == 9;
+    let sehri_iftar_label = if is_ramadan {
         if now_min < fajr {
             format!("Sehri ends {}", format_countdown(fajr - now_min))
         } else if now_min < maghrib {
             format!("Iftar {}", format_countdown(maghrib - now_min))
         } else {
-            format!("Sehri {}", format_12h(fajr))
+            format!("Sehri {}", format_12h(tomorrow_fajr))
         }
     } else {
         String::new()
@@ -367,9 +409,19 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
         next_name_bn: next_bn,
         next_time_12h: format_12h(next_min),
         next_is_tomorrow,
+        next_diff_min: diff_mins,
         countdown_text: format_countdown(diff_mins),
         progress_pct,
         sun_arc_ratio,
+        now_min,
+        is_friday,
+        is_ramadan,
+        is_night_mode,
+        sehri_min: fajr,
+        iftar_min: maghrib,
+        night_start_min,
+        night_end_min,
+        tomorrow_fajr_min: tomorrow_fajr,
         hijri_date,
         sehri_iftar_label,
         slots,
@@ -432,5 +484,44 @@ mod tests {
         };
         let shafi = compute_prayer_schedule(now, &shafi_cfg);
         assert!(hanafi.slots[2].minute_of_day > shafi.slots[2].minute_of_day);
+    }
+
+    #[test]
+    fn labels_dhuhr_as_jumuah_on_friday() {
+        // 2026-11-27 is a Friday
+        let fri = DateTime::parse_from_rfc3339("2026-11-27T04:00:00Z")
+            .expect("valid fri ts")
+            .with_timezone(&Utc);
+        let sched = compute_prayer_schedule(fri, &PrayerConfig::default());
+        assert!(sched.is_friday);
+        assert_eq!(sched.slots[1].name_en, "Jumu'ah");
+        assert_eq!(sched.slots[1].name_bn, "জুমা");
+        assert_eq!(sched.next_name_en, "Jumu'ah");
+    }
+
+    #[test]
+    fn enters_night_mode_after_isha_and_tracks_tomorrow_fajr() {
+        // 20:30 local (UTC+6 = 14:30Z) -> after Isha (~18:35), night mode active
+        let late_night = DateTime::parse_from_rfc3339("2026-11-26T14:30:00Z")
+            .expect("valid night ts")
+            .with_timezone(&Utc);
+        let sched = compute_prayer_schedule(late_night, &PrayerConfig::default());
+        assert!(sched.is_night_mode);
+        assert!(sched.next_is_tomorrow);
+        assert_eq!(sched.next_name_en, "Fajr");
+        assert!(sched.night_end_min > sched.night_start_min);
+        assert!(sched.sun_arc_ratio > 0.0 && sched.sun_arc_ratio < 1.0);
+    }
+
+    #[test]
+    fn detects_ramadan_and_exposes_sehri_and_iftar() {
+        // 2026-02-20 falls inside Ramadan 1447 AH
+        let ramadan = DateTime::parse_from_rfc3339("2026-02-20T09:00:00Z")
+            .expect("valid ramadan ts")
+            .with_timezone(&Utc);
+        let sched = compute_prayer_schedule(ramadan, &PrayerConfig::default());
+        assert!(sched.is_ramadan);
+        assert!(sched.sehri_min < sched.iftar_min);
+        assert!(!sched.sehri_iftar_label.is_empty());
     }
 }

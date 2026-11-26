@@ -4,23 +4,40 @@ import type { Transition } from "motion/react";
  * Critically-damped, zero-overshoot springs and smooth crossfade curves.
  */
 export const MOTION_PRESETS = {
+  snappy: {
+    type: "spring",
+    stiffness: 420,
+    damping: 34,
+  },
+  smooth: {
+    type: "spring",
+    stiffness: 300,
+    damping: 32,
+  },
+  bouncy: {
+    type: "spring",
+    stiffness: 520,
+    damping: 22,
+  },
+  gentle: {
+    type: "spring",
+    stiffness: 180,
+    damping: 26,
+  },
   expand: {
     type: "spring",
-    stiffness: 240,
-    damping: 26,
-    mass: 0.8,
+    stiffness: 420,
+    damping: 34,
   },
   collapse: {
     type: "spring",
-    stiffness: 260,
-    damping: 28,
-    mass: 0.8,
+    stiffness: 420,
+    damping: 34,
   },
   pageSwitch: {
     type: "spring",
-    stiffness: 260,
-    damping: 28,
-    mass: 0.8,
+    stiffness: 300,
+    damping: 32,
   },
   shapeMorph: {
     type: "spring",
@@ -38,8 +55,29 @@ export const MOTION_PRESETS = {
   },
   progressSpring: {
     type: "spring",
-    stiffness: 260,
-    damping: 28,
+    stiffness: 300,
+    damping: 32,
+  },
+  homeContentEnter: {
+    duration: 0.2,
+    delay: 0.06,
+    ease: [0.22, 1, 0.36, 1],
+  },
+  homeContentExit: {
+    duration: 0.1,
+    ease: "easeOut",
+  },
+  toggleCrossfade: {
+    duration: 0.16,
+    ease: "easeOut",
+  },
+  pressFeedback: {
+    duration: 0.08,
+    ease: "easeOut",
+  },
+  glowCrossfade: {
+    duration: 0.6,
+    ease: "easeInOut",
   },
   reducedMotionFade: {
     duration: 0.12,
@@ -48,9 +86,18 @@ export const MOTION_PRESETS = {
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {
-  expandDelayMs: 35,
-  expandStaggerMs: 20,
-  collapseFadeMs: 80,
+  expandDelayMs: 60,
+  expandStaggerMs: 30,
+  markerStaggerMs: 40,
+  arcDrawDurationSec: 0.7,
+  firstOpenSunDurationSec: 0.9,
+  collapseFadeMs: 100,
+  digitRollMs: 220,
+  digitRollOffsetPx: 12,
+  haloBreathSec: 4,
+  glowDriftSec: 60,
+  errorShakeX: [0, -4, 4, -4, 4, 0] as readonly number[],
+  togglePulseScale: [1, 1.1, 1] as readonly number[],
 } as const;
 
 export function getMotionTransition(

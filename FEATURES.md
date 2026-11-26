@@ -6,7 +6,11 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 
 ### Island Shell & Window Engine
 
-- Pure-black (`#000000`) continuous **Notch** and **Floating Pill** bezel surfaces with critically-damped Motion springs, uniform `1.5`-stroke SVG line icons, and flicker-free absolute crossfades (`src/design/icons.tsx`, `src/design/motion.ts`)
+- **Day Arc + Living Glow Home Page (`760×376`, `page 0`):** Glanceable home overview featuring a `728×150` parabolic solar/moon Day Arc (`Fajr–Isha` day arc & `Isha–Fajr` moon night arc, Friday `Jumu'ah`, Ramadan Sehri/Iftar markers, de Casteljau amber progress glow, overlapping event lane bars, interactive Tasbih counter chip, hover time scrubber, `Full day / Next 3 hours` zoom toggle, and keyboard marker navigation), three radial transform-only Living Ambient Glow layers (time-of-day dawn/day/dusk/night, contrast-guarded album art accent, Focus session desaturation, low-battery `< 10%` edge alert, plus Reduce Transparency solid fallback), 6 native quick toggles (`Wi-Fi`, `Bluetooth`, `Focus`, `Mic`, `Keep awake`, `Lock`), 3 glass bento cards (`Music` with wheel volume HUD & middle-click mute, `Next` color-coded countdown with digit-roll, `Water` `+250 ml` tap & long-press `150/250/500 ml` picker), and optional bottom status chips (`Focus timer`, `Time ledger`, auto-masked & 30s auto-cleared `Clipboard OTP`, and home-visible `Dev pulse`)
+- **Synthesized Soft UI Sound Engine (`lumen-media::sounds`):** Lazy Win32 `waveOut` waveform synthesizer (`5 s` idle auto-close) covering interface clicks, water droplets, chime reminders, and rate-limited `15 min` arc scrub ticks; automatically silenced during active calls/mic, fullscreen apps, Focus sessions, Windows mute, and quiet hours
+- **20-State Visual QA Gallery (`/dev/states`):** Dedicated preview matrix covering all interaction, locale (English + Bangla numerals), scale (`100%`–`150%`), accessibility, Focus, night, Friday, and Ramadan states
+- Pure-black (`#000000`) continuous **Notch** and **Floating Pill** bezel surfaces with critically-damped Motion springs (`snappy`, `smooth`, `bouncy`, `gentle`), uniform `1.5`-stroke SVG line icons, and shared-element `layoutId` morphs (`src/design/icons.tsx`, `src/design/motion.ts`)
+- **Zero-Resize Fixed Transparent Canvas (`1220×612`):** Accommodates `150%` Home (`1140×564`) + margin without OS window resizes, backed by dynamic 30 Hz Win32 `SetWindowRgn` + `WS_EX_TRANSPARENT` click pass-through
 - **Camera & Mic Privacy Dots + Calendar Agenda:** Live Windows `ConsentStore` green/orange sensor dots in the notch and offline SQLite-backed `Today Agenda` events with live countdowns
 - **Screenshot & Offline Screen OCR:** Capture PNG screenshots directly into the File Shelf, and extract on-screen text offline via `Windows.Media.Ocr` to clipboard with 1-click To-Do creation
 - **Control Panel Home Hub:** Default first screen with one-tap Global Mic Mute (`Core Audio`), Quiet/DND mode, Lock PC (`LockWorkStation`), and connected live summary cards that jump directly to To-Do, Water, Pomodoro, and Music pages
@@ -47,9 +51,6 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 
 ## Upcoming / Planned
 
-- [ ] **Weather Widget:** Local offline cache + Open-Meteo current conditions, hourly outlook & rain badge
-- [ ] **Calendar & Agenda Preview:** Upcoming meetings countdown in pill + expanded agenda card
-- [ ] **Clipboard History Shelf:** Privacy-filtered recent text/link clips with masked password detection
 - [ ] **System Telemetry Pill (Opt-In):** Lightweight CPU / RAM / Network sparklines (`<= 1 Hz`)
 - [ ] **Ask (BYO-Key AI):** Optional assistant using Windows Credential Manager (strictly zero calls until configured)
 - [ ] **Hardware-Signed Installers & ARM64 Builds:** Authenticode-signed NSIS/MSI packages eliminating Windows SmartScreen prompts

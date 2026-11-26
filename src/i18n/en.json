@@ -12,6 +12,8 @@
     "shapePill": "Pill"
   },
   "pages": {
+    "homeLead": "Day",
+    "homeAccent": "Home",
     "controlLead": "Control",
     "controlAccent": "Center",
     "musicLead": "Now",
@@ -105,6 +107,84 @@
       "tagline": "Free, open-source, zero-telemetry Dynamic Island for Windows 10 & 11.",
       "author": "Created by Abu Nayem · Etarnity Global Innovation",
       "license": "MIT License · Zero Analytics · Zero Cloud Lock-in"
+    },
+    "homeTab": {
+      "soundsEnabled": "Interface & Reminder Sounds",
+      "soundVolume": "Sound Master Volume",
+      "soundInterface": "Interface Ticks & Toggles",
+      "soundReminders": "Chimes & Reminders",
+      "customAdhan": "Custom Adhan Audio Path (optional)",
+      "locationOptIn": "Use Windows Location (opt-in)",
+      "reduceTransparency": "Reduce Transparency (solid glass fallback)",
+      "glowEnabled": "Living Ambient Glow",
+      "parallaxEnabled": "Pointer Glow Parallax",
+      "banglaDigits": "Bangla Numerals",
+      "chipsGroup": "Home Bottom Chips",
+      "chipFocus": "Focus timer chip",
+      "chipLedger": "Time ledger chip",
+      "chipClipboard": "Clipboard chip",
+      "chipDevPulse": "Dev server pulse chip"
+    }
+  },
+  "home": {
+    "toggles": {
+      "wifi": "Wi-Fi",
+      "bluetooth": "Bluetooth",
+      "focus": "Focus",
+      "mic": "Microphone mute",
+      "keepAwake": "Keep awake",
+      "lock": "Lock PC",
+      "settings": "Open settings",
+      "radioError": "Radio unavailable"
+    },
+    "arc": {
+      "tasbih": "Tasbih",
+      "locationUnset": "Manual city",
+      "weatherOffline": "Offline",
+      "updatedAgo": "updated {{age}} ago",
+      "rainIn": "rain in {{min}} min",
+      "rainSoon": "rain soon",
+      "clear": "clear",
+      "cloudy": "cloudy",
+      "rain": "rain",
+      "storm": "storm",
+      "sehri": "Sehri",
+      "iftar": "Iftar",
+      "nothingHere": "Nothing scheduled",
+      "zoomDay": "Full day",
+      "zoom3h": "Next 3 hours",
+      "nightArc": "Night arc",
+      "summary": "Next prayer {{prayer}} at {{time}}, {{countdown}}. {{events}} scheduled events."
+    },
+    "music": {
+      "nothingPlaying": "Nothing playing",
+      "play": "Play",
+      "pause": "Pause",
+      "prev": "Previous track",
+      "next": "Next track",
+      "lastPlayed": "Last played",
+      "openPlayer": "Open music player"
+    },
+    "next": {
+      "label": "Next",
+      "min": "min",
+      "tasksLeft": "{{count}} tasks left today",
+      "allClear": "All clear",
+      "openAgenda": "Open agenda"
+    },
+    "water": {
+      "title": "Water",
+      "ofGoal": "of {{goal}} L · tap +{{step}} ml",
+      "goalReached": "Goal reached · {{goal}} L",
+      "pickSize": "Choose amount"
+    },
+    "chips": {
+      "focus": "Focus",
+      "copied": "Copied",
+      "otpMasked": "Copy OTP",
+      "clipboard": "Clipboard",
+      "devUp": "up",
+      "devDown": "down"
     }
   }
 }
