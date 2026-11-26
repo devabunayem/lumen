@@ -114,9 +114,10 @@ describe("Day Arc geometry & scaling", () => {
     expect(scrub.quarterBucket).toBeGreaterThan(0);
 
     expect(resolveAutoScaleFactor(1440)).toBe(1);
-    expect(resolveAutoScaleFactor(1920)).toBe(1.15);
-    expect(resolveAutoScaleFactor(2560)).toBe(1.3);
-    expect(Math.round(BASE_GEOMETRY.homeExpanded.width * 1.5)).toBe(1140);
-    expect(Math.round(BASE_GEOMETRY.homeExpanded.height * 1.5)).toBe(564);
+    expect(resolveAutoScaleFactor(1920)).toBe(1);
+    expect(resolveAutoScaleFactor(2560)).toBe(1.15);
+    expect(resolveAutoScaleFactor(3840)).toBe(1.3);
+    expect(Math.round(BASE_GEOMETRY.homeExpanded.width * 1.5)).toBe(960);
+    expect(Math.round(BASE_GEOMETRY.homeExpanded.height * 1.5)).toBe(468);
   });
 });

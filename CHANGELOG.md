@@ -11,6 +11,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Compact Home Size, Instant Open Speed & Zero Bottom Jitter:**
+  - Compacted Home geometry from `760×376` (`r=40`) to `640×312` (`r=32`), shrunk the fixed transparent overlay canvas from `1220×612` to `1040×510` (fitting `150%` `960×468` + margin), and kept `Auto` scale at `100%` up to `1920px` displays (`2560+ -> 115%`, `3840+ -> 130%`).
+  - Eliminated WebView2 expand lag by replacing per-card `backdrop-filter: blur(14px)` with lightweight translucent gradient glass, converting `HomePage` subcomponents to synchronous imports (removing `<Suspense>` skeleton waterfalls), removing SVG `pathLength` initial draw thrash, disabling continuous infinite glow/halo background keyframes, and simplifying expanded Home fade-in without conflicting inner scale transforms.
+  - Eliminated bottom bento card & chip row jitter by switching `HomePage` to top-down fixed-height `justify-start` layout, removing `<LayoutGroup>` / `layoutId` cross-page projections and `<AnimatePresence mode="popLayout">` digit swaps, locking `MusicCard`/`NextCard`/`WaterCard` to `94px`, stabilizing tabular timer widths on `Focus`/`Client A` chips, truncating long clipboard text (`110px`), and windowing Home page dots (`<= 5` dots).
+
 - **Responsive Fit Across All Notch Panels (`560×172`):** Adjusted `.type-display` (`28px`), `--capsule-height` (`28px`), and inner card/SVG heights across `MusicWidget`, `TodoWidget`, `WaterWidget`, `PomodoroWidget`, `PrayerWidget`, `ShelfWidget`, and `CalendarWidget` so all 7 panels fit cleanly inside the fixed `560×172` notch without vertical clipping.
 
 - **Responsive Notch Inner Spacing, Icon-First Control Panel & Borderless Settings:**

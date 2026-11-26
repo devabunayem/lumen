@@ -173,7 +173,7 @@ export function TogglesRow({
   ];
 
   return (
-    <header className="relative z-10 grid h-[30px] w-full grid-cols-[1fr_auto_1fr] items-center">
+    <header className="relative z-10 grid h-[28px] w-full grid-cols-[1fr_auto_1fr] items-center">
       <div
         data-testid="home-header-clock"
         title="Toggle date & time"
@@ -209,32 +209,23 @@ export function TogglesRow({
                   hasErr && !reduceMotion ? { x: [...CONTENT_STAGGER.errorShakeX] } : { x: 0 }
                 }
                 transition={{ duration: 0.24 }}
-                className="flex h-[32px] w-[32px] items-center justify-center rounded-full"
+                className="-my-[2px] flex h-[32px] w-[32px] items-center justify-center rounded-full"
                 style={{ background: "transparent" }}
               >
-                <motion.span
-                  animate={
-                    reduceMotion
-                      ? undefined
-                      : btn.active
-                        ? { scale: [...CONTENT_STAGGER.togglePulseScale] }
-                        : { scale: 1 }
-                  }
-                  transition={{ duration: 0.22 }}
-                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full"
+                <span
+                  className="flex h-[26px] w-[26px] items-center justify-center rounded-full transition-colors duration-150"
                   style={{
                     background: btn.active ? btn.activeColor : COLOR_TOKENS.toggleOff,
                     color: btn.active ? COLOR_TOKENS.textPrimary : COLOR_TOKENS.toggleIconOff,
-                    transition: `background-color ${MOTION_PRESETS.toggleCrossfade.duration}s ease-out, color ${MOTION_PRESETS.toggleCrossfade.duration}s ease-out`,
                   }}
                 >
                   {btn.icon}
-                </motion.span>
+                </span>
               </motion.button>
               {hasErr && (
                 <div
                   role="tooltip"
-                  className="type-home-micro pointer-events-none absolute top-[34px] z-30 whitespace-nowrap rounded-lg px-2 py-0.5 text-white"
+                  className="type-home-micro pointer-events-none absolute top-[30px] z-30 whitespace-nowrap rounded-lg px-2 py-0.5 text-white"
                   style={{
                     background: COLOR_TOKENS.arcTooltipBg,
                     border: `1px solid ${COLOR_TOKENS.chipGlassBorder}`,
@@ -257,10 +248,10 @@ export function TogglesRow({
           whileTap={
             reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
           }
-          className="flex h-[32px] w-[32px] items-center justify-center rounded-full"
+          className="-my-[2px] flex h-[32px] w-[32px] items-center justify-center rounded-full"
           style={{ color: COLOR_TOKENS.toggleIconOff }}
         >
-          <SettingsIcon size={15} />
+          <SettingsIcon size={14} />
         </motion.button>
       </div>
     </header>

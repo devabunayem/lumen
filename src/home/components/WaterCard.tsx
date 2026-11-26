@@ -1,6 +1,4 @@
 import { useRef, useState, type KeyboardEvent } from "react";
-import { motion } from "motion/react";
-import { MOTION_PRESETS } from "../../design/motion";
 import { playUiSound } from "../../design/sounds";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages, type AppLanguage } from "../../i18n";
@@ -76,8 +74,7 @@ export function WaterCard({
   };
 
   return (
-    <motion.div
-      layoutId={reduceMotion ? undefined : "home-card-water"}
+    <div
       data-testid="home-water-card"
       role="button"
       tabIndex={0}
@@ -91,10 +88,9 @@ export function WaterCard({
       }}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      whileTap={
-        reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
-      }
-      className="home-glass-card relative flex h-[116px] cursor-pointer flex-col justify-between px-[14px] py-[12px] text-left"
+      className={`home-glass-card relative flex h-[94px] cursor-pointer flex-col justify-between overflow-hidden px-[12px] py-[10px] text-left ${
+        reduceMotion ? "" : "transition-transform duration-100 active:scale-[0.96]"
+      }`}
     >
       <div className="flex items-center justify-between">
         <span className="type-home-meta" style={{ color: COLOR_TOKENS.textSecondary }}>
@@ -111,9 +107,9 @@ export function WaterCard({
           />
         </div>
 
-        <div className="mt-1">
+        <div className="mt-0.5">
           <div
-            className="type-home-micro mb-1.5 truncate"
+            className="type-home-micro mb-1 truncate"
             style={{ color: COLOR_TOKENS.textSecondary }}
           >
             {water.goal_reached
@@ -127,12 +123,14 @@ export function WaterCard({
                 )}
           </div>
           <div className="h-[4px] w-full overflow-hidden rounded-full bg-white/15">
-            <motion.div
-              className="h-full origin-left rounded-full"
-              style={{ background: COLOR_TOKENS.accentBlue }}
-              animate={{ scaleX: pct / 100 }}
-              initial={false}
-              transition={reduceMotion ? { duration: 0.12 } : MOTION_PRESETS.snappy}
+            <div
+              className={`h-full origin-left rounded-full ${
+                reduceMotion ? "" : "transition-transform duration-200 ease-out"
+              }`}
+              style={{
+                background: COLOR_TOKENS.accentBlue,
+                transform: `scaleX(${pct / 100})`,
+              }}
             />
           </div>
         </div>
@@ -144,7 +142,7 @@ export function WaterCard({
           role="dialog"
           aria-label={msg.home.water.pickSize}
           onClick={(e) => e.stopPropagation()}
-          className="absolute inset-x-2 bottom-2 z-30 flex items-center justify-between gap-1 rounded-[15px] p-1"
+          className="absolute inset-x-1.5 bottom-1.5 z-30 flex items-center justify-between gap-1 rounded-[14px] p-1"
           style={{
             background: COLOR_TOKENS.arcTooltipBg,
             border: `1px solid ${COLOR_TOKENS.chipGlassBorder}`,
@@ -159,7 +157,7 @@ export function WaterCard({
                 setPickerOpen(false);
                 triggerAdd(opt);
               }}
-              className="type-home-micro flex-1 rounded-full py-1.5 text-center font-semibold text-white"
+              className="type-home-micro flex-1 rounded-full py-1 text-center font-semibold text-white"
               style={{
                 background: opt === stepMl ? COLOR_TOKENS.accentBlue : "transparent",
               }}
@@ -169,6 +167,6 @@ export function WaterCard({
           ))}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

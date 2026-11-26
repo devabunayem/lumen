@@ -26,13 +26,15 @@ export const MOTION_PRESETS = {
   },
   expand: {
     type: "spring",
-    stiffness: 420,
-    damping: 34,
+    stiffness: 380,
+    damping: 38,
+    mass: 0.7,
   },
   collapse: {
     type: "spring",
-    stiffness: 420,
-    damping: 34,
+    stiffness: 400,
+    damping: 40,
+    mass: 0.7,
   },
   pageSwitch: {
     type: "spring",

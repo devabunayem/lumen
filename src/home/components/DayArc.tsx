@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { motion } from "motion/react";
 import { CloudIcon, CloudRainIcon, MoonStarIcon, SunIcon } from "../../design/icons";
-import { CONTENT_STAGGER, MOTION_PRESETS } from "../../design/motion";
+import { CONTENT_STAGGER } from "../../design/motion";
 import { playUiSound } from "../../design/sounds";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages } from "../../i18n";
@@ -183,8 +182,8 @@ export function DayArc({
     if (weatherLoading) {
       return (
         <div className="flex flex-col items-end gap-1.5" data-testid="weather-skeleton">
-          <div className="lumen-skeleton-shimmer h-[24px] w-[58px] rounded-lg" />
-          <div className="lumen-skeleton-shimmer h-[11px] w-[112px] rounded-md" />
+          <div className="lumen-skeleton-shimmer h-[21px] w-[52px] rounded-lg" />
+          <div className="lumen-skeleton-shimmer h-[11px] w-[100px] rounded-md" />
         </div>
       );
     }
@@ -220,7 +219,7 @@ export function DayArc({
           <span>{formatDigits(temp, banglaDigits)}</span>
         </div>
         <div
-          className="type-home-micro mt-0.5 truncate max-w-[146px]"
+          className="type-home-micro mt-0.5 truncate max-w-[132px]"
           style={{ color: COLOR_TOKENS.arcTimeMuted }}
         >
           {formatDigits(subline, banglaDigits)}
@@ -238,7 +237,7 @@ export function DayArc({
       data-testid="day-arc-section"
       data-night={geometry.isNightMode ? "true" : "false"}
       data-zoom={zoomMode}
-      className="relative z-10 mt-[6px] h-[150px] w-full select-none"
+      className="relative z-10 mt-[4px] h-[126px] w-full select-none"
     >
       {/* Hidden accessible list alternative */}
       <ul className="sr-only">
@@ -256,7 +255,7 @@ export function DayArc({
       </ul>
 
       {/* Left corner hero block */}
-      <div className="pointer-events-auto absolute top-0 left-0 z-20 w-[140px]">
+      <div className="pointer-events-auto absolute top-0 left-0 z-20 w-[128px]">
         <div
           className="type-home-hero truncate leading-tight text-white"
           data-testid="hero-next-prayer"
@@ -269,8 +268,8 @@ export function DayArc({
         >
           {nextTimeText} · {nextCountdown}
         </div>
-        <div className="mt-1 flex items-center gap-1.5">
-          <motion.button
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <button
             type="button"
             onClick={(e) => {
               if (e.shiftKey) {
@@ -284,18 +283,17 @@ export function DayArc({
               e.preventDefault();
               onResetTasbih();
             }}
-            whileTap={
-              reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
-            }
             aria-label={`${msg.home.arc.tasbih} ${tasbih.count}`}
-            className="home-glass-chip type-home-micro inline-flex h-[22px] items-center gap-1 px-2.5 text-white"
+            className={`home-glass-chip type-home-micro inline-flex h-[20px] items-center gap-1 px-2 text-white ${
+              reduceMotion ? "" : "transition-transform duration-100 active:scale-95"
+            }`}
             data-testid="tasbih-chip"
           >
             <span>{msg.home.arc.tasbih}</span>
             <span className="font-semibold tabular-nums">
               {formatDigits(tasbih.count, banglaDigits)}
             </span>
-          </motion.button>
+          </button>
           {schedule?.is_ramadan && schedule.sehri_iftar_label && (
             <span
               data-testid="ramadan-badge"
@@ -312,15 +310,15 @@ export function DayArc({
       </div>
 
       {/* Right corner weather block */}
-      <div className="pointer-events-none absolute top-1 right-0 z-20 w-[148px]">
+      <div className="pointer-events-none absolute top-0 right-0 z-20 w-[132px]">
         {renderWeatherRight()}
       </div>
 
-      {/* Main 728x150 Day Arc SVG */}
+      {/* Main 728x150 Day Arc SVG scaled cleanly inside 126px band */}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${ARC_SVG_W} ${ARC_SVG_H}`}
-        className="h-[150px] w-full overflow-visible"
+        className="h-[126px] w-full overflow-visible"
         onMouseMove={handleSvgMouseMove}
         onMouseLeave={handleSvgMouseLeave}
         aria-hidden="true"
@@ -345,33 +343,21 @@ export function DayArc({
         />
 
         {/* Glow progress curve */}
-        <motion.path
+        <path
           d={animatedProgressPath}
           fill="none"
           stroke={progressGlow}
           strokeWidth={9}
           strokeLinecap="round"
-          initial={reduceMotion ? false : { pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{
-            duration: reduceMotion ? 0.12 : CONTENT_STAGGER.arcDrawDurationSec,
-            ease: "easeOut",
-          }}
         />
 
         {/* Crisp progress curve */}
-        <motion.path
+        <path
           d={animatedProgressPath}
           fill="none"
           stroke={progressColor}
           strokeWidth={3}
           strokeLinecap="round"
-          initial={reduceMotion ? false : { pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{
-            duration: reduceMotion ? 0.12 : CONTENT_STAGGER.arcDrawDurationSec,
-            ease: "easeOut",
-          }}
         />
 
         {/* Dotted vertical guide lines + labels */}

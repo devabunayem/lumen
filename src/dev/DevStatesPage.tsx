@@ -372,7 +372,7 @@ function buildAll20States(): StateSpec[] {
     },
     {
       id: "scale-150",
-      label: "19. 150% scale (1140x564)",
+      label: "19. 150% scale (960x468)",
       scale: 1.5,
       props: { ...b },
     },
@@ -404,7 +404,7 @@ export function DevStatesPage() {
           <div>
             <h1 className="text-xl font-semibold text-white">Lumen Home — 20 UI States Gallery</h1>
             <p className="text-xs text-white/60">
-              Visual review matrix at 100% (760×376) and 150% (1140×564).
+              Visual review matrix at 100% (640×312) and 150% (960×468).
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">

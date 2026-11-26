@@ -17,13 +17,13 @@ describe("IslandShell", () => {
     expect(pill).toHaveAttribute("data-target-height", "30");
   });
 
-  it("expands to Home 760x376 by default when clicked and collapses on Escape", () => {
+  it("expands to Home 640x312 by default when clicked and collapses on Escape", () => {
     render(<IslandShell shapeStyle="notch" scaleFactor={1} />);
     const pill = screen.getByTestId("lumen-island-pill");
     fireEvent.click(pill);
     expect(pill).toHaveAttribute("data-state", "expanded");
-    expect(pill).toHaveAttribute("data-target-width", "760");
-    expect(pill).toHaveAttribute("data-target-height", "376");
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
     expect(screen.getByTestId("home-page")).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });

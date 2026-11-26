@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { motion } from "motion/react";
 import { ClipboardIcon, ClockLedgerIcon, PlayIcon } from "../../design/icons";
-import { MOTION_PRESETS } from "../../design/motion";
 import { playUiSound } from "../../design/sounds";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages, type AppLanguage } from "../../i18n";
@@ -83,11 +81,27 @@ export function ChipRow({
     window.setTimeout(() => setCopiedFlash(false), 1200);
   };
 
+  const chipInteractionClass = reduceMotion
+    ? ""
+    : "transition-transform duration-100 active:scale-95";
+  const totalPages = Math.max(1, pagesCount);
+  const dotIndices =
+    totalPages <= 6
+      ? Array.from({ length: totalPages }, (_, i) => i)
+      : (() => {
+          const maxDots = 5;
+          const start = Math.min(
+            Math.max(0, activePageIndex - 2),
+            Math.max(0, totalPages - maxDots),
+          );
+          return Array.from({ length: maxDots }, (_, offset) => start + offset);
+        })();
+
   return (
-    <footer className="relative z-10 mt-[10px] flex h-[26px] w-full items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+    <footer className="relative z-10 mt-[6px] flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap">
         {chipsConfig.focus && (
-          <motion.button
+          <button
             type="button"
             data-testid="chip-focus"
             onClick={() => {
@@ -98,64 +112,60 @@ export function ChipRow({
               e.preventDefault();
               onOpenPomodoro();
             }}
-            whileTap={
-              reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
-            }
-            className="home-glass-chip type-home-micro inline-flex h-[24px] shrink-0 items-center gap-1.5 px-2.5 font-medium"
+            className={`home-glass-chip type-home-micro inline-flex h-[22px] shrink-0 items-center gap-1.5 px-2.5 font-medium ${chipInteractionClass}`}
             style={{ color: COLOR_TOKENS.accentOrange }}
           >
             <PlayIcon size={9} />
             <span className="tabular-nums">
-              {msg.home.chips.focus} {formatMmSs(pomodoro.remaining_secs, banglaDigits)}
+              {msg.home.chips.focus}{" "}
+              <span className="inline-block w-[36px] text-center tabular-nums">
+                {formatMmSs(pomodoro.remaining_secs, banglaDigits)}
+              </span>
             </span>
-          </motion.button>
+          </button>
         )}
 
         {chipsConfig.ledger && (
-          <motion.button
+          <button
             type="button"
             data-testid="chip-ledger"
             onClick={() => {
               void playUiSound(ledger?.running ? "toggle_off" : "toggle_on");
               onToggleLedger();
             }}
-            whileTap={
-              reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
-            }
-            className="home-glass-chip type-home-micro inline-flex h-[24px] shrink-0 items-center gap-1.5 px-2.5 text-white/90"
+            className={`home-glass-chip type-home-micro inline-flex h-[22px] shrink-0 items-center gap-1.5 px-2.5 text-white/90 ${chipInteractionClass}`}
           >
-            <ClockLedgerIcon size={11} className="text-white/70" />
-            <span className="tabular-nums">
-              {ledger?.client_name ?? "Client A"}{" "}
-              {formatHms(ledger?.elapsed_secs ?? 5050, banglaDigits)}
+            <ClockLedgerIcon size={11} className="shrink-0 text-white/70" />
+            <span className="flex items-center gap-1 tabular-nums">
+              <span className="max-w-[74px] truncate">{ledger?.client_name ?? "Client A"}</span>
+              <span className="inline-block w-[50px] text-right tabular-nums">
+                {formatHms(ledger?.elapsed_secs ?? 5050, banglaDigits)}
+              </span>
             </span>
-          </motion.button>
+          </button>
         )}
 
         {chipsConfig.clipboard && clipboard?.hasContent && (
-          <motion.button
+          <button
             type="button"
             data-testid="chip-clipboard"
             onClick={() => void handleCopy()}
-            whileTap={
-              reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
-            }
-            className="home-glass-chip type-home-micro inline-flex h-[24px] shrink-0 items-center gap-1.5 px-2.5 text-white/90"
+            className={`home-glass-chip type-home-micro inline-flex h-[22px] shrink-0 items-center gap-1.5 px-2.5 text-white/90 ${chipInteractionClass}`}
           >
-            <ClipboardIcon size={11} className="text-white/70" />
-            <span className="tabular-nums">
+            <ClipboardIcon size={11} className="shrink-0 text-white/70" />
+            <span className="max-w-[110px] truncate tabular-nums">
               {copiedFlash ? msg.home.chips.copied : clipboard.displayText}
             </span>
-          </motion.button>
+          </button>
         )}
 
         {chipsConfig.devPulse && devPulse?.up && devPulse.primaryPort && (
           <span
             data-testid="chip-dev-pulse"
-            className="home-glass-chip type-home-micro inline-flex h-[24px] shrink-0 items-center gap-1.5 px-2.5 text-white/90"
+            className="home-glass-chip type-home-micro inline-flex h-[22px] shrink-0 items-center gap-1.5 px-2.5 text-white/90"
           >
             <span
-              className="inline-block h-[6px] w-[6px] rounded-full"
+              className="inline-block h-[6px] w-[6px] shrink-0 rounded-full"
               style={{ background: COLOR_TOKENS.accentGreen }}
             />
             <span className="tabular-nums">
@@ -166,7 +176,7 @@ export function ChipRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5" aria-label="Island pages">
-        {Array.from({ length: Math.max(1, pagesCount) }).map((_, idx) => {
+        {dotIndices.map((idx) => {
           const isActive = idx === activePageIndex;
           return (
             <button
@@ -175,10 +185,10 @@ export function ChipRow({
               aria-label={`Page ${idx + 1}`}
               aria-current={isActive ? "page" : undefined}
               onClick={() => onSelectPage(idx)}
-              className="flex h-[20px] items-center justify-center px-0.5"
+              className="flex h-[20px] shrink-0 items-center justify-center px-0.5"
             >
               <span
-                className="block h-[5px] rounded-full transition-all duration-200"
+                className="block h-[5px] rounded-full transition-[width,background-color] duration-200"
                 style={{
                   width: isActive ? 18 : 5,
                   background: isActive ? COLOR_TOKENS.accentBlue : COLOR_TOKENS.pageDotInactive,

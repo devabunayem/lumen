@@ -1,5 +1,4 @@
 import { useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
-import { motion } from "motion/react";
 import {
   MusicNoteIcon,
   PauseIcon,
@@ -7,7 +6,6 @@ import {
   SkipBackIcon,
   SkipForwardIcon,
 } from "../../design/icons";
-import { MOTION_PRESETS } from "../../design/motion";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages, type AppLanguage } from "../../i18n";
 import { formatDigits } from "../../i18n/digits";
@@ -85,8 +83,7 @@ export function MusicCard({
   };
 
   return (
-    <motion.div
-      layoutId={reduceMotion ? undefined : "home-card-music"}
+    <div
       data-testid="home-music-card"
       role="button"
       tabIndex={0}
@@ -97,14 +94,13 @@ export function MusicCard({
       onWheel={handleWheel}
       onAuxClick={handleAuxClick}
       onKeyDown={handleCardKeyDown}
-      whileTap={
-        reduceMotion ? undefined : { scale: 0.985, transition: MOTION_PRESETS.pressFeedback }
-      }
-      className="home-glass-card relative flex h-[116px] cursor-pointer items-center gap-3.5 px-[14px] py-[12px] text-left"
+      className={`home-glass-card relative flex h-[94px] cursor-pointer items-center gap-2.5 overflow-hidden px-[12px] py-[10px] text-left ${
+        reduceMotion ? "" : "transition-transform duration-100 active:scale-[0.985]"
+      }`}
     >
-      {/* 76px artwork square (radius 16) */}
+      {/* 60px artwork square (radius 14) */}
       <div
-        className="flex h-[76px] w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-[16px]"
+        className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-[14px]"
         style={{
           background: session?.album_art_data_url
             ? COLOR_TOKENS.surfaceRaised
@@ -118,28 +114,33 @@ export function MusicCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <MusicNoteIcon size={26} className="text-white/90" />
+          <MusicNoteIcon size={22} className="text-white/90" />
         )}
       </div>
 
       {session ? (
-        <div className="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5">
+        <div className="flex min-w-0 flex-1 flex-col justify-between self-stretch">
           <div className="min-w-0">
-            <div className="type-home-card-title truncate text-white">{session.title}</div>
-            <div className="type-home-micro truncate" style={{ color: COLOR_TOKENS.textSecondary }}>
+            <div className="type-home-card-title truncate leading-tight text-white">
+              {session.title}
+            </div>
+            <div
+              className="type-home-micro truncate leading-tight"
+              style={{ color: COLOR_TOKENS.textSecondary }}
+            >
               {session.artist || session.app_id}
             </div>
           </div>
 
           <div className="w-full">
-            <div className="h-[4px] w-full overflow-hidden rounded-full bg-white/15">
+            <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/15">
               <div
                 className="h-full rounded-full bg-white transition-[width] duration-300 ease-out"
                 style={{ width: `${pct}%` }}
               />
             </div>
             <div
-              className="type-home-micro mt-1 flex items-center justify-between tabular-nums"
+              className="type-home-micro mt-0.5 flex items-center justify-between leading-none tabular-nums"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               <span>{formatTrackTime(position, banglaDigits)}</span>
@@ -148,40 +149,40 @@ export function MusicCard({
           </div>
 
           <div
-            className="flex items-center justify-center gap-3"
+            className="flex items-center justify-center gap-2"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               aria-label={msg.home.music.prev}
               onClick={onPrev}
-              className="flex h-[32px] w-[32px] items-center justify-center rounded-full text-white/85 hover:text-white"
+              className="flex h-[26px] w-[26px] items-center justify-center rounded-full text-white/85 hover:text-white"
             >
-              <SkipBackIcon size={14} />
+              <SkipBackIcon size={13} />
             </button>
             <button
               type="button"
               aria-label={session.is_playing ? msg.home.music.pause : msg.home.music.play}
               onClick={onPlayPause}
-              className="flex h-[32px] w-[32px] items-center justify-center rounded-full"
+              className="flex h-[26px] w-[26px] items-center justify-center rounded-full"
             >
-              <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-white text-black">
-                {session.is_playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
+              <span className="flex h-[24px] w-[24px] items-center justify-center rounded-full bg-white text-black">
+                {session.is_playing ? <PauseIcon size={12} /> : <PlayIcon size={12} />}
               </span>
             </button>
             <button
               type="button"
               aria-label={msg.home.music.next}
               onClick={onNext}
-              className="flex h-[32px] w-[32px] items-center justify-center rounded-full text-white/85 hover:text-white"
+              className="flex h-[26px] w-[26px] items-center justify-center rounded-full text-white/85 hover:text-white"
             >
-              <SkipForwardIcon size={14} />
+              <SkipForwardIcon size={13} />
             </button>
           </div>
         </div>
       ) : (
         <div
-          className="flex min-w-0 flex-1 flex-col justify-between self-stretch py-1"
+          className="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5"
           data-testid="music-empty-state"
         >
           <div className="min-w-0">
@@ -198,9 +199,9 @@ export function MusicCard({
             <button
               type="button"
               onClick={onPlayPause}
-              className="home-glass-chip type-home-micro inline-flex min-h-[32px] items-center gap-1.5 px-3 font-semibold text-white"
+              className="home-glass-chip type-home-micro inline-flex min-h-[26px] items-center gap-1.5 px-2.5 font-semibold text-white"
             >
-              <PlayIcon size={11} />
+              <PlayIcon size={10} />
               <span>{msg.home.music.play}</span>
             </button>
           </div>
@@ -220,6 +221,6 @@ export function MusicCard({
           {formatDigits(`${volumeHudPct}%`, banglaDigits)}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

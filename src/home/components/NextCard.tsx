@@ -1,6 +1,4 @@
 import type { KeyboardEvent } from "react";
-import { motion } from "motion/react";
-import { MOTION_PRESETS } from "../../design/motion";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages } from "../../i18n";
 import { formatDigits, interpolateMsg } from "../../i18n/digits";
@@ -47,18 +45,16 @@ export function NextCard({
   };
 
   return (
-    <motion.div
-      layoutId={reduceMotion ? undefined : "home-card-next"}
+    <div
       data-testid="home-next-card"
       role="button"
       tabIndex={0}
       aria-label={`${msg.home.next.label} ${summary.title}`}
       onClick={onOpenAgenda}
       onKeyDown={handleKeyDown}
-      whileTap={
-        reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
-      }
-      className="home-glass-card flex h-[116px] cursor-pointer flex-col justify-between px-[14px] py-[12px] text-left"
+      className={`home-glass-card flex h-[94px] cursor-pointer flex-col justify-between overflow-hidden px-[12px] py-[10px] text-left ${
+        reduceMotion ? "" : "transition-transform duration-100 active:scale-[0.96]"
+      }`}
     >
       <div className="type-home-meta flex items-center gap-1.5 truncate">
         <span
@@ -84,7 +80,7 @@ export function NextCard({
         </div>
 
         <div
-          className="type-home-micro mt-1 truncate"
+          className="type-home-micro mt-0.5 truncate"
           style={{ color: COLOR_TOKENS.textSecondary }}
         >
           {summary.isAllClear
@@ -95,6 +91,6 @@ export function NextCard({
               )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

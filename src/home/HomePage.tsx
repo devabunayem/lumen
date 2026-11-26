@@ -1,6 +1,4 @@
-import { Suspense, lazy, useMemo, useState, type MouseEvent } from "react";
-import { motion } from "motion/react";
-import { CONTENT_STAGGER, MOTION_PRESETS } from "../design/motion";
+import { useState, type MouseEvent } from "react";
 import type {
   CalendarEvent,
   ClipboardChipSnapshot,
@@ -14,20 +12,15 @@ import type {
   TimeLedgerState,
   WaterSummary,
 } from "../lib/ipc";
+import { ChipRow } from "./components/ChipRow";
+import { DayArc } from "./components/DayArc";
 import { GlowLayer } from "./components/GlowLayer";
+import { MusicCard } from "./components/MusicCard";
+import { NextCard } from "./components/NextCard";
 import { TogglesRow, type TogglesState } from "./components/TogglesRow";
+import { WaterCard } from "./components/WaterCard";
 import { useAmbientPalette } from "./hooks/useAmbientPalette";
 import { useDayArcGeometry, type ArcZoomMode } from "./hooks/useDayArcGeometry";
-
-const DayArc = lazy(() => import("./components/DayArc").then((m) => ({ default: m.DayArc })));
-const MusicCard = lazy(() =>
-  import("./components/MusicCard").then((m) => ({ default: m.MusicCard })),
-);
-const NextCard = lazy(() => import("./components/NextCard").then((m) => ({ default: m.NextCard })));
-const WaterCard = lazy(() =>
-  import("./components/WaterCard").then((m) => ({ default: m.WaterCard })),
-);
-const ChipRow = lazy(() => import("./components/ChipRow").then((m) => ({ default: m.ChipRow })));
 
 export type { HomeChipsConfig } from "./components/ChipRow";
 export type { TogglesState } from "./components/TogglesRow";
@@ -95,16 +88,6 @@ export interface HomePageProps {
   onToggleShape?: () => void;
 }
 
-function CardRowSkeleton() {
-  return (
-    <div className="mt-[6px] grid grid-cols-[1.7fr_1fr_1fr] gap-[8px]">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="home-glass-card lumen-skeleton-shimmer h-[116px]" />
-      ))}
-    </div>
-  );
-}
-
 export function HomePage(props: HomePageProps) {
   const [zoomMode, setZoomMode] = useState<ArcZoomMode>("day");
   const [parallaxOffset, setParallaxOffset] = useState({ x: 0, y: 0 });
@@ -161,17 +144,6 @@ export function HomePage(props: HomePageProps) {
     setParallaxOffset({ x: 0, y: 0 });
   };
 
-  const cardTransition = useMemo(
-    () => (index: number) =>
-      props.reduceMotion
-        ? MOTION_PRESETS.reducedMotionFade
-        : {
-            ...MOTION_PRESETS.snappy,
-            delay: (CONTENT_STAGGER.expandDelayMs + index * CONTENT_STAGGER.expandStaggerMs) / 1000,
-          },
-    [props.reduceMotion],
-  );
-
   return (
     <div
       data-testid="home-page"
@@ -179,7 +151,7 @@ export function HomePage(props: HomePageProps) {
       data-reduce-transparency={props.reduceTransparency ? "true" : "false"}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="relative flex h-full w-full flex-col justify-between overflow-hidden p-[16px]"
+      className="relative flex h-full w-full flex-col justify-start overflow-hidden px-[14px] pt-[12px] pb-[14px]"
     >
       <GlowLayer
         palette={palette}
@@ -188,7 +160,7 @@ export function HomePage(props: HomePageProps) {
         parallaxOffset={parallaxOffset}
       />
 
-      {/* 1. Header Row (height 30) */}
+      {/* 1. Header Row (height 28) */}
       <TogglesRow
         nowDate={props.nowDate}
         language={props.language}
@@ -205,115 +177,83 @@ export function HomePage(props: HomePageProps) {
         onToggleShape={props.onToggleShape}
       />
 
-      {/* 2. Day Arc Block (height 150, margin-top 6) */}
-      <Suspense
-        fallback={<div className="lumen-skeleton-shimmer mt-[6px] h-[150px] w-full rounded-2xl" />}
-      >
-        <DayArc
-          geometry={geometry}
-          schedule={props.schedule}
-          weather={props.weather}
-          weatherLoading={props.weatherLoading}
-          weatherError={props.weatherError}
-          locationNotSet={props.locationNotSet}
-          tasbih={props.tasbih}
-          zoomMode={zoomMode}
+      {/* 2. Day Arc Block (height 126, margin-top 4) */}
+      <DayArc
+        geometry={geometry}
+        schedule={props.schedule}
+        weather={props.weather}
+        weatherLoading={props.weatherLoading}
+        weatherError={props.weatherError}
+        locationNotSet={props.locationNotSet}
+        tasbih={props.tasbih}
+        zoomMode={zoomMode}
+        language={props.language}
+        banglaDigits={props.banglaDigits}
+        reduceMotion={props.reduceMotion}
+        isFirstOpenOfDay={props.isFirstOpenOfDay}
+        isVisible={props.isVisible}
+        onToggleZoom={() => setZoomMode((z) => (z === "day" ? "next3h" : "day"))}
+        onOpenPrayer={() => props.onNavigateWidget("prayer")}
+        onOpenAgenda={() => props.onNavigateWidget("calendar")}
+        onIncrementTasbih={props.onIncrementTasbih}
+        onResetTasbih={props.onResetTasbih}
+      />
+
+      {/* 3. Bento Glass Card Row (1.7fr / 1fr / 1fr, fixed height 94) */}
+      <div className="relative z-10 mt-[6px] grid h-[94px] grid-cols-[1.7fr_1fr_1fr] gap-[8px]">
+        <MusicCard
+          media={props.media}
+          lastPlayedTrack={props.lastPlayedTrack}
           language={props.language}
           banglaDigits={props.banglaDigits}
           reduceMotion={props.reduceMotion}
-          isFirstOpenOfDay={props.isFirstOpenOfDay}
-          isVisible={props.isVisible}
-          onToggleZoom={() => setZoomMode((z) => (z === "day" ? "next3h" : "day"))}
-          onOpenPrayer={() => props.onNavigateWidget("prayer")}
-          onOpenAgenda={() => props.onNavigateWidget("calendar")}
-          onIncrementTasbih={props.onIncrementTasbih}
-          onResetTasbih={props.onResetTasbih}
+          onOpenMusicPage={() => props.onNavigateWidget("music")}
+          onPlayPause={props.onMediaPlayPause}
+          onPrev={props.onMediaPrev}
+          onNext={props.onMediaNext}
+          onMuteToggle={props.onMediaMuteToggle}
+          onVolumeDelta={props.onMediaVolumeDelta}
         />
-      </Suspense>
 
-      {/* 3. Bento Glass Card Row (1.7fr / 1fr / 1fr, each 116 high) */}
-      <Suspense fallback={<CardRowSkeleton />}>
-        <div className="relative z-10 mt-[6px] grid grid-cols-[1.7fr_1fr_1fr] gap-[8px]">
-          <motion.div
-            initial={props.reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={cardTransition(0)}
-          >
-            <MusicCard
-              media={props.media}
-              lastPlayedTrack={props.lastPlayedTrack}
-              language={props.language}
-              banglaDigits={props.banglaDigits}
-              reduceMotion={props.reduceMotion}
-              onOpenMusicPage={() => props.onNavigateWidget("music")}
-              onPlayPause={props.onMediaPlayPause}
-              onPrev={props.onMediaPrev}
-              onNext={props.onMediaNext}
-              onMuteToggle={props.onMediaMuteToggle}
-              onVolumeDelta={props.onMediaVolumeDelta}
-            />
-          </motion.div>
+        <NextCard
+          calendarEvents={props.calendarEvents}
+          tasks={props.tasks}
+          schedule={props.schedule}
+          nowDate={props.nowDate}
+          language={props.language}
+          banglaDigits={props.banglaDigits}
+          reduceMotion={props.reduceMotion}
+          onOpenAgenda={() => props.onNavigateWidget("calendar")}
+        />
 
-          <motion.div
-            initial={props.reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={cardTransition(1)}
-          >
-            <NextCard
-              calendarEvents={props.calendarEvents}
-              tasks={props.tasks}
-              schedule={props.schedule}
-              nowDate={props.nowDate}
-              language={props.language}
-              banglaDigits={props.banglaDigits}
-              reduceMotion={props.reduceMotion}
-              onOpenAgenda={() => props.onNavigateWidget("calendar")}
-            />
-          </motion.div>
+        <WaterCard
+          water={props.water}
+          language={props.language}
+          banglaDigits={props.banglaDigits}
+          reduceMotion={props.reduceMotion}
+          onLogWater={props.onLogWater}
+          onOpenWaterPage={() => props.onNavigateWidget("water")}
+        />
+      </div>
 
-          <motion.div
-            initial={props.reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={cardTransition(2)}
-          >
-            <WaterCard
-              water={props.water}
-              language={props.language}
-              banglaDigits={props.banglaDigits}
-              reduceMotion={props.reduceMotion}
-              onLogWater={props.onLogWater}
-              onOpenWaterPage={() => props.onNavigateWidget("water")}
-            />
-          </motion.div>
-        </div>
-      </Suspense>
-
-      {/* 4. Chip Row (margin-top 10) */}
-      <Suspense fallback={<div className="mt-[10px] h-[26px]" />}>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={cardTransition(3)}
-        >
-          <ChipRow
-            pomodoro={props.pomodoro}
-            ledger={props.ledger}
-            clipboard={props.clipboard}
-            devPulse={props.devPulse}
-            chipsConfig={props.chipsConfig}
-            pagesCount={props.pagesCount}
-            activePageIndex={props.activePageIndex}
-            language={props.language}
-            banglaDigits={props.banglaDigits}
-            reduceMotion={props.reduceMotion}
-            onToggleFocusTimer={props.onToggleFocusTimer}
-            onToggleLedger={props.onToggleLedger}
-            onCopyClipboard={props.onCopyClipboard}
-            onOpenPomodoro={() => props.onNavigateWidget("pomodoro")}
-            onSelectPage={props.onSelectPage}
-          />
-        </motion.div>
-      </Suspense>
+      {/* 4. Chip Row (height 22, margin-top 6) */}
+      <ChipRow
+        pomodoro={props.pomodoro}
+        ledger={props.ledger}
+        clipboard={props.clipboard}
+        devPulse={props.devPulse}
+        chipsConfig={props.chipsConfig}
+        pagesCount={props.pagesCount}
+        activePageIndex={props.activePageIndex}
+        language={props.language}
+        banglaDigits={props.banglaDigits}
+        reduceMotion={props.reduceMotion}
+        onToggleFocusTimer={props.onToggleFocusTimer}
+        onToggleLedger={props.onToggleLedger}
+        onCopyClipboard={props.onCopyClipboard}
+        onOpenPomodoro={() => props.onNavigateWidget("pomodoro")}
+        onSelectPage={props.onSelectPage}
+      />
     </div>
   );
 }

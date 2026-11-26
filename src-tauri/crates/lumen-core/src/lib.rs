@@ -579,9 +579,9 @@ impl LumenSettings {
             "130" => 1.30,
             "150" => 1.50,
             _ => {
-                if screen_width_logical >= 2560.0 {
+                if screen_width_logical >= 3840.0 {
                     1.30
-                } else if screen_width_logical >= 1920.0 {
+                } else if screen_width_logical >= 2560.0 {
                     1.15
                 } else {
                     1.0

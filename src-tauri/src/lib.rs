@@ -46,8 +46,8 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-const CANVAS_WIN_W: f64 = 1220.0;
-const CANVAS_WIN_H: f64 = 612.0;
+const CANVAS_WIN_W: f64 = 1040.0;
+const CANVAS_WIN_H: f64 = 510.0;
 
 #[derive(Debug, Clone, Copy)]
 struct IslandRuntimeConfig {

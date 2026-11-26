@@ -73,18 +73,18 @@
   --pill-slim-h: 12px;
   --island-expanded-w: 560px;
   --island-expanded-h: 172px;
-  --home-expanded-w: 760px;
-  --home-expanded-h: 376px;
-  --home-bottom-radius: 40px;
+  --home-expanded-w: 640px;
+  --home-expanded-h: 312px;
+  --home-bottom-radius: 32px;
   --hud-w: 240px;
   --hud-h: 56px;
 
-  --island-padding: 16px;
-  --island-gap: 8px;
+  --island-padding: 14px;
+  --island-gap: 6px;
   --card-radius: 18px;
-  --home-card-radius: 22px;
+  --home-card-radius: 20px;
   --chip-radius: 99px;
-  --control-radius: 15px;
+  --control-radius: 14px;
   --capsule-height: 28px;
   --pill-float-offset: 8px;
 }
@@ -162,28 +162,28 @@ a:focus-visible,
 }
 
 .type-home-stat-lg {
-  font-size: 34px;
+  font-size: 28px;
   font-weight: 600;
   line-height: 1.04;
   font-variant-numeric: tabular-nums;
 }
 
 .type-home-stat-md {
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 600;
   line-height: 1.08;
   font-variant-numeric: tabular-nums;
 }
 
 .type-home-hero {
-  font-size: 24px;
+  font-size: 21px;
   font-weight: 600;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
 .type-home-card-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.25;
 }
@@ -202,15 +202,13 @@ a:focus-visible,
 }
 
 .home-glass-card {
-  background: var(--glass-card-bg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.04));
   border: 1px solid var(--glass-card-border);
   border-radius: var(--home-card-radius);
-  backdrop-filter: blur(14px);
 }
 
 [data-reduce-transparency="true"] .home-glass-card {
   background: var(--glass-card-solid);
-  backdrop-filter: none;
 }
 
 .home-glass-chip {
@@ -277,11 +275,11 @@ a:focus-visible,
 .lumen-halo-breath {
   transform-box: fill-box;
   transform-origin: center;
-  animation: lumen-halo-breath 4s ease-in-out infinite;
+  opacity: 0.32;
 }
 
 .lumen-glow-drift {
-  animation: lumen-glow-drift 60s ease-in-out infinite;
+  transition: transform 0.25s ease-out;
 }
 
 [data-reduce-motion="true"] .lumen-skeleton-shimmer::after,

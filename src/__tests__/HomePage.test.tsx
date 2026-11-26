@@ -34,7 +34,7 @@ describe("Home Page & /dev/states 20 UI states", () => {
     for (const id of expectedIds) {
       expect(screen.getByTestId(`dev-state-${id}`)).toBeInTheDocument();
     }
-    expect(screen.getByText("1140×564 px")).toBeInTheDocument();
+    expect(screen.getByText("960×468 px")).toBeInTheDocument();
   });
 
   it("filters to individual states cleanly without losing interactivity", async () => {
