@@ -422,6 +422,9 @@ fn default_now_playing_banner_seconds() -> u32 {
 fn default_notification_duration_seconds() -> u32 {
     8
 }
+fn default_action_glow_mode() -> String {
+    "action".into()
+}
 fn default_dev_pulse_ports() -> Vec<u16> {
     vec![3000, 5173, 1420]
 }
@@ -513,6 +516,8 @@ pub struct LumenSettings {
     pub now_playing_banner_seconds: u32,
     #[serde(default = "default_notification_duration_seconds")]
     pub notification_duration_seconds: u32,
+    #[serde(default = "default_action_glow_mode")]
+    pub action_glow_mode: String,
 }
 
 impl Default for LumenSettings {
@@ -563,6 +568,7 @@ impl Default for LumenSettings {
             now_playing_banner_enabled: true,
             now_playing_banner_seconds: default_now_playing_banner_seconds(),
             notification_duration_seconds: default_notification_duration_seconds(),
+            action_glow_mode: default_action_glow_mode(),
         }
     }
 }
@@ -589,6 +595,9 @@ impl LumenSettings {
         }
         if !matches!(self.language.as_str(), "en" | "bn") {
             self.language = default_language();
+        }
+        if !matches!(self.action_glow_mode.as_str(), "action" | "always" | "off") {
+            self.action_glow_mode = default_action_glow_mode();
         }
         self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
         self.reminder_snooze_minutes = self.reminder_snooze_minutes.clamp(1, 30);

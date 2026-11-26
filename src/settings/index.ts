@@ -6,6 +6,7 @@ import {
 } from "../design/tokens";
 
 export type MonitorMode = "primary" | "active" | "index";
+export type ActionGlowMode = "action" | "always" | "off";
 
 export interface LumenSettings {
   version: number;
@@ -53,6 +54,7 @@ export interface LumenSettings {
   nowPlayingBannerEnabled: boolean;
   nowPlayingBannerSeconds: number;
   notificationDurationSeconds: number;
+  actionGlowMode: ActionGlowMode;
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -111,6 +113,7 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   nowPlayingBannerEnabled: true,
   nowPlayingBannerSeconds: 4,
   notificationDurationSeconds: 8,
+  actionGlowMode: "action",
 };
 
 export function resolveSettingsScaleFactor(

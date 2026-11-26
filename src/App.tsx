@@ -134,6 +134,7 @@ export function App() {
       nowPlayingBannerEnabled={settings.nowPlayingBannerEnabled}
       nowPlayingBannerSeconds={settings.nowPlayingBannerSeconds}
       notificationDurationSeconds={settings.notificationDurationSeconds}
+      actionGlowMode={settings.actionGlowMode}
       pageOrder={settings.pageOrder}
       hiddenPages={settings.hiddenPages}
       initialWaterGoalMl={settings.waterGoalMl}

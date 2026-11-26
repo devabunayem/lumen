@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { ActionGlowLayer } from "../app/ActionGlowLayer";
 import { LumenMascot } from "../app/LumenMascot";
 import { DEFAULT_SETTINGS } from "../settings";
 import { SettingsWindow } from "../settings/SettingsWindow";
@@ -44,5 +45,31 @@ describe("Phase 6 Settings, Mascot & Bangla i18n", () => {
 
     rerender(<LumenMascot enabled={false} />);
     expect(screen.queryByTestId("lumen-mascot")).toBeNull();
+  });
+
+  it("renders Hero Lumi mascot moods & ActionGlowLayer states cleanly", () => {
+    const { rerender } = render(<LumenMascot enabled size="hero" mood="wave" />);
+    const hero = screen.getByTestId("lumen-mascot");
+    expect(hero).toHaveAttribute("data-size", "hero");
+    expect(hero).toHaveAttribute("data-mood", "wave");
+
+    const { rerender: rerenderGlow } = render(
+      <ActionGlowLayer mode="action" active={false} mood="idle" />,
+    );
+    expect(screen.queryByTestId("lumen-action-glow")).toBeNull();
+
+    rerenderGlow(<ActionGlowLayer mode="action" active mood="celebrate" />);
+    const activeGlow = screen.getByTestId("lumen-action-glow");
+    expect(activeGlow).toBeInTheDocument();
+    expect(activeGlow).toHaveAttribute("data-mood", "celebrate");
+
+    rerenderGlow(<ActionGlowLayer mode="always" active={false} mood="wave" />);
+    expect(screen.getByTestId("lumen-action-glow")).toBeInTheDocument();
+
+    rerenderGlow(<ActionGlowLayer mode="off" active mood="wave" />);
+    expect(screen.queryByTestId("lumen-action-glow")).toBeNull();
+
+    rerender(<LumenMascot enabled size="hero" mood="sleep" />);
+    expect(screen.getByTestId("lumen-mascot")).toHaveAttribute("data-mood", "sleep");
   });
 });

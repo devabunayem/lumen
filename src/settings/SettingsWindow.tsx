@@ -774,6 +774,52 @@ export function SettingsWindow({
                   </div>
 
                   <AppleRow
+                    label={isBn ? "অ্যাকশন ম্যাসকট (Lumi)" : "Lumi Action Mascot"}
+                    hint={
+                      isBn
+                        ? "অ্যাকশন বা অভ্যর্থনার সময় নচে Lumi-র চোখ ও হাত নাড়ানো অ্যানিমেশন দেখাবে"
+                        : "Show expressive Lumi eyes & waving hand during actions and greetings"
+                    }
+                  >
+                    <AppleToggle
+                      checked={settings.mascotEnabled}
+                      onChange={(v) => void commit({ ...settings, mascotEnabled: v })}
+                    />
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "মুভেবল অ্যাকশন গ্লো" : "Movable Action Glow"}
+                    hint={
+                      isBn
+                        ? "নচের নিচের কিনারায় চলমান মাল্টি-কালার অরোরা আলো"
+                        : "Flowing multi-color aurora glow along the bottom rim of the notch"
+                    }
+                  >
+                    <div className="flex gap-1.5">
+                      {(
+                        [
+                          ["action", isBn ? "অ্যাকশনে" : "On Action"],
+                          ["always", isBn ? "সবসময়" : "Always"],
+                          ["off", isBn ? "বন্ধ" : "Off"],
+                        ] as const
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => void commit({ ...settings, actionGlowMode: mode })}
+                          className={`cursor-pointer rounded-lg border-0 px-2.5 py-1 text-xs font-semibold transition-colors ${
+                            settings.actionGlowMode === mode
+                              ? "bg-[#bf5af2] text-white"
+                              : "bg-[#2c2c2e] text-[#8e8e93] hover:text-white"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </AppleRow>
+
+                  <AppleRow
                     label="Show Full Date in Expanded Header"
                     hint="Show date beside the clock on expanded secondary pages"
                   >

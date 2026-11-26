@@ -85,6 +85,19 @@ export const MOTION_PRESETS = {
     duration: 0.12,
     ease: "easeOut",
   },
+  lumiEnter: {
+    type: "spring",
+    stiffness: 440,
+    damping: 28,
+  },
+  lumiExit: {
+    duration: 0.22,
+    ease: [0.22, 1, 0.36, 1],
+  },
+  auroraFade: {
+    duration: 0.35,
+    ease: "easeInOut",
+  },
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {

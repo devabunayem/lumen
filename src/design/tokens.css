@@ -62,6 +62,14 @@
   --page-dot-inactive: rgba(255, 255, 255, 0.24);
   --skeleton-base: rgba(255, 255, 255, 0.08);
   --skeleton-highlight: rgba(255, 255, 255, 0.16);
+  --aurora-wave-a: rgba(56, 189, 248, 0.62);
+  --aurora-wave-b: rgba(191, 90, 242, 0.56);
+  --aurora-celebrate-a: rgba(48, 209, 88, 0.62);
+  --aurora-celebrate-b: rgba(90, 200, 250, 0.54);
+  --aurora-confirm-a: rgba(255, 159, 10, 0.58);
+  --aurora-confirm-b: rgba(255, 69, 58, 0.48);
+  --aurora-focus-a: rgba(94, 92, 230, 0.56);
+  --aurora-focus-b: rgba(10, 132, 255, 0.5);
 
   /* Geometry tokens at 100% scale */
   --island-scale: 1;
@@ -258,6 +266,36 @@ a:focus-visible,
   }
 }
 
+@keyframes lumen-aurora-flow-a {
+  0%,
+  100% {
+    transform: translate3d(-16%, 2px, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(18%, -4px, 0) scale(1.12);
+  }
+}
+
+@keyframes lumen-aurora-flow-b {
+  0%,
+  100% {
+    transform: translate3d(16%, 0px, 0) scale(1.06);
+  }
+  50% {
+    transform: translate3d(-18%, -5px, 0) scale(0.96);
+  }
+}
+
+.lumen-aurora-blob-a {
+  animation: lumen-aurora-flow-a 4.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lumen-aurora-blob-b {
+  animation: lumen-aurora-flow-b 5.8s ease-in-out infinite;
+  will-change: transform;
+}
+
 .lumen-skeleton-shimmer {
   position: relative;
   overflow: hidden;
@@ -284,6 +322,8 @@ a:focus-visible,
 
 [data-reduce-motion="true"] .lumen-skeleton-shimmer::after,
 [data-reduce-motion="true"] .lumen-halo-breath,
-[data-reduce-motion="true"] .lumen-glow-drift {
+[data-reduce-motion="true"] .lumen-glow-drift,
+[data-reduce-motion="true"] .lumen-aurora-blob-a,
+[data-reduce-motion="true"] .lumen-aurora-blob-b {
   animation: none;
 }

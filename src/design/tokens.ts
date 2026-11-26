@@ -55,6 +55,14 @@ export const COLOR_TOKENS = {
   pageDotInactive: "var(--page-dot-inactive)",
   skeletonBase: "var(--skeleton-base)",
   skeletonHighlight: "var(--skeleton-highlight)",
+  auroraWaveA: "var(--aurora-wave-a)",
+  auroraWaveB: "var(--aurora-wave-b)",
+  auroraCelebrateA: "var(--aurora-celebrate-a)",
+  auroraCelebrateB: "var(--aurora-celebrate-b)",
+  auroraConfirmA: "var(--aurora-confirm-a)",
+  auroraConfirmB: "var(--aurora-confirm-b)",
+  auroraFocusA: "var(--aurora-focus-a)",
+  auroraFocusB: "var(--aurora-focus-b)",
 } as const;
 
 export const BASE_GEOMETRY = {

@@ -6,6 +6,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Expressive Lumi Action Mascot & Movable Flowing Aurora Glow:**
+  - Added `ActionGlowLayer` with GPU-composited async counter-drifting bottom aurora gradient lobes (`--aurora-wave-*`, `--aurora-celebrate-*`, `--aurora-confirm-*`, `--aurora-focus-*`, or active track `accent_hex`) with CSS vertical fade masking and zero sharp seams.
+  - Upgraded `LumenMascot` with `size="hero"` expressive glowing mood eyes (`wave`, `celebrate`, `confirm`, `music`, `sleep`, blinking `idle`) and an animated wrist-waving vector hand, automatically triggered on app greetings, hydration logs, task completions, reminders, clipboard/focus toggles, charger plug-in, and Pomodoro milestones before returning smoothly to the centered-clock notch.
+  - Added `Lumi Action Mascot` and `Movable Action Glow` (`On Action` / `Always` / `Off`, persisted via `actionGlowMode` in `LumenSettings`) inside the Appearance tab.
+
 - **Centered-Clock Resting Notch, Brief Now-Playing Track Banner & Streamlined 7-Tab Settings:**
   - Updated the default resting notch (`idle` and `live`) to show a centered clock, left live status dots (Camera green, Mic orange, circular Charging `%` ring, Focus), and a right music waveform (animated only while playing).
   - Added `NowPlayingBanner` (`320×60`) to briefly highlight newly started/switched YouTube or desktop media playback before smoothly returning to the centered clock notch.

@@ -116,7 +116,7 @@ import {
   snoozeLocalReminder,
   stopLocalReminder,
 } from "../lib/remindersLocal";
-import { DEFAULT_SETTINGS } from "../settings";
+import { DEFAULT_SETTINGS, type ActionGlowMode } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
 import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
@@ -133,7 +133,9 @@ import {
 import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
+import { ActionGlowLayer, type LumiMood } from "./ActionGlowLayer";
 import { HudOverlay } from "./HudOverlay";
+import { LumenMascot } from "./LumenMascot";
 import { NotificationToast } from "./NotificationToast";
 import { NowPlayingBanner, type NowPlayingBannerItem } from "./NowPlayingBanner";
 import { ReminderAlertOverlay } from "./ReminderAlertOverlay";
@@ -147,6 +149,7 @@ export interface IslandShellProps {
   hoverToOpen?: boolean;
   hoverReturnSeconds?: number;
   mascotEnabled?: boolean;
+  actionGlowMode?: ActionGlowMode;
   showHeaderClockSetting?: boolean;
   language?: AppLanguage;
   reducedMotionOverride?: boolean;
@@ -219,6 +222,8 @@ export function IslandShell({
   minimalNotch = false,
   hoverToOpen = true,
   hoverReturnSeconds = 5,
+  mascotEnabled = true,
+  actionGlowMode = "action",
   showHeaderClockSetting = true,
   language = "en",
   reducedMotionOverride = false,
@@ -306,6 +311,14 @@ export function IslandShell({
   const [notifyExpanded, setNotifyExpanded] = useState(false);
   const [activeNowPlaying, setActiveNowPlaying] = useState<NowPlayingBannerItem | null>(null);
   const [activeReminderAlert, setActiveReminderAlert] = useState<ReminderAlertPayload | null>(null);
+  const [activeLumiAction, setActiveLumiAction] = useState<{
+    id: number;
+    mood: LumiMood;
+    accentHex?: string;
+  } | null>(null);
+  const lumiTimerRef = useRef<number | null>(null);
+  const prevChargingRef = useRef<boolean | null>(null);
+  const prevChimeTickRef = useRef<number | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const [slimReturnActive, setSlimReturnActive] = useState(false);
   const [privacyDevices, setPrivacyDevices] = useState<[boolean, boolean]>([false, false]);
@@ -318,6 +331,60 @@ export function IslandShell({
     seconds: nowPlayingBannerSeconds,
   });
   const notifyDurationRef = useRef(notificationDurationSeconds);
+
+  const triggerLumiReaction = useCallback(
+    (mood: LumiMood, durationMs = 2400, accentHex?: string) => {
+      if (lumiTimerRef.current !== null) {
+        window.clearTimeout(lumiTimerRef.current);
+      }
+      setActiveLumiAction({ id: Date.now(), mood, accentHex });
+      lumiTimerRef.current = window.setTimeout(() => {
+        lumiTimerRef.current = null;
+        setActiveLumiAction(null);
+      }, durationMs);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (lumiTimerRef.current !== null) {
+        window.clearTimeout(lumiTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Greet once smoothly after real desktop launch with wave + flowing aurora
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      triggerLumiReaction("wave", 2600);
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [triggerLumiReaction]);
+
+  // React to charger plug-in and Pomodoro completion milestones
+  useEffect(() => {
+    const charging = batteryState ? batteryState[1] : null;
+    if (charging !== null) {
+      if (prevChargingRef.current === false && charging) {
+        triggerLumiReaction("celebrate", 2500);
+      }
+      prevChargingRef.current = charging;
+    }
+  }, [batteryState, triggerLumiReaction]);
+
+  useEffect(() => {
+    const chimeTick = pomodoro?.chime_tick ?? null;
+    if (chimeTick !== null) {
+      if (prevChimeTickRef.current !== null && chimeTick > prevChimeTickRef.current) {
+        triggerLumiReaction("celebrate", 2800);
+      }
+      prevChimeTickRef.current = chimeTick;
+    }
+  }, [pomodoro?.chime_tick, triggerLumiReaction]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1255,6 +1322,26 @@ export function IslandShell({
         )}
 
         <div className="relative h-full w-full overflow-hidden rounded-[inherit]">
+          <ActionGlowLayer
+            mode={actionGlowMode}
+            active={Boolean(
+              activeLumiAction || activeNotification || activeNowPlaying || activeReminderAlert,
+            )}
+            mood={
+              activeLumiAction?.mood ??
+              (activeNotification || activeReminderAlert
+                ? "confirm"
+                : activeNowPlaying
+                  ? "music"
+                  : focusOn || pomodoro?.running
+                    ? "sleep"
+                    : "idle")
+            }
+            accentHex={
+              activeLumiAction?.accentHex ?? activeNowPlaying?.accentHex ?? liveTrack?.accent_hex
+            }
+            expanded={isExpanded}
+          />
           {isExpanded && activeReminderAlert && (
             <div
               className="absolute inset-x-0 top-0 z-50 h-[108px] border-b border-white/10"
@@ -1454,6 +1541,15 @@ export function IslandShell({
                             ? "var(--accent-orange)"
                             : "var(--text-tertiary)",
                       }}
+                    />
+                  </div>
+                ) : activeLumiAction && mascotEnabled ? (
+                  <div className="col-span-3 flex h-full w-full items-center justify-center">
+                    <LumenMascot
+                      enabled
+                      size="hero"
+                      mood={activeLumiAction.mood}
+                      accentColor={activeLumiAction.accentHex ?? mediaAccent}
                     />
                   </div>
                 ) : (
@@ -1712,19 +1808,23 @@ export function IslandShell({
                   }}
                   onToggleFocus={() => {
                     setFocusOn((f) => !f);
+                    triggerLumiReaction("sleep", 2200);
                     void pomodoroToggle().then((p) => p && setPomodoro(p));
                   }}
                   onToggleMic={() => {
                     setMicMuted((m) => !m);
+                    triggerLumiReaction("confirm", 1800);
                     void systemToggleMicMute().then((m) => setMicMuted(m));
                   }}
                   onToggleKeepAwake={() => {
                     setKeepAwakeOn((k) => !k);
+                    triggerLumiReaction("confirm", 1800);
                     void systemToggleKeepAwake().then((k) => setKeepAwakeOn(k));
                   }}
                   onLockWorkstation={() => void systemLockWorkstation()}
                   onIncrementTasbih={() => {
                     setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
+                    triggerLumiReaction("celebrate", 2000);
                     void tasbihIncrement().then((ts) => ts && setTasbih(ts));
                   }}
                   onResetTasbih={() => {
@@ -1745,6 +1845,7 @@ export function IslandShell({
                     void setSystemVolume(pct).then((n) => n && setMedia(n))
                   }
                   onLogWater={(ml) => {
+                    triggerLumiReaction("celebrate", 2200);
                     void waterLog(ml, waterGoalMl, 4).then((w) => {
                       if (w) {
                         setWaterSummary(w);
@@ -1763,12 +1864,15 @@ export function IslandShell({
                     });
                   }}
                   onToggleFocusTimer={() => {
+                    triggerLumiReaction("sleep", 2200);
                     void pomodoroToggle().then((p) => p && setPomodoro(p));
                   }}
                   onToggleLedger={() => {
+                    triggerLumiReaction("confirm", 1800);
                     void ledgerToggle().then((l) => l && setLedger(l));
                   }}
                   onCopyClipboard={async () => {
+                    triggerLumiReaction("confirm", 2000);
                     const next = await clipboardCopyLatest();
                     setClipboard(next);
                   }}
@@ -1999,6 +2103,7 @@ export function IslandShell({
                             editingLockRef.current = focused;
                           }}
                           onAdd={async (title, targetAtIso, leadMinutes) => {
+                            triggerLumiReaction("confirm", 2400);
                             if (isTauriRuntime()) {
                               const next = await remindersAdd(title, targetAtIso, leadMinutes);
                               setReminders(saveLocalReminders(next));
@@ -2073,6 +2178,7 @@ export function IslandShell({
                             });
                           }}
                           onToggle={(id) => {
+                            triggerLumiReaction("celebrate", 2200);
                             void tasksToggle(id).then((updated) => {
                               if (isTauriRuntime()) {
                                 setTasks(updated);
@@ -2102,6 +2208,7 @@ export function IslandShell({
                             servingMl={250}
                             remindersEnabled={waterReminders}
                             onDrink={(ml) => {
+                              triggerLumiReaction("celebrate", 2200);
                               void waterLog(ml, waterGoalMl, 4).then((w) => {
                                 if (w) {
                                   setWaterSummary(w);
