@@ -12,6 +12,7 @@ export interface ActionGlowLayerProps {
   accentHex?: string | null;
   expanded?: boolean;
   paused?: boolean;
+  audioPeak?: number;
 }
 
 function resolveAuroraStops(mood: LumiMood, accentHex?: string | null): [string, string] {
@@ -44,6 +45,7 @@ export function ActionGlowLayer({
   accentHex,
   expanded = false,
   paused = false,
+  audioPeak = 0,
 }: ActionGlowLayerProps) {
   const prefersReduced = useReducedMotion() ?? false;
   if (mode === "off") {
@@ -51,8 +53,20 @@ export function ActionGlowLayer({
   }
   const visible = mode === "always" || (mode === "action" && active);
   const [colorA, colorB] = resolveAuroraStops(mood, accentHex);
-  const targetOpacity = active ? (expanded ? 0.56 : 1) : expanded ? 0.34 : 0.68;
+  const peakEnergy =
+    mood === "music" && active && !paused ? Math.max(0, Math.min(1, audioPeak)) : 0;
+  const baseOpacity = active ? (expanded ? 0.56 : 1) : expanded ? 0.34 : 0.68;
+  const targetOpacity =
+    mood === "music" && active && !paused && audioPeak > 0
+      ? expanded
+        ? 0.26 + peakEnergy * 0.46
+        : 0.4 + peakEnergy * 0.6
+      : baseOpacity;
   const playState = prefersReduced || paused ? "paused" : "running";
+  const swellScale =
+    !prefersReduced && peakEnergy > 0
+      ? `scale(${(1 + peakEnergy * 0.14).toFixed(3)}, ${(0.84 + peakEnergy * 0.48).toFixed(3)})`
+      : undefined;
 
   return (
     <AnimatePresence>
@@ -62,11 +76,18 @@ export function ActionGlowLayer({
           data-testid="lumen-action-glow"
           data-mood={mood}
           data-paused={paused ? "true" : "false"}
+          data-peak={peakEnergy.toFixed(2)}
           aria-hidden="true"
           initial={{ opacity: 0 }}
           animate={{ opacity: targetOpacity }}
           exit={{ opacity: 0 }}
-          transition={prefersReduced ? MOTION_PRESETS.reducedMotionFade : MOTION_PRESETS.auroraFade}
+          transition={
+            peakEnergy > 0
+              ? { duration: 0.045, ease: "linear" }
+              : prefersReduced
+                ? MOTION_PRESETS.reducedMotionFade
+                : MOTION_PRESETS.auroraFade
+          }
           className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[38px] max-h-full overflow-hidden rounded-[inherit]"
           style={{
             maskImage:
@@ -75,32 +96,41 @@ export function ActionGlowLayer({
               "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.72) 52%, transparent 98%)",
           }}
         >
-          {/* Left-to-right flowing aurora lobe */}
           <div
-            className={
-              prefersReduced
-                ? "absolute -inset-x-6 -bottom-3 h-full"
-                : "lumen-aurora-blob-a absolute -inset-x-6 -bottom-3 h-full"
-            }
+            className="absolute inset-0"
             style={{
-              background: `radial-gradient(66% 100% at 32% 96%, ${colorA}, transparent 75%)`,
-              filter: "blur(9px)",
-              animationPlayState: playState,
+              transform: swellScale,
+              transformOrigin: "bottom center",
+              transition: prefersReduced ? undefined : "transform 45ms linear",
             }}
-          />
-          {/* Right-to-left counter-drifting aurora lobe */}
-          <div
-            className={
-              prefersReduced
-                ? "absolute -inset-x-6 -bottom-3 h-full"
-                : "lumen-aurora-blob-b absolute -inset-x-6 -bottom-3 h-full"
-            }
-            style={{
-              background: `radial-gradient(64% 96% at 70% 96%, ${colorB}, transparent 75%)`,
-              filter: "blur(10px)",
-              animationPlayState: playState,
-            }}
-          />
+          >
+            {/* Left-to-right flowing aurora lobe */}
+            <div
+              className={
+                prefersReduced
+                  ? "absolute -inset-x-6 -bottom-3 h-full"
+                  : "lumen-aurora-blob-a absolute -inset-x-6 -bottom-3 h-full"
+              }
+              style={{
+                background: `radial-gradient(66% 100% at 32% 96%, ${colorA}, transparent 75%)`,
+                filter: "blur(9px)",
+                animationPlayState: playState,
+              }}
+            />
+            {/* Right-to-left counter-drifting aurora lobe */}
+            <div
+              className={
+                prefersReduced
+                  ? "absolute -inset-x-6 -bottom-3 h-full"
+                  : "lumen-aurora-blob-b absolute -inset-x-6 -bottom-3 h-full"
+              }
+              style={{
+                background: `radial-gradient(64% 96% at 70% 96%, ${colorB}, transparent 75%)`,
+                filter: "blur(10px)",
+                animationPlayState: playState,
+              }}
+            />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

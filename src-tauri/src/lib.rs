@@ -11,9 +11,9 @@ use lumen_core::{
 };
 use lumen_media::sounds::{SoundSilenceContext, UiSoundName, try_play_ui_sound};
 use lumen_media::{
-    LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_mic_muted,
+    AudioPeakReader, LyricLine, MediaCommand, MediaStateSnapshot, fetch_lrclib_lrc, get_mic_muted,
     get_system_volume, parse_lrc_lines, read_media_state, seek_media, send_media_command,
-    set_system_volume, toggle_mic_mute,
+    set_system_volume, shape_audio_peak, toggle_mic_mute,
 };
 use lumen_notify::{
     NotificationPopup, NotificationPrivacyConfig, SystemNotificationWatcher,
@@ -1662,6 +1662,43 @@ pub fn run() {
             let notify_seq_ref = Arc::clone(&shared_notify_seq);
             let settings_ref = Arc::clone(&shared_settings);
             let bg_fs_flag = Arc::clone(&is_fullscreen);
+            let media_playing_flag = Arc::new(AtomicBool::new(false));
+            let media_playing_for_poll = Arc::clone(&media_playing_flag);
+
+            // Real-time ~30 fps WASAPI render peak meter thread (idles at 0% IPC/polling while paused).
+            let peak_window = window.clone();
+            let peak_playing = Arc::clone(&media_playing_flag);
+            let peak_fullscreen = Arc::clone(&is_fullscreen);
+            let _ = std::thread::Builder::new()
+                .name("lumen-audio-peak".into())
+                .spawn(move || {
+                    let mut reader = AudioPeakReader::new();
+                    let mut shaped = 0.0f32;
+                    let mut last_emitted = -1.0f32;
+                    loop {
+                        let playing = peak_playing.load(Ordering::Relaxed);
+                        let fullscreen = peak_fullscreen.load(Ordering::Relaxed);
+                        if !playing || fullscreen {
+                            if last_emitted > 0.0 {
+                                last_emitted = 0.0;
+                                shaped = 0.0;
+                                let _ = peak_window.emit("lumen://audio-peak", 0.0f32);
+                            }
+                            std::thread::sleep(Duration::from_millis(200));
+                            continue;
+                        }
+                        let raw = reader.sample();
+                        shaped = shape_audio_peak(raw, shaped);
+                        if (shaped - last_emitted).abs() > 0.015
+                            || (shaped == 0.0 && last_emitted > 0.0)
+                        {
+                            last_emitted = shaped;
+                            let _ = peak_window.emit("lumen://audio-peak", shaped);
+                        }
+                        std::thread::sleep(Duration::from_millis(33));
+                    }
+                });
+
             tauri::async_runtime::spawn(async move {
                 let mut last_snapshot: Option<MediaStateSnapshot> = None;
                 let mut half_tick: u64 = 0;
@@ -1672,10 +1709,13 @@ pub fn run() {
                     let pref = media_pref.lock().ok().and_then(|g| g.clone());
                     if let Ok(snapshot) =
                         tokio::task::spawn_blocking(move || read_media_state(pref.as_deref())).await
-                        && last_snapshot.as_ref() != Some(&snapshot)
                     {
-                        last_snapshot = Some(snapshot.clone());
-                        let _ = media_window.emit("lumen://media-updated", snapshot);
+                        let playing_now = snapshot.active.as_ref().is_some_and(|a| a.is_playing);
+                        media_playing_for_poll.store(playing_now, Ordering::Relaxed);
+                        if last_snapshot.as_ref() != Some(&snapshot) {
+                            last_snapshot = Some(snapshot.clone());
+                            let _ = media_window.emit("lumen://media-updated", snapshot);
+                        }
                     }
 
                     if half_tick.is_multiple_of(2) {

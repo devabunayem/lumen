@@ -263,6 +263,37 @@ pub fn detect_image_mime(bytes: &[u8]) -> &'static str {
     }
 }
 
+/// Applies perceptual compression, noise-gating, and fast-attack / smooth-decay envelope
+/// shaping to raw `0.0..=1.0` endpoint peak levels for fluid glow reactivity.
+#[must_use]
+pub fn shape_audio_peak(raw_peak: f32, prev_shaped: f32) -> f32 {
+    let clamped_raw = if raw_peak.is_finite() {
+        raw_peak.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let prev = if prev_shaped.is_finite() {
+        prev_shaped.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let boosted = if clamped_raw < 0.002 {
+        0.0
+    } else {
+        clamped_raw.powf(0.65)
+    };
+    let next = if boosted >= prev {
+        prev + (boosted - prev) * 0.78
+    } else {
+        prev * 0.80
+    };
+    if next < 0.005 {
+        0.0
+    } else {
+        next.clamp(0.0, 1.0)
+    }
+}
+
 /// Extracts a vibrant dominant RGB accent colour from RGBA pixel data using quantized
 /// hue-frequency clustering with contrast safeguard against `#000000` (`FR-MUS-6`).
 #[must_use]
@@ -347,7 +378,7 @@ mod platform {
     use windows::Storage::Streams::{
         DataReader, DataWriter, IRandomAccessStreamWithContentType, InMemoryRandomAccessStream,
     };
-    use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
+    use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioMeterInformation};
     use windows::Win32::Media::Audio::{
         EDataFlow, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole, eRender,
     };
@@ -577,6 +608,61 @@ mod platform {
 
     fn with_endpoint_volume<T>(f: impl FnOnce(&IAudioEndpointVolume) -> Option<T>) -> Option<T> {
         with_endpoint_volume_flow(eRender, f)
+    }
+
+    /// Lightweight per-thread COM handle for polling system render output peak amplitude (~0% CPU).
+    pub struct AudioPeakReader {
+        meter: Option<IAudioMeterInformation>,
+    }
+
+    impl Default for AudioPeakReader {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl AudioPeakReader {
+        /// Initializes COM on the current worker thread and attaches to the default render meter.
+        #[must_use]
+        pub fn new() -> Self {
+            unsafe {
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            }
+            Self {
+                meter: Self::acquire_meter(),
+            }
+        }
+
+        fn acquire_meter() -> Option<IAudioMeterInformation> {
+            unsafe {
+                let enumerator: IMMDeviceEnumerator =
+                    CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
+                let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
+                device.Activate(CLSCTX_ALL, None).ok()
+            }
+        }
+
+        /// Samples the instantaneous peak render amplitude (`0.0..=1.0`), re-acquiring on device switches.
+        pub fn sample(&mut self) -> f32 {
+            if self.meter.is_none() {
+                self.meter = Self::acquire_meter();
+            }
+            let Some(ref meter) = self.meter else {
+                return 0.0;
+            };
+            match unsafe { meter.GetPeakValue() } {
+                Ok(val) if val.is_finite() => val.clamp(0.0, 1.0),
+                Ok(_) => 0.0,
+                Err(_) => {
+                    self.meter = Self::acquire_meter();
+                    self.meter
+                        .as_ref()
+                        .and_then(|m| unsafe { m.GetPeakValue().ok() })
+                        .filter(|v| v.is_finite())
+                        .map_or(0.0, |v| v.clamp(0.0, 1.0))
+                }
+            }
+        }
     }
 
     #[must_use]
@@ -862,11 +948,28 @@ mod platform {
     pub fn fetch_lrclib_lrc(_artist: &str, _title: &str) -> Option<String> {
         None
     }
+
+    /// Cross-platform stub for systems without Windows Core Audio endpoint metering.
+    #[derive(Default)]
+    pub struct AudioPeakReader;
+
+    impl AudioPeakReader {
+        /// Returns an empty peak meter stub.
+        #[must_use]
+        pub fn new() -> Self {
+            Self
+        }
+
+        /// Returns silent `0.0` outside Windows.
+        pub fn sample(&mut self) -> f32 {
+            0.0
+        }
+    }
 }
 
 pub use platform::{
-    fetch_lrclib_lrc, get_mic_muted, get_system_volume, read_media_state, seek_media,
-    send_media_command, set_system_volume, toggle_mic_mute,
+    AudioPeakReader, fetch_lrclib_lrc, get_mic_muted, get_system_volume, read_media_state,
+    seek_media, send_media_command, set_system_volume, toggle_mic_mute,
 };
 
 #[cfg(test)]
@@ -966,5 +1069,19 @@ mod tests {
         assert_eq!(detect_image_mime(b"GIF89a..."), "image/gif");
         assert_eq!(detect_image_mime(b"BM\x00\x01"), "image/bmp");
         assert_eq!(detect_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), "image/jpeg");
+    }
+
+    #[test]
+    fn shapes_audio_peak_attack_decay_and_noise_gate() {
+        assert_eq!(shape_audio_peak(0.001, 0.0), 0.0);
+        assert_eq!(shape_audio_peak(f32::NAN, 0.0), 0.0);
+
+        // Beat hit lifts fast while staying bounded [0, 1].
+        let hit = shape_audio_peak(0.85, 0.05);
+        assert!(hit > 0.7 && hit <= 1.0);
+
+        // Silence decays smoothly back toward zero.
+        let decayed = shape_audio_peak(0.0, hit);
+        assert!(decayed < hit && decayed > 0.4);
     }
 }

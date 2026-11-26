@@ -67,6 +67,7 @@ import {
   shelfList,
   shelfOpen,
   shelfRemove,
+  subscribeAudioPeak,
   subscribeClipboardUpdated,
   subscribeDevPulseUpdated,
   subscribeFullscreenChange,
@@ -265,6 +266,7 @@ export function IslandShell({
   const isBn = language === "bn";
 
   const [media, setMedia] = useState<MediaStateSnapshot | null>(null);
+  const [audioPeak, setAudioPeak] = useState(0);
   const [lastPlayedTrack, setLastPlayedTrack] = useState<{ title: string; artist: string } | null>(
     null,
   );
@@ -660,6 +662,7 @@ export function IslandShell({
     let unlistenExpand: (() => void) | undefined;
     let unlistenHide: (() => void) | undefined;
     let unlistenMedia: (() => void) | undefined;
+    let unlistenPeak: (() => void) | undefined;
     let unlistenPom: (() => void) | undefined;
     let unlistenHud: (() => void) | undefined;
     let unlistenNotify: (() => void) | undefined;
@@ -722,6 +725,7 @@ export function IslandShell({
         }
       } else if (!isPlaying) {
         prevPlayingKeyRef.current = null;
+        setAudioPeak(0);
       }
       dispatch({ type: "MEDIA_CHANGE", active: isPlaying });
     };
@@ -730,6 +734,11 @@ export function IslandShell({
 
     void subscribeMediaUpdated(handleMediaSnapshot).then((fn) => {
       unlistenMedia = fn;
+    });
+    void subscribeAudioPeak((peak) => {
+      setAudioPeak(peak);
+    }).then((fn) => {
+      unlistenPeak = fn;
     });
     void subscribePomodoroTick((snap) => {
       setPomodoro(snap);
@@ -831,6 +840,7 @@ export function IslandShell({
       unlistenExpand?.();
       unlistenHide?.();
       unlistenMedia?.();
+      unlistenPeak?.();
       unlistenPom?.();
       unlistenHud?.();
       unlistenNotify?.();
@@ -1294,6 +1304,7 @@ export function IslandShell({
               !activeNotification &&
               !activeReminderAlert,
             )}
+            audioPeak={liveTrack?.is_playing ? audioPeak : 0}
           />
           {isExpanded && activeReminderAlert && (
             <div
@@ -1625,6 +1636,7 @@ export function IslandShell({
                         <LiveWaveform
                           playing={Boolean(liveTrack?.is_playing)}
                           accentColor={liveTrack?.is_playing ? mediaAccent : "var(--text-tertiary)"}
+                          audioPeak={liveTrack?.is_playing ? audioPeak : 0}
                         />
                       )}
                     </div>

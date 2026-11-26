@@ -22,6 +22,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Real-Time WASAPI Peak Audio Sync (`AudioPeakReader` at `~30 fps`):**
+  - Added Windows Core Audio `IAudioMeterInformation::GetPeakValue()` metering in `lumen-media` (`AudioPeakReader` + perceptual `shape_audio_peak` attack/decay shaper) streaming `lumen://audio-peak` events at `~30 fps` strictly while media playback is active (`0%` CPU/IPC when paused or in fullscreen).
+  - Wired `audioPeak` into `ActionGlowLayer` (opacity + GPU bottom scale pulse) and `LiveWaveform` so the notch bottom aurora glow and right-side waveform react smoothly and accurately to real-time playback audio energy.
+
 - **Home Bento Polish — Standard `NextCard` Hours/Minutes & Animated `WaterCard` Liquid Vessel:**
   - Updated `NextCard` (`formatNextCountdown`) to render durations `< 60 min` in minutes (e.g. `45 min`) and `>= 60 min` cleanly in standard hours/minutes (e.g. `575` -> `9h 35m`, localized for English & Bangla).
   - Added an animated GPU-composited dual-wave liquid fill vessel with subtle rising bubbles beside the readout inside `WaterCard` (`lumen-water-wave-a`/`b`, `reduce-motion` safe).

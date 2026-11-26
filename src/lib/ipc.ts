@@ -521,6 +521,17 @@ export async function subscribeMediaUpdated(
   });
 }
 
+export async function subscribeAudioPeak(onPeak: (peak: number) => void): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<number>("lumen://audio-peak", (event) => {
+    const val =
+      typeof event.payload === "number" && Number.isFinite(event.payload) ? event.payload : 0;
+    onPeak(Math.max(0, Math.min(1, val)));
+  });
+}
+
 export async function subscribePomodoroTick(
   onTick: (snapshot: PomodoroSnapshot) => void,
 ): Promise<UnlistenFn> {
