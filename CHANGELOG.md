@@ -16,6 +16,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Changed
 
+- **Unified Home Prayer Dashboard (`DayArc`) & Removed Standalone Prayer Page:**
+  - Integrated Qibla compass bearing toggle (`home-qibla-btn` using live `schedule.latitude`/`longitude`), green checkmark passed-prayer markers (`✓`), click-to-open 5-prayer quick strip (`home-prayer-popover`), prayer interval progress indicator + `Tomorrow` badge, and inline weather/arc City Switcher directly into Home's `DayArc`.
+  - Removed the redundant standalone `prayer` island page (`PrayerWidget` + `BUILTIN_WIDGET_IDS` / `BUILTIN_PAGE_ORDER` / `SettingsWindow` / `ControlPanelWidget` / `IslandShell` `richExpanded` routing) while retaining Settings' offline calculation method and auto-location controls.
+
 - **Unified Home Music Card & Removed Standalone Music Page:**
   - Brought interactive Seek progress scrubbing (`onSeek`), top-right source badge + multi-session player switcher (`onSelectSession`), visible Mute button + inline capsule Volume slider, and empty-state **Resume / Open Spotify** actions directly into Home's `MusicCard`.
   - Removed the redundant standalone `music` island page (`MusicWidget` + `BUILTIN_WIDGET_IDS` / `BUILTIN_PAGE_ORDER` / `SettingsWindow` / `ControlPanelWidget` routing) so all media controls live cleanly inside Home.

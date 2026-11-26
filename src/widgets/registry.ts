@@ -7,7 +7,6 @@ export const BUILTIN_WIDGET_IDS = [
   "reminders",
   "todo",
   "water",
-  "prayer",
   "pomodoro",
   "shelf",
 ] as const;

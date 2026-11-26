@@ -125,7 +125,7 @@ export function SettingsWindow({
     }
   };
 
-  const visiblePageOrder = settings.pageOrder.filter((id) => id !== "music");
+  const visiblePageOrder = settings.pageOrder.filter((id) => id !== "music" && id !== "prayer");
 
   const movePage = (idx: number, delta: -1 | 1) => {
     const target = idx + delta;

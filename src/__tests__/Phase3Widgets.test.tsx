@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
+import { DayArc } from "../home/components/DayArc";
+import { computeDayArcGeometry } from "../home/hooks/useDayArcGeometry";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
 
@@ -60,8 +61,9 @@ describe("Phase 3 Core Widgets", () => {
     expect(onUndo).toHaveBeenCalledWith(9);
   });
 
-  it("renders PrayerWidget sun-arc chart and Bangla names", () => {
+  it("renders DayArc prayer checkmarks, 5-prayer popover, city switcher, and live Qibla bearing", () => {
     const onSelectCity = vi.fn();
+    const nowDate = new Date(2026, 10, 26, 14, 10, 0);
     const baseSchedule = {
       city_name: "Dhaka",
       next_name_en: "Asr",
@@ -121,48 +123,77 @@ describe("Phase 3 Core Widgets", () => {
         },
       ],
     };
+    const cities = [
+      {
+        id: "dhaka",
+        name_en: "Dhaka",
+        name_bn: "ঢাকা",
+        latitude: 23.81,
+        longitude: 90.41,
+        tz_offset_minutes: 360,
+      },
+      {
+        id: "khulna",
+        name_en: "Khulna",
+        name_bn: "খুলনা",
+        latitude: 22.84,
+        longitude: 89.54,
+        tz_offset_minutes: 360,
+      },
+    ];
+    const geometry = computeDayArcGeometry({
+      schedule: baseSchedule,
+      calendarEvents: [],
+      tasks: [],
+      nowDate,
+      zoomMode: "day",
+      language: "bn",
+    });
+
     const { rerender } = render(
-      <PrayerWidget
+      <DayArc
+        geometry={geometry}
         schedule={baseSchedule}
-        cities={[
-          {
-            id: "dhaka",
-            name_en: "Dhaka",
-            name_bn: "ঢাকা",
-            latitude: 23.81,
-            longitude: 90.41,
-            tz_offset_minutes: 360,
-          },
-          {
-            id: "khulna",
-            name_en: "Khulna",
-            name_bn: "খুলনা",
-            latitude: 22.84,
-            longitude: 89.54,
-            tz_offset_minutes: 360,
-          },
-        ]}
+        cities={cities}
+        weather={null}
+        tasbih={{ count: 33, target: 33 }}
+        zoomMode="day"
         language="bn"
+        banglaDigits={false}
+        reduceMotion
+        isFirstOpenOfDay={false}
+        isVisible
+        onToggleZoom={vi.fn()}
         onSelectCity={onSelectCity}
-        onToggleLanguage={vi.fn()}
+        onOpenAgenda={vi.fn()}
+        onIncrementTasbih={vi.fn()}
+        onResetTasbih={vi.fn()}
       />,
     );
-    expect(screen.getAllByText("আসর").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByLabelText("Prayer sun-arc timeline")).toBeInTheDocument();
-    expect(screen.getByText("Dhaka")).toBeInTheDocument();
-    expect(screen.getByText("আসর · 4:15 PM")).toBeInTheDocument();
 
-    const tasbihBtn = screen.getByTestId("prayer-tasbih-btn");
-    expect(tasbihBtn).toHaveTextContent("33");
-    fireEvent.click(tasbihBtn);
-    expect(tasbihBtn).toHaveTextContent("34");
+    expect(screen.getByTestId("arc-passed-fajr")).toBeInTheDocument();
+    expect(screen.getByTestId("tasbih-chip")).toHaveTextContent("33");
 
-    fireEvent.click(screen.getByTestId("prayer-qibla-btn"));
-    expect(screen.getByText("কিবলা · 278° W")).toBeInTheDocument();
+    // Click Qibla chip -> shows Dhaka bearing 278° W
+    fireEvent.click(screen.getByTestId("home-qibla-btn"));
+    expect(screen.getByTestId("home-qibla-btn")).toHaveTextContent("278° W");
+
+    // Click a prayer marker -> shows 5-prayer quick strip inline in Home
+    fireEvent.click(screen.getByRole("button", { name: /আসর/ }));
+    const popover = screen.getByTestId("home-prayer-popover");
+    expect(popover).toBeInTheDocument();
+    expect(popover).toHaveTextContent("4:15");
+
+    // Switch city directly from Home Weather/Arc city selector
+    fireEvent.change(screen.getByRole("combobox", { name: "শহর পরিবর্তন করুন" }), {
+      target: { value: "khulna" },
+    });
+    expect(onSelectCity).toHaveBeenCalledWith("khulna");
 
     // Auto-tracked custom coordinates override city fallback for Qibla compass bearing
     rerender(
-      <PrayerWidget
+      <DayArc
+        geometry={geometry}
         schedule={{
           ...baseSchedule,
           city_name: "London",
@@ -170,11 +201,21 @@ describe("Phase 3 Core Widgets", () => {
           longitude: -0.1276,
         }}
         cities={[]}
+        weather={null}
+        tasbih={{ count: 33, target: 33 }}
+        zoomMode="day"
         language="en"
+        banglaDigits={false}
+        reduceMotion
+        isFirstOpenOfDay={false}
+        isVisible
+        onToggleZoom={vi.fn()}
         onSelectCity={onSelectCity}
-        onToggleLanguage={vi.fn()}
+        onOpenAgenda={vi.fn()}
+        onIncrementTasbih={vi.fn()}
+        onResetTasbih={vi.fn()}
       />,
     );
-    expect(screen.getByText("Qibla · 119° SE")).toBeInTheDocument();
+    expect(screen.getByTestId("home-qibla-btn")).toHaveTextContent("119° SE");
   });
 });

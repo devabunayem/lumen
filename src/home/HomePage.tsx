@@ -6,6 +6,7 @@ import type {
   MediaStateSnapshot,
   OpenMeteoWeather,
   PomodoroSnapshot,
+  PrayerCityPreset,
   PrayerSchedule,
   ReminderItem,
   TasbihState,
@@ -29,6 +30,7 @@ export type { TogglesState } from "./components/TogglesRow";
 export interface HomePageProps {
   nowDate: Date;
   schedule: PrayerSchedule | null;
+  prayerCities?: PrayerCityPreset[];
   media: MediaStateSnapshot;
   lastPlayedTrack?: { title: string; artist: string } | null;
   calendarEvents: CalendarEvent[];
@@ -78,6 +80,7 @@ export interface HomePageProps {
   onLockWorkstation: () => void;
   onIncrementTasbih: () => void;
   onResetTasbih: () => void;
+  onSelectPrayerCity?: (cityId: string) => void;
   onMediaPlayPause: () => void;
   onMediaPrev: () => void;
   onMediaNext: () => void;
@@ -162,6 +165,7 @@ export function HomePage(props: HomePageProps) {
       <DayArc
         geometry={geometry}
         schedule={props.schedule}
+        cities={props.prayerCities}
         weather={props.weather}
         weatherLoading={props.weatherLoading}
         weatherError={props.weatherError}
@@ -174,7 +178,7 @@ export function HomePage(props: HomePageProps) {
         isFirstOpenOfDay={props.isFirstOpenOfDay}
         isVisible={props.isVisible}
         onToggleZoom={() => setZoomMode((z) => (z === "day" ? "next3h" : "day"))}
-        onOpenPrayer={() => props.onNavigateWidget("prayer")}
+        onSelectCity={props.onSelectPrayerCity}
         onOpenAgenda={() => props.onNavigateWidget("calendar")}
         onIncrementTasbih={props.onIncrementTasbih}
         onResetTasbih={props.onResetTasbih}

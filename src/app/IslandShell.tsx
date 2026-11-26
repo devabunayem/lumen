@@ -9,7 +9,6 @@ import {
   DropletIcon,
   GridIcon,
   InboxIcon,
-  MoonIcon,
   PinIcon,
   SettingsIcon,
   TimerIcon,
@@ -120,7 +119,6 @@ import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
 import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
 import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
-import { PrayerWidget } from "../widgets/prayer/PrayerWidget";
 import { RemindersWidget } from "../widgets/reminders/RemindersWidget";
 import {
   BUILTIN_WIDGET_IDS,
@@ -283,8 +281,6 @@ export function IslandShell({
   const [waterReminders, setWaterReminders] = useState(true);
   const [prayerSchedule, setPrayerSchedule] = useState<PrayerSchedule | null>(null);
   const [prayerCities, setPrayerCities] = useState<PrayerCityPreset[]>([]);
-  const [prayerLangOverride, setPrayerLangOverride] = useState<"en" | "bn" | null>(null);
-  const prayerLang = prayerLangOverride ?? language;
   const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
   const [weather, setWeather] = useState<OpenMeteoWeather | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
@@ -528,15 +524,6 @@ export function IslandShell({
           titleLead: msg.pages.waterLead,
           titleAccent: msg.pages.waterAccent,
           accentVar: "var(--accent-blue)",
-        },
-      ],
-      [
-        "prayer",
-        {
-          id: "prayer",
-          titleLead: msg.pages.prayerLead,
-          titleAccent: msg.pages.prayerAccent,
-          accentVar: "var(--accent-cyan)",
         },
       ],
       [
@@ -878,7 +865,6 @@ export function IslandShell({
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
-  const isRichExpandedPage = activePage.id === "prayer";
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -973,11 +959,7 @@ export function IslandShell({
       case "live":
         return BASE_GEOMETRY.collapsed;
       case "expanded":
-        return isHomePage
-          ? BASE_GEOMETRY.homeExpanded
-          : isRichExpandedPage
-            ? BASE_GEOMETRY.richExpanded
-            : BASE_GEOMETRY.expanded;
+        return isHomePage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
       case "hud":
         if (activeReminderAlert !== null) {
           return BASE_GEOMETRY.reminder;
@@ -996,7 +978,6 @@ export function IslandShell({
     effectiveState,
     isSlimQuiet,
     isHomePage,
-    isRichExpandedPage,
     activeReminderAlert,
     activeNotification,
     notifyExpanded,
@@ -1679,6 +1660,10 @@ export function IslandShell({
                 <HomePage
                   nowDate={nowDate}
                   schedule={prayerSchedule}
+                  prayerCities={prayerCities}
+                  onSelectPrayerCity={(cityId) => {
+                    void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
+                  }}
                   media={
                     media ?? {
                       active: null,
@@ -1873,8 +1858,8 @@ export function IslandShell({
                 style={{
                   left: "50%",
                   x: "-50%",
-                  width: `${Math.round((isRichExpandedPage ? BASE_GEOMETRY.richExpanded.width : BASE_GEOMETRY.expanded.width) * scaleFactor)}px`,
-                  height: `${Math.round((isRichExpandedPage ? BASE_GEOMETRY.richExpanded.height : BASE_GEOMETRY.expanded.height) * scaleFactor)}px`,
+                  width: `${Math.round(BASE_GEOMETRY.expanded.width * scaleFactor)}px`,
+                  height: `${Math.round(BASE_GEOMETRY.expanded.height * scaleFactor)}px`,
                   padding: "var(--island-padding)",
                   paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
                   paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
@@ -1882,30 +1867,15 @@ export function IslandShell({
                 }}
                 onClick={(event) => event.stopPropagation()}
               >
-                <div
-                  className={
-                    activePage.id === "prayer"
-                      ? "grid grid-cols-[1fr_auto_1fr] items-center"
-                      : "flex items-center justify-between"
-                  }
-                >
-                  {activePage.id === "prayer" ? (
-                    <>
-                      <h1 className="sr-only">
-                        {activePage.titleLead} {activePage.titleAccent}
-                      </h1>
-                      <div />
-                    </>
-                  ) : (
-                    <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
-                      <span className="truncate" style={{ color: "var(--text-primary)" }}>
-                        {activePage.titleLead}
-                      </span>
-                      <span className="truncate" style={{ color: activePage.accentVar }}>
-                        {activePage.titleAccent}
-                      </span>
-                    </h1>
-                  )}
+                <div className="flex items-center justify-between">
+                  <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
+                    <span className="truncate" style={{ color: "var(--text-primary)" }}>
+                      {activePage.titleLead}
+                    </span>
+                    <span className="truncate" style={{ color: activePage.accentVar }}>
+                      {activePage.titleAccent}
+                    </span>
+                  </h1>
 
                   <button
                     type="button"
@@ -2188,30 +2158,6 @@ export function IslandShell({
                         </div>
                       )}
 
-                      {activePage.id === "prayer" && (
-                        <PrayerWidget
-                          schedule={prayerSchedule}
-                          cities={prayerCities}
-                          language={prayerLang}
-                          tasbih={tasbih}
-                          onSelectCity={(cityId) => {
-                            void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
-                          }}
-                          onToggleLanguage={() =>
-                            setPrayerLangOverride((l) => ((l ?? language) === "en" ? "bn" : "en"))
-                          }
-                          onIncrementTasbih={() => {
-                            setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
-                            triggerLumiReaction("celebrate", 2000);
-                            void tasbihIncrement().then((ts) => ts && setTasbih(ts));
-                          }}
-                          onResetTasbih={() => {
-                            setTasbih((cur) => ({ ...cur, count: 0 }));
-                            void tasbihReset().then((ts) => ts && setTasbih(ts));
-                          }}
-                        />
-                      )}
-
                       {activePage.id === "pomodoro" && (
                         <PomodoroWidget
                           pomodoro={pomodoro}
@@ -2351,8 +2297,6 @@ export function IslandShell({
                             <CheckListIcon size={13} />
                           ) : page.id === "water" ? (
                             <DropletIcon size={13} />
-                          ) : page.id === "prayer" ? (
-                            <MoonIcon size={13} />
                           ) : page.id === "pomodoro" ? (
                             <TimerIcon size={13} />
                           ) : page.id === "shelf" ? (

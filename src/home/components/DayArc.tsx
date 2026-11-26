@@ -1,11 +1,16 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { CloudIcon, CloudRainIcon, MoonStarIcon, SunIcon } from "../../design/icons";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { CloudIcon, CloudRainIcon, CompassIcon, MoonStarIcon, SunIcon } from "../../design/icons";
 import { CONTENT_STAGGER } from "../../design/motion";
 import { playUiSound } from "../../design/sounds";
 import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages } from "../../i18n";
 import { formatDigits, formatPrayerLabel, interpolateMsg } from "../../i18n/digits";
-import type { OpenMeteoWeather, PrayerSchedule, TasbihState } from "../../lib/ipc";
+import type {
+  OpenMeteoWeather,
+  PrayerCityPreset,
+  PrayerSchedule,
+  TasbihState,
+} from "../../lib/ipc";
 import {
   ARC_HORIZON_Y,
   ARC_SVG_H,
@@ -17,9 +22,25 @@ import {
   type DayArcGeometry,
 } from "../hooks/useDayArcGeometry";
 
+const KAABA_LAT_DEG = 21.4225;
+const KAABA_LON_DEG = 39.8262;
+
+function computeQiblaBearing(latDeg: number, lonDeg: number): { deg: number; cardinal: string } {
+  const phi1 = (latDeg * Math.PI) / 180;
+  const phi2 = (KAABA_LAT_DEG * Math.PI) / 180;
+  const dLambda = ((KAABA_LON_DEG - lonDeg) * Math.PI) / 180;
+  const y = Math.sin(dLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  const deg = ((Math.round(brng) % 360) + 360) % 360;
+  const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return { deg, cardinal: dirs[Math.round(deg / 45) % 8] ?? "W" };
+}
+
 export interface DayArcProps {
   geometry: DayArcGeometry;
   schedule: PrayerSchedule | null;
+  cities?: PrayerCityPreset[];
   weather: OpenMeteoWeather | null;
   weatherLoading?: boolean;
   weatherError?: string | null;
@@ -32,7 +53,8 @@ export interface DayArcProps {
   isFirstOpenOfDay: boolean;
   isVisible: boolean;
   onToggleZoom: () => void;
-  onOpenPrayer: () => void;
+  onSelectCity?: (cityId: string) => void;
+  onOpenPrayer?: () => void;
   onOpenAgenda: () => void;
   onIncrementTasbih: () => void;
   onResetTasbih: () => void;
@@ -60,6 +82,7 @@ function formatRelativeAge(fetchedAtIso: string, banglaDigits: boolean): string 
 export function DayArc({
   geometry,
   schedule,
+  cities = [],
   weather,
   weatherLoading = false,
   weatherError = null,
@@ -72,6 +95,7 @@ export function DayArc({
   isFirstOpenOfDay,
   isVisible,
   onToggleZoom,
+  onSelectCity,
   onOpenPrayer,
   onOpenAgenda,
   onIncrementTasbih,
@@ -82,9 +106,23 @@ export function DayArc({
   const lastBucketRef = useRef<number | null>(null);
   const markerButtonsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const [hoverInfo, setHoverInfo] = useState<ReturnType<typeof inspectArcAtSvgX> | null>(null);
+  const [qiblaOpen, setQiblaOpen] = useState(false);
+  const [allSlotsOpen, setAllSlotsOpen] = useState(false);
   const [animU, setAnimU] = useState<number | null>(() =>
     isVisible && !reduceMotion && isFirstOpenOfDay ? 0 : null,
   );
+
+  const qiblaInfo = useMemo(() => {
+    const cityMatch = cities.find(
+      (c) =>
+        schedule &&
+        (c.name_en.toLowerCase() === schedule.city_name.toLowerCase() ||
+          c.name_bn === schedule.city_name),
+    );
+    const lat = schedule?.latitude ?? cityMatch?.latitude ?? 23.8103;
+    const lon = schedule?.longitude ?? cityMatch?.longitude ?? 90.4125;
+    return computeQiblaBearing(lat, lon);
+  }, [cities, schedule]);
 
   useEffect(() => {
     if (!isVisible || reduceMotion || !isFirstOpenOfDay) {
@@ -212,6 +250,11 @@ export function DayArc({
       <SunIcon size={18} />
     );
 
+    const activeCityId =
+      cities.find(
+        (c) => c.name_en.toLowerCase() === cityLabel.toLowerCase() || c.name_bn === cityLabel,
+      )?.id ?? "";
+
     return (
       <div className="flex flex-col items-end text-right">
         <div className="type-home-hero flex items-center gap-1.5 text-white">
@@ -219,10 +262,24 @@ export function DayArc({
           <span>{formatDigits(temp, banglaDigits)}</span>
         </div>
         <div
-          className="type-home-micro mt-0.5 truncate max-w-[132px]"
+          className="type-home-micro relative mt-0.5 max-w-[132px] truncate"
           style={{ color: COLOR_TOKENS.arcTimeMuted }}
         >
-          {formatDigits(subline, banglaDigits)}
+          <span>{formatDigits(subline, banglaDigits)}</span>
+          {onSelectCity && cities.length > 1 && (
+            <select
+              aria-label={language === "bn" ? "শহর পরিবর্তন করুন" : "Switch prayer city"}
+              value={activeCityId}
+              onChange={(e) => onSelectCity(e.target.value)}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            >
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {language === "bn" ? c.name_bn : c.name_en}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
     );
@@ -255,12 +312,19 @@ export function DayArc({
       </ul>
 
       {/* Left corner hero block */}
-      <div className="pointer-events-auto absolute top-0 left-0 z-20 w-[128px]">
-        <div
-          className="type-home-hero truncate leading-tight text-white"
-          data-testid="hero-next-prayer"
-        >
-          {nextPrayerName}
+      <div className="pointer-events-auto absolute top-0 left-0 z-20 w-[184px]">
+        <div className="flex items-baseline gap-1.5">
+          <div
+            className="type-home-hero truncate leading-tight text-white"
+            data-testid="hero-next-prayer"
+          >
+            {nextPrayerName}
+          </div>
+          {schedule?.next_is_tomorrow && (
+            <span className="text-[10px]" style={{ color: COLOR_TOKENS.arcTimeMuted }}>
+              {language === "bn" ? "আগামীকাল" : "Tomorrow"}
+            </span>
+          )}
         </div>
         <div
           className="type-home-micro mt-0.5 leading-none"
@@ -268,7 +332,21 @@ export function DayArc({
         >
           {nextTimeText} · {nextCountdown}
         </div>
-        <div className="mt-0.5 flex items-center gap-1.5">
+        {schedule && (
+          <div
+            className="mt-1 h-[2px] w-[108px] overflow-hidden rounded-full"
+            style={{ backgroundColor: "rgba(255, 255, 255, 0.12)" }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.min(100, Math.max(4, schedule.progress_pct))}%`,
+                backgroundColor: COLOR_TOKENS.arcProgress,
+              }}
+            />
+          </div>
+        )}
+        <div className="mt-1 flex items-center gap-1.5">
           <button
             type="button"
             onClick={(e) => {
@@ -294,6 +372,28 @@ export function DayArc({
               {formatDigits(tasbih.count, banglaDigits)}
             </span>
           </button>
+          <button
+            type="button"
+            data-testid="home-qibla-btn"
+            aria-pressed={qiblaOpen}
+            onClick={() => setQiblaOpen((v) => !v)}
+            className={`home-glass-chip type-home-micro inline-flex h-[20px] items-center gap-1 px-2 ${
+              reduceMotion ? "" : "transition-transform duration-100 active:scale-95"
+            }`}
+            style={{
+              color: qiblaOpen ? COLOR_TOKENS.accentGreen : COLOR_TOKENS.textPrimary,
+              borderColor: qiblaOpen ? COLOR_TOKENS.accentGreen : undefined,
+            }}
+          >
+            <CompassIcon size={10} />
+            <span className="tabular-nums">
+              {qiblaOpen
+                ? formatDigits(`${qiblaInfo.deg}° ${qiblaInfo.cardinal}`, banglaDigits)
+                : language === "bn"
+                  ? "কিবলা"
+                  : "Qibla"}
+            </span>
+          </button>
           {schedule?.is_ramadan && schedule.sehri_iftar_label && (
             <span
               data-testid="ramadan-badge"
@@ -310,7 +410,7 @@ export function DayArc({
       </div>
 
       {/* Right corner weather block */}
-      <div className="pointer-events-none absolute top-0 right-0 z-20 w-[132px]">
+      <div className="pointer-events-auto absolute top-0 right-0 z-20 w-[132px]">
         {renderWeatherRight()}
       </div>
 
@@ -372,14 +472,28 @@ export function DayArc({
               strokeWidth={1}
               strokeDasharray="2 3"
             />
-            <circle
-              cx={m.x}
-              cy={m.y}
-              r={m.isNext ? 5.5 : 4}
-              fill={m.passed ? "#ffffff" : "#000000"}
-              stroke={m.passed ? "none" : m.isNext ? progressColor : COLOR_TOKENS.arcMarkerRing}
-              strokeWidth={m.isNext ? 2 : 1.5}
-            />
+            {m.passed ? (
+              <g data-testid={`arc-passed-${m.id}`}>
+                <circle cx={m.x} cy={m.y} r={5} fill={COLOR_TOKENS.accentGreen} />
+                <path
+                  d={`M ${(m.x - 2.2).toFixed(1)} ${(m.y + 0.1).toFixed(1)} L ${(m.x - 0.5).toFixed(1)} ${(m.y + 1.9).toFixed(1)} L ${(m.x + 2.5).toFixed(1)} ${(m.y - 1.7).toFixed(1)}`}
+                  fill="none"
+                  stroke="#000000"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            ) : (
+              <circle
+                cx={m.x}
+                cy={m.y}
+                r={m.isNext ? 5.5 : 4}
+                fill="#000000"
+                stroke={m.isNext ? progressColor : COLOR_TOKENS.arcMarkerRing}
+                strokeWidth={m.isNext ? 2 : 1.5}
+              />
+            )}
             <text
               x={m.x}
               y={124}
@@ -469,7 +583,10 @@ export function DayArc({
             }}
             type="button"
             aria-label={`${m.label} ${m.timeLabel}`}
-            onClick={onOpenPrayer}
+            onClick={() => {
+              setAllSlotsOpen((v) => !v);
+              onOpenPrayer?.();
+            }}
             onKeyDown={(e) => handleMarkerKeyDown(currentIdx, e)}
             className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-transparent"
             style={{
@@ -533,6 +650,45 @@ export function DayArc({
           />
         );
       })}
+
+      {/* All 5 prayers inline strip when any prayer marker is clicked */}
+      {allSlotsOpen && schedule && schedule.slots.length > 0 && (
+        <div
+          data-testid="home-prayer-popover"
+          onClick={() => setAllSlotsOpen(false)}
+          className="absolute top-0 left-1/2 z-30 grid -translate-x-1/2 cursor-pointer grid-cols-5 gap-2.5 rounded-2xl px-3 py-1.5 shadow-lg"
+          style={{
+            background: COLOR_TOKENS.arcTooltipBg,
+            border: `1px solid ${COLOR_TOKENS.chipGlassBorder}`,
+          }}
+        >
+          {schedule.slots.map((slot) => {
+            const isNext = slot.name_en === schedule.next_name_en;
+            return (
+              <div key={slot.id} className="flex flex-col items-center text-center leading-tight">
+                <span
+                  className="text-[10px] font-semibold"
+                  style={{
+                    color: isNext
+                      ? COLOR_TOKENS.arcProgress
+                      : slot.passed
+                        ? COLOR_TOKENS.accentGreen
+                        : COLOR_TOKENS.textSecondary,
+                  }}
+                >
+                  {language === "bn" ? slot.name_bn : slot.name_en}
+                </span>
+                <span
+                  className="text-[9.5px] tabular-nums"
+                  style={{ color: COLOR_TOKENS.textPrimary }}
+                >
+                  {formatDigits(slot.time_12h.replace(/\s*(AM|PM)$/i, ""), banglaDigits)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Scrub tooltip */}
       {hoverInfo && (
