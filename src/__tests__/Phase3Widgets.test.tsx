@@ -172,6 +172,7 @@ describe("Phase 3 Core Widgets", () => {
     );
 
     expect(screen.getByTestId("arc-passed-fajr")).toBeInTheDocument();
+    expect(screen.getByTestId("arc-sun-glyph")).toBeInTheDocument();
     expect(screen.getByTestId("tasbih-chip")).toHaveTextContent("33");
 
     // Click Qibla chip -> shows Dhaka bearing 278° W

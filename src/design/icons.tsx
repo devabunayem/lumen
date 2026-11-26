@@ -1,3 +1,5 @@
+import { COLOR_TOKENS } from "./tokens";
+
 export interface IconProps {
   size?: number;
   className?: string;
@@ -187,18 +189,56 @@ export function BatteryIcon({ size = 15, className }: IconProps) {
   );
 }
 
-export function SunIcon({ size = 15, className }: IconProps) {
+const SUN_RAY_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315] as const;
+
+export interface SunIconProps extends IconProps {
+  warmDusk?: boolean;
+  animated?: boolean;
+}
+
+/**
+ * Pure vector glyph of the golden triangle-ray sun with subtle crescent rim shading.
+ */
+export function SunGlyph({
+  warmDusk = false,
+  animated = false,
+}: {
+  warmDusk?: boolean;
+  animated?: boolean;
+}) {
+  const primary = warmDusk ? COLOR_TOKENS.sunDusk : COLOR_TOKENS.sunDisc;
+  return (
+    <g>
+      <g className={animated ? "lumen-sun-spin" : undefined}>
+        {SUN_RAY_ANGLES.map((deg) => (
+          <polygon
+            key={deg}
+            points="12,1.1 10.65,4.9 13.35,4.9"
+            fill={deg >= 45 && deg <= 135 ? COLOR_TOKENS.sunShade : primary}
+            stroke="none"
+            transform={`rotate(${deg} 12 12)`}
+          />
+        ))}
+      </g>
+      <circle cx="12" cy="12" r="5.35" fill={primary} stroke="none" />
+      <path
+        d="M 12 6.65 A 5.35 5.35 0 0 1 12 17.35 A 4.05 5.35 0 0 0 12 6.65 Z"
+        fill={COLOR_TOKENS.sunShade}
+        stroke="none"
+      />
+    </g>
+  );
+}
+
+export function SunIcon({
+  size = 15,
+  className,
+  warmDusk = false,
+  animated = false,
+}: SunIconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2" />
-      <path d="M12 20v2" />
-      <path d="m4.93 4.93 1.41 1.41" />
-      <path d="m17.66 17.66 1.41 1.41" />
-      <path d="M2 12h2" />
-      <path d="M20 12h2" />
-      <path d="m6.34 17.66-1.41 1.41" />
-      <path d="m19.07 4.93-1.41 1.41" />
+      <SunGlyph warmDusk={warmDusk} animated={animated} />
     </svg>
   );
 }
@@ -410,12 +450,47 @@ export function CloudRainIcon({ size = 16, className }: IconProps) {
   );
 }
 
-export function MoonStarIcon({ size = 15, className }: IconProps) {
+export interface MoonStarIconProps extends IconProps {
+  twinkle?: boolean;
+}
+
+/**
+ * Pure vector glyph of a luminous tilted crescent moon flanked by two 5-point stars.
+ */
+export function MoonStarGlyph({ twinkle = false }: { twinkle?: boolean }) {
+  return (
+    <g>
+      {/* Bold tilted crescent moon */}
+      <path
+        d="M 14.2 2.8 A 8.8 8.8 0 1 0 21.8 14.3 A 6.95 6.95 0 1 1 14.2 2.8 Z"
+        fill={COLOR_TOKENS.moonCrescent}
+        stroke="none"
+      />
+      {/* Upper-right star */}
+      <polygon
+        points="17.1,3.9 17.95,5.65 19.9,5.9 18.5,7.25 18.85,9.2 17.1,8.25 15.35,9.2 15.7,7.25 14.3,5.9 16.25,5.65"
+        fill={COLOR_TOKENS.moonStar}
+        stroke="none"
+        className={twinkle ? "lumen-moon-twinkle" : undefined}
+      />
+      {/* Lower-left star overlapping crescent curve with crisp dark cutout halo */}
+      <polygon
+        points="6.7,14.6 7.55,16.35 9.5,16.6 8.1,17.95 8.45,19.9 6.7,18.95 4.95,19.9 5.3,17.95 3.9,16.6 5.85,16.35"
+        fill={COLOR_TOKENS.moonStar}
+        stroke={COLOR_TOKENS.surface}
+        strokeWidth="2.1"
+        strokeLinejoin="round"
+        paintOrder="stroke"
+        className={twinkle ? "lumen-moon-twinkle" : undefined}
+      />
+    </g>
+  );
+}
+
+export function MoonStarIcon({ size = 15, className, twinkle = false }: MoonStarIconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
-      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9" />
-      <path d="M20 3v4" />
-      <path d="M22 5h-4" />
+      <MoonStarGlyph twinkle={twinkle} />
     </svg>
   );
 }

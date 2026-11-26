@@ -26,6 +26,9 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Custom Shaded Golden Sun & Two-Star Crescent Moon Celestial Icons (`DayArc` & Weather):**
+  - Replaced the flat circle marker on `DayArc` and plain outline weather glyphs with custom token-driven vector art (`SunGlyph` 8-ray shaded golden sun shifting warmer at dawn/dusk with subtle ray spin, plus `MoonStarGlyph` luminous silver-lavender crescent moon with twinkling 5-point stars and dark cutout stroke).
+
 - **Auto-Tracked Windows Location Across Weather, Prayer Times, Iftar/Sehri, Day Arc & Qibla:**
   - Enabled fast Windows Geolocation tracking (`locationOptIn` defaulting to `true` with `GetGeopositionWithAgeAndTimeoutAsync` 5s timeout & 10-min cache) on startup, settings toggle, weather refresh, and periodic 30-minute background checks.
   - Wired resolved coordinates (`latitude`, `longitude`), host local timezone offset, and offline `resolve_city_name_for_coords` directly into `AppState.prayer_config`, recomputing all 5 daily prayers, Ramadan Sehri/Iftar countdowns, Qibla compass bearing (`PrayerSchedule.latitude/longitude`), Day Arc curve, and coordinate-scoped Open-Meteo weather cache simultaneously.

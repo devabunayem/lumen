@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { CloudIcon, CloudRainIcon, CompassIcon, MoonStarIcon, SunIcon } from "../../design/icons";
+import {
+  CloudIcon,
+  CloudRainIcon,
+  CompassIcon,
+  MoonStarGlyph,
+  MoonStarIcon,
+  SunGlyph,
+  SunIcon,
+} from "../../design/icons";
 import { CONTENT_STAGGER } from "../../design/motion";
 import { playUiSound } from "../../design/sounds";
 import { COLOR_TOKENS } from "../../design/tokens";
@@ -206,7 +214,8 @@ export function DayArc({
   const progressGlow = geometry.isNightMode
     ? COLOR_TOKENS.arcMoonGlow
     : COLOR_TOKENS.arcProgressGlow;
-  const sunColor = geometry.isNightMode ? COLOR_TOKENS.arcMoon : COLOR_TOKENS.arcSun;
+  const isDawnOrDusk =
+    !geometry.isNightMode && (geometry.nowPoint.u < 0.14 || geometry.nowPoint.u > 0.84);
   const haloColor = geometry.isNightMode ? COLOR_TOKENS.arcMoonHalo : COLOR_TOKENS.arcSunHalo;
 
   const conditionTextMap: Record<string, string> = {
@@ -245,9 +254,9 @@ export function DayArc({
     ) : weather?.condition === "cloudy" ? (
       <CloudIcon size={18} />
     ) : geometry.isNightMode ? (
-      <MoonStarIcon size={18} />
+      <MoonStarIcon size={18} twinkle={isVisible && !reduceMotion} />
     ) : (
-      <SunIcon size={18} />
+      <SunIcon size={18} warmDusk={isDawnOrDusk} />
     );
 
     const activeCityId =
@@ -546,8 +555,8 @@ export function DayArc({
             </g>
           ))}
 
-        {/* Sun / Moon "Now" marker */}
-        <g>
+        {/* Sun / Moon "Now" celestial glyph */}
+        <g data-testid={geometry.isNightMode ? "arc-moon-glyph" : "arc-sun-glyph"}>
           <circle
             cx={activeNowPoint.x}
             cy={activeNowPoint.y}
@@ -555,7 +564,15 @@ export function DayArc({
             fill={haloColor}
             className={isVisible && !reduceMotion ? "lumen-halo-breath" : undefined}
           />
-          <circle cx={activeNowPoint.x} cy={activeNowPoint.y} r={7} fill={sunColor} />
+          <g
+            transform={`translate(${(activeNowPoint.x - 10).toFixed(2)}, ${(activeNowPoint.y - 10).toFixed(2)}) scale(${(20 / 24).toFixed(4)})`}
+          >
+            {geometry.isNightMode ? (
+              <MoonStarGlyph twinkle={isVisible && !reduceMotion} />
+            ) : (
+              <SunGlyph warmDusk={isDawnOrDusk} animated={isVisible && !reduceMotion} />
+            )}
+          </g>
         </g>
 
         {/* Pointer scrub hairline cursor */}

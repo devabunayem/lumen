@@ -27,6 +27,11 @@
   --toggle-off: rgba(255, 255, 255, 0.08);
   --toggle-icon-off: #c4c4cc;
   --arc-sun: #ffd060;
+  --sun-disc: #ffe24a;
+  --sun-shade: #f5b700;
+  --sun-dusk: #ff8c3a;
+  --moon-crescent: #e2e8ff;
+  --moon-star: #a5b4fc;
   --arc-progress: #ffb020;
   --arc-progress-glow: rgba(255, 176, 32, 0.28);
   --arc-sun-halo: rgba(255, 176, 32, 0.25);
@@ -365,7 +370,40 @@ a:focus-visible,
 .lumen-halo-breath {
   transform-box: fill-box;
   transform-origin: center;
-  opacity: 0.32;
+  opacity: 0.38;
+}
+
+@keyframes lumen-sun-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lumen-moon-twinkle {
+  0%,
+  100% {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.58;
+    transform: scale(0.86);
+  }
+}
+
+.lumen-sun-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lumen-sun-spin 32s linear infinite;
+}
+
+.lumen-moon-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lumen-moon-twinkle 3.2s ease-in-out infinite;
 }
 
 .lumen-glow-drift {
@@ -374,6 +412,8 @@ a:focus-visible,
 
 [data-reduce-motion="true"] .lumen-skeleton-shimmer::after,
 [data-reduce-motion="true"] .lumen-halo-breath,
+[data-reduce-motion="true"] .lumen-sun-spin,
+[data-reduce-motion="true"] .lumen-moon-twinkle,
 [data-reduce-motion="true"] .lumen-glow-drift,
 [data-reduce-motion="true"] .lumen-aurora-blob-a,
 [data-reduce-motion="true"] .lumen-aurora-blob-b,
