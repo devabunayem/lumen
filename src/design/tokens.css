@@ -62,14 +62,14 @@
   --page-dot-inactive: rgba(255, 255, 255, 0.24);
   --skeleton-base: rgba(255, 255, 255, 0.08);
   --skeleton-highlight: rgba(255, 255, 255, 0.16);
-  --aurora-wave-a: rgba(56, 189, 248, 0.62);
-  --aurora-wave-b: rgba(191, 90, 242, 0.56);
-  --aurora-celebrate-a: rgba(48, 209, 88, 0.62);
-  --aurora-celebrate-b: rgba(90, 200, 250, 0.54);
-  --aurora-confirm-a: rgba(255, 159, 10, 0.58);
-  --aurora-confirm-b: rgba(255, 69, 58, 0.48);
-  --aurora-focus-a: rgba(94, 92, 230, 0.56);
-  --aurora-focus-b: rgba(10, 132, 255, 0.5);
+  --aurora-wave-a: rgba(56, 200, 255, 0.84);
+  --aurora-wave-b: rgba(204, 102, 255, 0.78);
+  --aurora-celebrate-a: rgba(52, 226, 98, 0.84);
+  --aurora-celebrate-b: rgba(84, 212, 255, 0.78);
+  --aurora-confirm-a: rgba(255, 174, 26, 0.84);
+  --aurora-confirm-b: rgba(255, 82, 68, 0.76);
+  --aurora-focus-a: rgba(114, 112, 255, 0.8);
+  --aurora-focus-b: rgba(24, 148, 255, 0.74);
 
   /* Geometry tokens at 100% scale */
   --island-scale: 1;

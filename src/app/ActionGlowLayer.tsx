@@ -51,7 +51,7 @@ export function ActionGlowLayer({
   }
   const visible = mode === "always" || (mode === "action" && active);
   const [colorA, colorB] = resolveAuroraStops(mood, accentHex);
-  const targetOpacity = active ? (expanded ? 0.42 : 0.96) : expanded ? 0.24 : 0.56;
+  const targetOpacity = active ? (expanded ? 0.56 : 1) : expanded ? 0.34 : 0.68;
   const playState = prefersReduced || paused ? "paused" : "running";
 
   return (
@@ -67,12 +67,12 @@ export function ActionGlowLayer({
           animate={{ opacity: targetOpacity }}
           exit={{ opacity: 0 }}
           transition={prefersReduced ? MOTION_PRESETS.reducedMotionFade : MOTION_PRESETS.auroraFade}
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[32px] max-h-full overflow-hidden rounded-[inherit]"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[38px] max-h-full overflow-hidden rounded-[inherit]"
           style={{
             maskImage:
-              "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.58) 46%, transparent 96%)",
+              "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.72) 52%, transparent 98%)",
             WebkitMaskImage:
-              "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.58) 46%, transparent 96%)",
+              "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.72) 52%, transparent 98%)",
           }}
         >
           {/* Left-to-right flowing aurora lobe */}
@@ -83,8 +83,8 @@ export function ActionGlowLayer({
                 : "lumen-aurora-blob-a absolute -inset-x-6 -bottom-3 h-full"
             }
             style={{
-              background: `radial-gradient(62% 95% at 32% 95%, ${colorA}, transparent 72%)`,
-              filter: "blur(8px)",
+              background: `radial-gradient(66% 100% at 32% 96%, ${colorA}, transparent 75%)`,
+              filter: "blur(9px)",
               animationPlayState: playState,
             }}
           />
@@ -96,8 +96,8 @@ export function ActionGlowLayer({
                 : "lumen-aurora-blob-b absolute -inset-x-6 -bottom-3 h-full"
             }
             style={{
-              background: `radial-gradient(60% 90% at 70% 95%, ${colorB}, transparent 72%)`,
-              filter: "blur(9px)",
+              background: `radial-gradient(64% 96% at 70% 96%, ${colorB}, transparent 75%)`,
+              filter: "blur(10px)",
               animationPlayState: playState,
             }}
           />

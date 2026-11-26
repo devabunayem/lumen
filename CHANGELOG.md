@@ -8,7 +8,7 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 - **Content-Fitted Notification Sizing & Inner Bottom-Edge Aurora Glow:**
   - Replaced the oversized `440×84` minimum toast footprint with dynamic `measureNotificationDimensions()` (`248×58` up to `428×138`) and tightened `NotificationToast` padding (`px-3.5 py-2.5`) so notification bubbles hug their actual title and body copy with only subtle rim breathing room.
-  - Constrained `ActionGlowLayer` to a crisp `32px` bottom strip inside the notch silhouette (`inset-x-0 bottom-0 h-[32px] max-h-full overflow-hidden`) so the movable aurora glow always stays cleanly inside the notch bottom edge across every state without spilling outside or stretching into tall empty slabs.
+  - Constrained `ActionGlowLayer` to a crisp, vibrant `38px` bottom strip inside the notch silhouette (`inset-x-0 bottom-0 h-[38px] max-h-full overflow-hidden`, boosted `--aurora-*` token luminescence) so the movable aurora glow always stays cleanly inside the notch bottom edge across every state without spilling outside or stretching into tall empty slabs.
 
 - **Interactive Play/Pause Movable Notch Glow & Reliable SMTC Thumbnail/Color Sync:**
   - Updated `IslandShell` and `ActionGlowLayer` so the bottom flowing aurora glow remains active and smoothly drifting in sync with the playing media's extracted artwork `accent_hex` (`color-mix` harmonized stops) throughout active playback, and immediately pauses/stops when music is paused.
