@@ -416,6 +416,12 @@ fn default_reminder_snooze_minutes() -> u32 {
 fn default_reminder_default_lead_minutes() -> u32 {
     10
 }
+fn default_now_playing_banner_seconds() -> u32 {
+    4
+}
+fn default_notification_duration_seconds() -> u32 {
+    8
+}
 fn default_dev_pulse_ports() -> Vec<u16> {
     vec![3000, 5173, 1420]
 }
@@ -493,6 +499,20 @@ pub struct LumenSettings {
     pub reminder_snooze_minutes: u32,
     #[serde(default = "default_reminder_default_lead_minutes")]
     pub reminder_default_lead_minutes: u32,
+    #[serde(default = "default_true")]
+    pub resting_show_clock: bool,
+    #[serde(default = "default_true")]
+    pub resting_show_waveform: bool,
+    #[serde(default = "default_true")]
+    pub resting_show_sensor_dots: bool,
+    #[serde(default = "default_true")]
+    pub resting_show_battery_ring: bool,
+    #[serde(default = "default_true")]
+    pub now_playing_banner_enabled: bool,
+    #[serde(default = "default_now_playing_banner_seconds")]
+    pub now_playing_banner_seconds: u32,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub notification_duration_seconds: u32,
 }
 
 impl Default for LumenSettings {
@@ -536,6 +556,13 @@ impl Default for LumenSettings {
             dev_pulse_ports: default_dev_pulse_ports(),
             reminder_snooze_minutes: default_reminder_snooze_minutes(),
             reminder_default_lead_minutes: default_reminder_default_lead_minutes(),
+            resting_show_clock: true,
+            resting_show_waveform: true,
+            resting_show_sensor_dots: true,
+            resting_show_battery_ring: true,
+            now_playing_banner_enabled: true,
+            now_playing_banner_seconds: default_now_playing_banner_seconds(),
+            notification_duration_seconds: default_notification_duration_seconds(),
         }
     }
 }
@@ -566,6 +593,8 @@ impl LumenSettings {
         self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
         self.reminder_snooze_minutes = self.reminder_snooze_minutes.clamp(1, 30);
         self.reminder_default_lead_minutes = self.reminder_default_lead_minutes.clamp(0, 120);
+        self.now_playing_banner_seconds = self.now_playing_banner_seconds.clamp(1, 15);
+        self.notification_duration_seconds = self.notification_duration_seconds.clamp(3, 30);
         self.position_offset_x = self.position_offset_x.clamp(-400, 400);
         self.water_goal_ml = self.water_goal_ml.clamp(250, 10_000);
         self.sound_volume = self.sound_volume.clamp(0, 100);

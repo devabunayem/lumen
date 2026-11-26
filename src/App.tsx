@@ -127,6 +127,13 @@ export function App() {
       chipDevPulseEnabled={settings.chipDevPulseEnabled}
       reminderSnoozeMinutes={settings.reminderSnoozeMinutes}
       reminderDefaultLeadMinutes={settings.reminderDefaultLeadMinutes}
+      restingShowClock={settings.restingShowClock}
+      restingShowWaveform={settings.restingShowWaveform}
+      restingShowSensorDots={settings.restingShowSensorDots}
+      restingShowBatteryRing={settings.restingShowBatteryRing}
+      nowPlayingBannerEnabled={settings.nowPlayingBannerEnabled}
+      nowPlayingBannerSeconds={settings.nowPlayingBannerSeconds}
+      notificationDurationSeconds={settings.notificationDurationSeconds}
       pageOrder={settings.pageOrder}
       hiddenPages={settings.hiddenPages}
       initialWaterGoalMl={settings.waterGoalMl}

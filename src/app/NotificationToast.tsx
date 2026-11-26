@@ -6,6 +6,9 @@ import type { NotificationPopup } from "../lib/ipc";
 
 export interface NotificationToastProps {
   notification: NotificationPopup;
+  language?: "en" | "bn";
+  expanded?: boolean;
+  onToggleExpand?: (next: boolean) => void;
   onDismiss: () => void;
 }
 
@@ -143,15 +146,26 @@ function resolveAppIcon(appName: string): AppIconStyle {
 /**
  * Privacy-first notification pill popup with app icon badge & elastic swipe-to-dismiss (FR-NT-1).
  */
-export function NotificationToast({ notification, onDismiss }: NotificationToastProps) {
+export function NotificationToast({
+  notification,
+  language = "en",
+  expanded = false,
+  onToggleExpand,
+  onDismiss,
+}: NotificationToastProps) {
   const prefersReducedMotion = useReducedMotion() ?? false;
   const [failedId, setFailedId] = useState<number | null>(null);
   const iconStyle = resolveAppIcon(notification.app_name);
   const showRealLogo = Boolean(notification.app_icon_data_url) && failedId !== notification.id;
+  const isBn = language === "bn";
+  const isLongPreview =
+    notification.body.length > 150 ||
+    notification.title.length > 75 ||
+    notification.body.split("\n").length > 3;
 
   return (
     <motion.div
-      drag={prefersReducedMotion ? false : "x"}
+      drag={prefersReducedMotion || expanded ? false : "x"}
       dragConstraints={{ left: -120, right: 120 }}
       dragElastic={0.45}
       onDragEnd={(_, info) => {
@@ -159,9 +173,13 @@ export function NotificationToast({ notification, onDismiss }: NotificationToast
           onDismiss();
         }
       }}
-      onClick={onDismiss}
+      onClick={() => {
+        if (!expanded) {
+          onDismiss();
+        }
+      }}
       transition={getMotionTransition("collapse", prefersReducedMotion)}
-      className="flex h-full w-full cursor-pointer items-start gap-3 overflow-y-auto px-4 py-3"
+      className={`flex h-full w-full items-start gap-3 px-4 py-3 ${expanded ? "" : "cursor-pointer"}`}
     >
       <div
         data-testid="notification-app-icon"
@@ -194,10 +212,12 @@ export function NotificationToast({ notification, onDismiss }: NotificationToast
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
           <div
-            className="text-[13px] font-semibold leading-snug break-words"
+            className={`text-[13px] font-semibold leading-snug break-words ${
+              !expanded && isLongPreview ? "line-clamp-2" : ""
+            }`}
             style={{ color: "var(--text-primary)" }}
           >
             {notification.title}
@@ -209,13 +229,57 @@ export function NotificationToast({ notification, onDismiss }: NotificationToast
             {notification.app_name}
           </span>
         </div>
+
         {notification.body && (
           <div
             data-testid="notification-body"
-            className="mt-1 text-[12px] leading-[1.38] whitespace-pre-wrap break-words"
+            className={`mt-1 text-[12px] leading-[1.38] whitespace-pre-wrap break-words ${
+              expanded
+                ? "max-h-[170px] overflow-y-auto pr-1"
+                : isLongPreview
+                  ? "line-clamp-3 overflow-hidden"
+                  : ""
+            }`}
             style={{ color: "var(--text-secondary)" }}
           >
             {notification.body}
+          </div>
+        )}
+
+        {isLongPreview && (
+          <div className="mt-1.5 flex items-center justify-end gap-2">
+            {expanded && (
+              <button
+                type="button"
+                data-testid="notification-close-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDismiss();
+                }}
+                className="cursor-pointer rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium"
+                style={{
+                  backgroundColor: "var(--surface-button)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                {isBn ? "বন্ধ" : "Dismiss"}
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="notification-more-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand?.(!expanded);
+              }}
+              className="cursor-pointer rounded-full border-0 px-2.5 py-0.5 text-[11px] font-semibold"
+              style={{
+                backgroundColor: "rgba(10, 132, 255, 0.18)",
+                color: "var(--accent-blue)",
+              }}
+            >
+              {expanded ? (isBn ? "সংক্ষিপ্ত" : "Show less") : isBn ? "আরও দেখুন" : "More"}
+            </button>
           </div>
         )}
       </div>

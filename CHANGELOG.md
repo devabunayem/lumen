@@ -6,6 +6,12 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Centered-Clock Resting Notch, Brief Now-Playing Track Banner & Streamlined 7-Tab Settings:**
+  - Updated the default resting notch (`idle` and `live`) to show a centered clock, left live status dots (Camera green, Mic orange, circular Charging `%` ring, Focus), and a right music waveform (animated only while playing).
+  - Added `NowPlayingBanner` (`320×60`) to briefly highlight newly started/switched YouTube or desktop media playback before smoothly returning to the centered clock notch.
+  - Added standard-capped notification previews (`440×84..148`) with a **More / Show less** reader (`460×260`) for extra-long messages, plus Settings controls (`restingShowClock`, `restingShowWaveform`, `restingShowSensorDots`, `restingShowBatteryRing`, `nowPlayingBannerEnabled`, `nowPlayingBannerSeconds`, `notificationDurationSeconds`).
+  - Consolidated `SettingsWindow` from 15 tabs (including empty placeholders) into 7 clean tabs (`General`, `Appearance`, `Pages`, `Notifications`, `Widgets`, `Plugins`, `About`).
+
 - **Manual Timed Reminders, Medium Alarm Notch & Snooze:** Added SQLite + `localStorage` persisted `reminders` storage (with automatic 7-day post-expiry deletion and non-Tauri preview scheduler), `RemindersWidget` with native `<input type="date">` / `<input type="time">` pickers and auto-collapse editing lock, `ReminderSnoozeMinutes` (`2/3/5/10 min`) and `Default Lead Reminder` preferences in Settings, synthesized `reminder_alarm` tone, and the medium `380×108` `ReminderAlertOverlay` with **OK, Got it** (canceling the early alarm while keeping the exact-time notification armed) and **Snooze** actions.
 - **All Windows App & Browser Notification Sync with Real App Logos:** Added `SystemNotificationWatcher` in `lumen-notify` capturing live desktop & browser toast notifications (`Chrome`, `Edge`, `Firefox`, `Brave`, `WhatsApp`, `Discord`, etc.) with Win32 `shell:AppsFolder` 48×48 PNG icon extraction and `<toast>` local image loading inside `NotificationToast`.
 - **Real-Time Audio/Video Player Sync & Continuous Timeline:** Upgraded `lumen-media` (`LastUpdatedTime` real-time timeline math, cached thumbnails, active playing session auto-priority across browsers & video players) and `MusicCard` / collapsed `live` pill progress strip (`2 Hz` backend + smooth UI tick).

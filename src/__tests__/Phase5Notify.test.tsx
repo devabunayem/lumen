@@ -60,4 +60,45 @@ describe("NotificationToast (FR-NT-1..2)", () => {
     expect(bodyEl).toHaveTextContent(fullMessage);
     expect(bodyEl.className).not.toContain("truncate");
   });
+
+  it("caps extra-long messages with a More button that toggles full scrollable preview", () => {
+    const longMsg = "Very important long message preview ".repeat(16).trim();
+    const onToggleExpand = vi.fn();
+    const { rerender } = render(
+      <NotificationToast
+        notification={{
+          id: 4,
+          app_name: "Messenger",
+          title: "Client Thread",
+          body: longMsg,
+        }}
+        expanded={false}
+        onToggleExpand={onToggleExpand}
+        onDismiss={vi.fn()}
+      />,
+    );
+    const bodyEl = screen.getByTestId("notification-body");
+    expect(bodyEl.className).toContain("line-clamp-3");
+    const moreBtn = screen.getByTestId("notification-more-btn");
+    expect(moreBtn).toHaveTextContent("More");
+    fireEvent.click(moreBtn);
+    expect(onToggleExpand).toHaveBeenCalledWith(true);
+
+    rerender(
+      <NotificationToast
+        notification={{
+          id: 4,
+          app_name: "Messenger",
+          title: "Client Thread",
+          body: longMsg,
+        }}
+        expanded
+        onToggleExpand={onToggleExpand}
+        onDismiss={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("notification-body").className).not.toContain("line-clamp-3");
+    expect(screen.getByTestId("notification-more-btn")).toHaveTextContent("Show less");
+    expect(screen.getByTestId("notification-close-btn")).toBeInTheDocument();
+  });
 });

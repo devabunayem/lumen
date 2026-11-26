@@ -15,6 +15,9 @@ describe("IslandShell", () => {
     expect(pill).toHaveAttribute("data-state", "idle");
     expect(pill).toHaveAttribute("data-target-width", "184");
     expect(pill).toHaveAttribute("data-target-height", "30");
+    expect(screen.getByTestId("resting-left-indicators")).toBeInTheDocument();
+    expect(screen.getByTestId("resting-center-clock")).toBeInTheDocument();
+    expect(screen.getByTestId("resting-right-waveform")).toBeInTheDocument();
   });
 
   it("expands to Home 640x312 by default when clicked and collapses on Escape", () => {

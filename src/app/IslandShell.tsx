@@ -20,6 +20,7 @@ import { playUiSound } from "../design/sounds";
 import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
 import { HomePage } from "../home/HomePage";
 import { type AppLanguage, getMessages } from "../i18n";
+import { formatDigits } from "../i18n/digits";
 import {
   calendarList,
   type CalendarEvent,
@@ -133,8 +134,8 @@ import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
 import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
 import { HudOverlay } from "./HudOverlay";
-import { LumenMascot } from "./LumenMascot";
 import { NotificationToast } from "./NotificationToast";
+import { NowPlayingBanner, type NowPlayingBannerItem } from "./NowPlayingBanner";
 import { ReminderAlertOverlay } from "./ReminderAlertOverlay";
 import { useIslandStore } from "./stateMachine";
 
@@ -160,6 +161,13 @@ export interface IslandShellProps {
   chipDevPulseEnabled?: boolean;
   reminderSnoozeMinutes?: number;
   reminderDefaultLeadMinutes?: number;
+  restingShowClock?: boolean;
+  restingShowWaveform?: boolean;
+  restingShowSensorDots?: boolean;
+  restingShowBatteryRing?: boolean;
+  nowPlayingBannerEnabled?: boolean;
+  nowPlayingBannerSeconds?: number;
+  notificationDurationSeconds?: number;
   pageOrder?: string[];
   hiddenPages?: string[];
   initialWaterGoalMl?: number;
@@ -180,12 +188,6 @@ function formatClockParts(now: Date): { dateText: string; timeText: string } {
     minute: "2-digit",
   });
   return { dateText, timeText };
-}
-
-function formatShortTimer(secs: number): string {
-  const m = Math.floor(Math.max(0, secs) / 60);
-  const s = Math.max(0, secs) % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 function isTypingInContainer(container: HTMLElement | null): boolean {
@@ -217,7 +219,6 @@ export function IslandShell({
   minimalNotch = false,
   hoverToOpen = true,
   hoverReturnSeconds = 5,
-  mascotEnabled = true,
   showHeaderClockSetting = true,
   language = "en",
   reducedMotionOverride = false,
@@ -232,6 +233,13 @@ export function IslandShell({
   chipDevPulseEnabled = true,
   reminderSnoozeMinutes = 3,
   reminderDefaultLeadMinutes = 10,
+  restingShowClock = true,
+  restingShowWaveform = true,
+  restingShowSensorDots = true,
+  restingShowBatteryRing = true,
+  nowPlayingBannerEnabled = true,
+  nowPlayingBannerSeconds = 4,
+  notificationDurationSeconds = 8,
   pageOrder = DEFAULT_SETTINGS.pageOrder,
   hiddenPages = DEFAULT_SETTINGS.hiddenPages,
   initialWaterGoalMl = 1500,
@@ -295,16 +303,44 @@ export function IslandShell({
   const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
   const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
+  const [notifyExpanded, setNotifyExpanded] = useState(false);
+  const [activeNowPlaying, setActiveNowPlaying] = useState<NowPlayingBannerItem | null>(null);
   const [activeReminderAlert, setActiveReminderAlert] = useState<ReminderAlertPayload | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const [slimReturnActive, setSlimReturnActive] = useState(false);
   const [privacyDevices, setPrivacyDevices] = useState<[boolean, boolean]>([false, false]);
   const prevExpandedRef = useRef(false);
+  const prevPlayingKeyRef = useRef<string | null>(null);
+  const stateRef = useRef(state);
+  const activeInterruptRef = useRef(false);
+  const nowPlayingCfgRef = useRef({
+    enabled: nowPlayingBannerEnabled,
+    seconds: nowPlayingBannerSeconds,
+  });
+  const notifyDurationRef = useRef(notificationDurationSeconds);
+
+  useEffect(() => {
+    stateRef.current = state;
+    activeInterruptRef.current = Boolean(activeNotification || activeReminderAlert);
+    nowPlayingCfgRef.current = {
+      enabled: nowPlayingBannerEnabled,
+      seconds: nowPlayingBannerSeconds,
+    };
+    notifyDurationRef.current = notificationDurationSeconds;
+  }, [
+    state,
+    activeNotification,
+    activeReminderAlert,
+    nowPlayingBannerEnabled,
+    nowPlayingBannerSeconds,
+    notificationDurationSeconds,
+  ]);
 
   useEffect(() => {
     let active = true;
     const poll = () => {
       void systemPrivacyIndicators().then((res) => active && setPrivacyDevices(res));
+      void systemBatteryStatus().then((b) => active && b && setBatteryState(b));
     };
     poll();
     const timer = window.setInterval(poll, 3000);
@@ -629,6 +665,39 @@ export function IslandShell({
         );
       });
       const isPlaying = Boolean(snapshot.active?.is_playing) && !excluded;
+      const trackKey =
+        isPlaying && snapshot.active?.title
+          ? `${snapshot.active.app_id}::${snapshot.active.title}::${snapshot.active.artist}`
+          : null;
+      if (trackKey && trackKey !== prevPlayingKeyRef.current) {
+        prevPlayingKeyRef.current = trackKey;
+        if (
+          nowPlayingCfgRef.current.enabled &&
+          stateRef.current !== "expanded" &&
+          !activeInterruptRef.current &&
+          snapshot.active
+        ) {
+          setActiveNowPlaying({
+            title: snapshot.active.title,
+            artist: snapshot.active.artist || snapshot.active.app_id,
+            appName: snapshot.active.app_id,
+            albumArtDataUrl: snapshot.active.album_art_data_url ?? null,
+            accentHex: snapshot.active.accent_hex || "var(--accent-blue)",
+          });
+          dispatch({ type: "NOTIFICATION" });
+          if (hudTimerRef.current !== null) {
+            window.clearTimeout(hudTimerRef.current);
+          }
+          const bannerMs = Math.max(1500, nowPlayingCfgRef.current.seconds * 1000);
+          hudTimerRef.current = window.setTimeout(() => {
+            hudTimerRef.current = null;
+            setActiveNowPlaying(null);
+            dispatch({ type: "HUD_DISMISS" });
+          }, bannerMs);
+        }
+      } else if (!isPlaying) {
+        prevPlayingKeyRef.current = null;
+      }
       dispatch({ type: "MEDIA_CHANGE", active: isPlaying });
     };
 
@@ -651,6 +720,8 @@ export function IslandShell({
         setBatteryState([hud.value_pct, hud.active]);
       }
       setActiveNotification(null);
+      setNotifyExpanded(false);
+      setActiveNowPlaying(null);
       setActiveHud(hud);
       dispatch({ type: "NOTIFICATION" });
       if (hudTimerRef.current !== null) {
@@ -665,15 +736,19 @@ export function IslandShell({
     });
     void subscribeNotificationPopup((popup) => {
       setActiveHud(null);
+      setActiveNowPlaying(null);
       setActiveReminderAlert(null);
+      setNotifyExpanded(false);
       setActiveNotification(popup);
       dispatch({ type: "NOTIFICATION" });
       if (hudTimerRef.current !== null) {
         window.clearTimeout(hudTimerRef.current);
       }
-      const durationMs = popup.body.length > 100 ? 11_000 : 8_500;
+      const baseMs = Math.max(3000, notifyDurationRef.current * 1000);
+      const durationMs = popup.body.length > 100 ? Math.max(baseMs, baseMs + 2500) : baseMs;
       hudTimerRef.current = window.setTimeout(() => {
         setActiveNotification(null);
+        setNotifyExpanded(false);
         dispatch({ type: "HUD_DISMISS" });
       }, durationMs);
     }).then((fn) => {
@@ -681,7 +756,9 @@ export function IslandShell({
     });
     void subscribeReminderAlert((alert) => {
       setActiveHud(null);
+      setActiveNowPlaying(null);
       setActiveNotification(null);
+      setNotifyExpanded(false);
       setActiveReminderAlert(alert);
       dispatch({ type: "NOTIFICATION" });
       if (hudTimerRef.current !== null) {
@@ -860,27 +937,51 @@ export function IslandShell({
           return BASE_GEOMETRY.reminder;
         }
         if (activeNotification !== null) {
-          const titleLines = Math.max(1, Math.ceil(activeNotification.title.length / 40));
+          if (notifyExpanded) {
+            return BASE_GEOMETRY.notificationExpanded;
+          }
+          const titleLines = Math.min(
+            2,
+            Math.max(1, Math.ceil(activeNotification.title.length / 40)),
+          );
           const bodyLines = activeNotification.body
-            ? Math.max(1, Math.ceil(activeNotification.body.length / 48))
+            ? Math.min(3, Math.max(1, Math.ceil(activeNotification.body.length / 48)))
             : 0;
-          const neededHeight = 36 + titleLines * 18 + bodyLines * 17;
+          const isLong =
+            activeNotification.body.length > 150 ||
+            activeNotification.title.length > 75 ||
+            activeNotification.body.split("\n").length > 3;
+          const neededHeight = 36 + titleLines * 18 + bodyLines * 18 + (isLong ? 24 : 0);
           return {
             width: BASE_GEOMETRY.notification.width,
-            height: Math.max(BASE_GEOMETRY.notification.height, Math.min(200, neededHeight)),
+            height: Math.max(BASE_GEOMETRY.notification.height, Math.min(148, neededHeight)),
           };
+        }
+        if (activeNowPlaying !== null) {
+          return BASE_GEOMETRY.nowPlaying;
         }
         return BASE_GEOMETRY.hud;
       default:
         return BASE_GEOMETRY.collapsed;
     }
-  }, [effectiveState, isSlimQuiet, isHomePage, activeReminderAlert, activeNotification]);
+  }, [
+    effectiveState,
+    isSlimQuiet,
+    isHomePage,
+    activeReminderAlert,
+    activeNotification,
+    notifyExpanded,
+    activeNowPlaying,
+  ]);
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
   const isFloatingPill = shapeStyle === "pill";
   const topOffset = isFloatingPill ? Math.round(BASE_GEOMETRY.pillFloatOffset * scaleFactor) : 0;
   const homeVisibleNow = isExpanded && isHomePage && !isHidden;
+  const isBannerHud =
+    effectiveState === "hud" &&
+    (activeReminderAlert !== null || activeNotification !== null || activeNowPlaying !== null);
 
   useEffect(() => {
     void homeSetVisible(homeVisibleNow);
@@ -893,15 +994,13 @@ export function IslandShell({
       cornerRadius: isFloatingPill
         ? isExpanded
           ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
-          : (activeReminderAlert !== null || activeNotification !== null) &&
-              effectiveState === "hud"
-            ? 24 * scaleFactor
+          : isBannerHud
+            ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2)
         : isExpanded
           ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
-          : (activeReminderAlert !== null || activeNotification !== null) &&
-              effectiveState === "hud"
-            ? 24 * scaleFactor
+          : isBannerHud
+            ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2),
       homeVisible: homeVisibleNow,
     });
@@ -947,11 +1046,14 @@ export function IslandShell({
     homeVisibleNow,
     activeReminderAlert,
     activeNotification,
+    activeNowPlaying,
+    isBannerHud,
     effectiveState,
   ]);
   const isReminderAlert = effectiveState === "hud" && activeReminderAlert !== null;
   const isHud = effectiveState === "hud" && activeHud !== null;
   const isNotify = effectiveState === "hud" && activeNotification !== null;
+  const isNowPlaying = effectiveState === "hud" && activeNowPlaying !== null;
   const liveTrack = media?.active ?? null;
   const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
   const celebratingMascot = Boolean(
@@ -961,16 +1063,6 @@ export function IslandShell({
     () => (liveTrack?.title ? lyricsLines : []),
     [liveTrack?.title, lyricsLines],
   );
-  const activeLyric = useMemo(() => {
-    if (!liveTrack || activeLyricsLines.length === 0) {
-      return null;
-    }
-    const idx = activeLyricsLines.reduce(
-      (acc, l, i) => (l.time_ms <= liveTrack.position_ms ? i : acc),
-      -1,
-    );
-    return idx >= 0 ? (activeLyricsLines[idx]?.text ?? null) : null;
-  }, [liveTrack, activeLyricsLines]);
 
   const sizeTransition = isHidden
     ? getMotionTransition("hideFullscreen", prefersReducedMotion)
@@ -980,15 +1072,17 @@ export function IslandShell({
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
   const surfaceBorderRadius = isFloatingPill
-    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : isReminderAlert || isNotify ? 24 : Math.round(height / 2), Math.round(height / 2))}px`
+    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : isBannerHud ? (isNowPlaying && !isNotify ? 22 : 24) : Math.round(height / 2), Math.round(height / 2))}px`
     : isSlimQuiet
       ? "0px 0px 8px 8px"
       : isExpanded
         ? isHomePage
           ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
           : "0px 0px 24px 24px"
-        : isReminderAlert || isNotify
-          ? "0px 0px 24px 24px"
+        : isBannerHud
+          ? isNowPlaying && !isNotify
+            ? "0px 0px 22px 22px"
+            : "0px 0px 24px 24px"
           : "0px 0px 15px 15px";
 
   return (
@@ -1077,11 +1171,19 @@ export function IslandShell({
           isHoveredRef.current = true;
           clearHoverTimers();
           setSlimReturnActive(false);
-          if (isNotify && hudTimerRef.current !== null) {
+          if ((isNotify || isNowPlaying) && hudTimerRef.current !== null) {
             window.clearTimeout(hudTimerRef.current);
             hudTimerRef.current = null;
           }
-          if (!isExpanded && !isHidden && !isHud && !isNotify && !isReminderAlert && hoverToOpen) {
+          if (
+            !isExpanded &&
+            !isHidden &&
+            !isHud &&
+            !isNotify &&
+            !isNowPlaying &&
+            !isReminderAlert &&
+            hoverToOpen
+          ) {
             hoverOpenTimerRef.current = window.setTimeout(() => {
               hoverOpenTimerRef.current = null;
               if (!isHoveredRef.current) {
@@ -1098,12 +1200,19 @@ export function IslandShell({
             window.clearTimeout(hoverOpenTimerRef.current);
             hoverOpenTimerRef.current = null;
           }
-          if (isNotify && hudTimerRef.current === null) {
+          if (isNotify && !notifyExpanded && hudTimerRef.current === null) {
             hudTimerRef.current = window.setTimeout(() => {
               hudTimerRef.current = null;
               setActiveNotification(null);
+              setNotifyExpanded(false);
               dispatch({ type: "HUD_DISMISS" });
             }, 3500);
+          } else if (isNowPlaying && hudTimerRef.current === null) {
+            hudTimerRef.current = window.setTimeout(() => {
+              hudTimerRef.current = null;
+              setActiveNowPlaying(null);
+              dispatch({ type: "HUD_DISMISS" });
+            }, 2000);
           }
           if (isExpanded) {
             const recentlyExpanded = Date.now() - expandedAtRef.current < 180;
@@ -1111,7 +1220,14 @@ export function IslandShell({
           }
         }}
         onClick={() => {
-          if (!isExpanded && !isHidden && !isHud && !isNotify && !isReminderAlert) {
+          if (
+            !isExpanded &&
+            !isHidden &&
+            !isHud &&
+            !isNotify &&
+            !isNowPlaying &&
+            !isReminderAlert
+          ) {
             clearHoverTimers();
             setSlimReturnActive(false);
             dispatch({ type: "CLICK" });
@@ -1237,12 +1353,64 @@ export function IslandShell({
               >
                 <NotificationToast
                   notification={activeNotification}
+                  language={language}
+                  expanded={notifyExpanded}
+                  onToggleExpand={(next) => {
+                    setNotifyExpanded(next);
+                    if (hudTimerRef.current !== null) {
+                      window.clearTimeout(hudTimerRef.current);
+                      hudTimerRef.current = null;
+                    }
+                    if (!next && !isHoveredRef.current) {
+                      hudTimerRef.current = window.setTimeout(() => {
+                        hudTimerRef.current = null;
+                        setActiveNotification(null);
+                        setNotifyExpanded(false);
+                        dispatch({ type: "HUD_DISMISS" });
+                      }, 4500);
+                    }
+                  }}
                   onDismiss={() => {
                     if (hudTimerRef.current !== null) {
                       window.clearTimeout(hudTimerRef.current);
                       hudTimerRef.current = null;
                     }
                     setActiveNotification(null);
+                    setNotifyExpanded(false);
+                    dispatch({ type: "HUD_DISMISS" });
+                  }}
+                />
+              </motion.div>
+            ) : isNowPlaying && activeNowPlaying ? (
+              <motion.div
+                key="now-playing-banner-overlay"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 h-full w-full"
+              >
+                <NowPlayingBanner
+                  item={activeNowPlaying}
+                  language={language}
+                  onOpenPlayer={() => {
+                    if (hudTimerRef.current !== null) {
+                      window.clearTimeout(hudTimerRef.current);
+                      hudTimerRef.current = null;
+                    }
+                    setActiveNowPlaying(null);
+                    const musicIdx = pages.findIndex((p) => p.id === "music");
+                    if (musicIdx >= 0) {
+                      setActivePageIndex(musicIdx);
+                    }
+                    dispatch({ type: "HOVER_EXPAND" });
+                  }}
+                  onDismiss={() => {
+                    if (hudTimerRef.current !== null) {
+                      window.clearTimeout(hudTimerRef.current);
+                      hudTimerRef.current = null;
+                    }
+                    setActiveNowPlaying(null);
                     dispatch({ type: "HUD_DISMISS" });
                   }}
                 />
@@ -1268,7 +1436,11 @@ export function IslandShell({
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
                 transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                className={`absolute inset-0 flex h-full w-full items-center whitespace-nowrap ${isSlimQuiet ? "justify-center px-2" : "justify-between px-3.5"}`}
+                className={`absolute inset-0 h-full w-full whitespace-nowrap ${
+                  isSlimQuiet
+                    ? "flex items-center justify-center px-2"
+                    : "grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 px-3"
+                }`}
               >
                 {isSlimQuiet ? (
                   <div
@@ -1287,125 +1459,147 @@ export function IslandShell({
                       }}
                     />
                   </div>
-                ) : pomodoro?.running ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: "var(--accent-orange)" }}
-                      />
-                      <span className="type-caption" style={{ color: "var(--text-secondary)" }}>
-                        {msg.pill.focus}
-                      </span>
-                    </div>
-                    <span
-                      className="type-header-clock tabular-nums"
-                      style={{ color: "var(--accent-orange)" }}
-                    >
-                      {formatShortTimer(pomodoro.remaining_secs)}
-                    </span>
-                  </>
-                ) : liveTrack ? (
-                  <>
-                    <div className="flex min-w-0 items-center gap-2">
-                      {liveTrack.album_art_data_url ? (
-                        <img
-                          src={liveTrack.album_art_data_url}
-                          alt=""
-                          className="h-5 w-5 shrink-0 rounded-md object-cover"
-                        />
-                      ) : mascotEnabled ? (
-                        <LumenMascot
-                          enabled
-                          musicPlaying={liveTrack.is_playing}
-                          celebrating={celebratingMascot}
-                          accentColor={mediaAccent}
-                        />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: mediaAccent }}
-                        />
-                      )}
-                      <span
-                        className="type-caption max-w-[125px] truncate"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {activeLyric ?? liveTrack.title}
-                      </span>
-                    </div>
-                    <LiveWaveform playing={liveTrack.is_playing} accentColor={mediaAccent} />
-                    {liveTrack.duration_ms > 0 && (
-                      <div className="pointer-events-none absolute inset-x-3 bottom-0.5 h-[1.5px] overflow-hidden rounded-full bg-white/15">
-                        <div
-                          className="h-full rounded-full transition-[width] duration-300 ease-linear"
-                          style={{
-                            width: `${Math.min(100, Math.round((liveTrack.position_ms / liveTrack.duration_ms) * 100))}%`,
-                            backgroundColor: mediaAccent,
-                          }}
-                        />
-                      </div>
-                    )}
-                  </>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2">
-                      {mascotEnabled ? (
-                        <LumenMascot
-                          enabled
-                          celebrating={celebratingMascot}
-                          accentColor="var(--accent-blue)"
-                        />
-                      ) : (
+                    {/* Left status dots: Camera (green), Mic (orange), Charging/Low Battery ring, Focus */}
+                    <div
+                      data-testid="resting-left-indicators"
+                      className="flex min-w-0 items-center justify-start gap-1.5"
+                    >
+                      {restingShowSensorDots && privacyDevices[0] && (
                         <span
-                          aria-hidden="true"
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{ backgroundColor: "var(--accent-blue)" }}
+                          title={isBn ? "ক্যামেরা চালু" : "Camera active"}
+                          data-testid="resting-camera-dot"
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: "var(--accent-green)",
+                            boxShadow: "0 0 6px var(--accent-green)",
+                          }}
                         />
                       )}
-                      {effectiveState !== "minimal" && (
+                      {restingShowSensorDots && privacyDevices[1] && (
                         <span
-                          className="type-caption tracking-wide"
-                          style={{ color: "var(--text-secondary)" }}
+                          title={isBn ? "মাইক্রোফোন চালু" : "Microphone active"}
+                          data-testid="resting-mic-dot"
+                          className="h-2 w-2 shrink-0 rounded-full animate-pulse"
+                          style={{
+                            backgroundColor: "var(--accent-orange)",
+                            boxShadow: "0 0 6px var(--accent-orange)",
+                          }}
+                        />
+                      )}
+                      {restingShowBatteryRing &&
+                        batteryState &&
+                        (batteryState[1] || batteryState[0] <= 20) && (
+                          <span
+                            data-testid="resting-battery-ring"
+                            title={
+                              batteryState[1]
+                                ? `${isBn ? "চার্জ হচ্ছে" : "Charging"} · ${batteryState[0]}%`
+                                : `${isBn ? "ব্যাটারি কম" : "Low battery"} · ${batteryState[0]}%`
+                            }
+                            className="inline-flex shrink-0 items-center gap-1"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
+                              <circle
+                                cx="9"
+                                cy="9"
+                                r="7"
+                                fill="none"
+                                stroke="rgba(255,255,255,0.16)"
+                                strokeWidth="2"
+                              />
+                              <circle
+                                cx="9"
+                                cy="9"
+                                r="7"
+                                fill="none"
+                                stroke={
+                                  batteryState[1] ? "var(--accent-green)" : "var(--accent-red)"
+                                }
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeDasharray={2 * Math.PI * 7}
+                                strokeDashoffset={
+                                  2 * Math.PI * 7 * (1 - Math.min(100, batteryState[0]) / 100)
+                                }
+                                transform="rotate(-90 9 9)"
+                              />
+                              {batteryState[1] && (
+                                <path
+                                  d="M9.6 5.2L6.8 9.6h2.2l-.6 3.2 2.8-4.4H9l.6-3.2z"
+                                  fill="var(--accent-green)"
+                                />
+                              )}
+                            </svg>
+                            {effectiveState !== "minimal" && (
+                              <span
+                                className="text-[9.5px] font-semibold tabular-nums leading-none"
+                                style={{
+                                  color: batteryState[1]
+                                    ? "var(--accent-green)"
+                                    : "var(--accent-red)",
+                                }}
+                              >
+                                {formatDigits(batteryState[0], banglaDigits)}%
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      {pomodoro?.running && (
+                        <span
+                          title={isBn ? "ফোকাস চালু" : "Focus session active"}
+                          data-testid="resting-focus-dot"
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: "var(--accent-focus)" }}
+                        />
+                      )}
+                      {!(
+                        (restingShowSensorDots && (privacyDevices[0] || privacyDevices[1])) ||
+                        (restingShowBatteryRing &&
+                          batteryState &&
+                          (batteryState[1] || batteryState[0] <= 20)) ||
+                        pomodoro?.running
+                      ) && (
+                        <span
+                          aria-hidden="true"
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: "var(--accent-blue)",
+                            opacity: celebratingMascot ? 1 : 0.75,
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Dead-center Clock (always centered vertically & horizontally) */}
+                    <div
+                      data-testid="resting-center-clock"
+                      className="flex items-center justify-center"
+                    >
+                      {restingShowClock && (
+                        <span
+                          className={`font-semibold tracking-tight tabular-nums leading-none ${
+                            effectiveState === "minimal" ? "text-[11.5px]" : "text-[13.5px]"
+                          }`}
+                          style={{ color: "var(--text-primary)" }}
                         >
-                          {msg.appName}
+                          {formatDigits(clock.timeText, banglaDigits)}
                         </span>
                       )}
                     </div>
 
+                    {/* Right cluster: Music wave (animates when playing, calm when paused/idle) */}
                     <div
-                      className={`flex items-center gap-1.5 transition-opacity duration-150 ${
-                        activePage.id === "control"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                      }`}
+                      data-testid="resting-right-waveform"
+                      className="flex min-w-0 items-center justify-end"
                     >
-                      {(privacyDevices[0] || privacyDevices[1]) && (
-                        <span className="flex items-center gap-1" aria-label="Active sensor">
-                          {privacyDevices[0] && (
-                            <span
-                              title="Camera active"
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: "var(--accent-green)" }}
-                            />
-                          )}
-                          {privacyDevices[1] && (
-                            <span
-                              title="Microphone active"
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: "var(--accent-orange)" }}
-                            />
-                          )}
-                        </span>
+                      {restingShowWaveform && (
+                        <LiveWaveform
+                          playing={Boolean(liveTrack?.is_playing)}
+                          accentColor={liveTrack?.is_playing ? mediaAccent : "var(--text-tertiary)"}
+                        />
                       )}
-                      <span
-                        className="type-header-clock tabular-nums"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {clock.timeText}
-                      </span>
                     </div>
                   </>
                 )}

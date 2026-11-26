@@ -46,6 +46,13 @@ export interface LumenSettings {
   devPulsePorts: number[];
   reminderSnoozeMinutes: number;
   reminderDefaultLeadMinutes: number;
+  restingShowClock: boolean;
+  restingShowWaveform: boolean;
+  restingShowSensorDots: boolean;
+  restingShowBatteryRing: boolean;
+  nowPlayingBannerEnabled: boolean;
+  nowPlayingBannerSeconds: number;
+  notificationDurationSeconds: number;
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -97,6 +104,13 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   devPulsePorts: [3000, 5173, 1420],
   reminderSnoozeMinutes: 3,
   reminderDefaultLeadMinutes: 10,
+  restingShowClock: true,
+  restingShowWaveform: true,
+  restingShowSensorDots: true,
+  restingShowBatteryRing: true,
+  nowPlayingBannerEnabled: true,
+  nowPlayingBannerSeconds: 4,
+  notificationDurationSeconds: 8,
 };
 
 export function resolveSettingsScaleFactor(
