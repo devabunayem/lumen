@@ -136,7 +136,7 @@ export function computeAmbientPalette(input: AmbientPaletteInput): AmbientPalett
   } as const;
 
   const albumGlowColor = input.hasActiveMusic
-    ? buildContrastSafeGlowRgba(input.albumAccentHex, 0.42, input.isFocusSession)
+    ? buildContrastSafeGlowRgba(input.albumAccentHex, 0.56, input.isFocusSession)
     : input.isFocusSession
       ? "rgba(94, 92, 230, 0.22)"
       : "var(--glow-album-default)";
@@ -144,7 +144,9 @@ export function computeAmbientPalette(input: AmbientPaletteInput): AmbientPalett
   const sunGlowColor = input.isFocusSession ? "rgba(94, 92, 230, 0.24)" : sunMap[timePhase];
   const accentGlowColor = input.isFocusSession
     ? "rgba(94, 92, 230, 0.16)"
-    : "var(--glow-accent-default)";
+    : input.hasActiveMusic && input.albumAccentHex
+      ? buildContrastSafeGlowRgba(input.albumAccentHex, 0.34, false)
+      : "var(--glow-accent-default)";
   const lowBattery =
     input.batteryPct !== null && input.batteryPct < 10 && !input.isCharging
       ? "var(--glow-low-battery)"

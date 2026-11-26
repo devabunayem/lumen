@@ -21,6 +21,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Video/Music Accent Color Sync, Real Mic Detection & Steady Home Ambient Glow:**
+  - Fixed `lumen-media` thumbnail color extraction converting `BitmapPixelFormat::Bgra8` pixels properly to RGBA before quantized hue clustering, and prevented permanently caching `None` before Chrome/players finish loading YouTube thumbnails — so Home ambient glow, `MusicCard` progress bar, and the resting notch waveform accurately match the playing video/track colors.
+  - Upgraded `lumen-windows::privacy_device_status()` to detect live microphone capture via real-time WASAPI `AudioSessionStateActive` capture sessions (avoiding stale `ConsentStore` `LastUsedTimeStop = 0` entries) and fixed registry enumeration access (`KEY_READ`) for desktop camera apps, plus removed the idle fallback blue dot from the resting notch.
+  - Removed cursor-tracking Home background glow translation and expanded `GlowLayer` bleed (`-inset-10`) so moving the pointer across Home never shifts glow edges along the sides.
+
 - **Larger Full-Preview Notifications, Extended Display Duration & Clean Notch Corners:**
   - Enlarged `NotificationToast` sizing from the compact `240×56` HUD box to a dedicated `440×84` container (growing dynamically up to `200px` height) with full multi-line wrapping instead of single-line truncation when previews are enabled.
   - Extended notification auto-dismiss duration from `4.5s` to `8.5s` (`11s` for longer messages) and paused dismissal while hovering over the toast.

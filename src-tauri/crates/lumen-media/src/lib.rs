@@ -247,39 +247,56 @@ fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
         + 0.0722 * srgb_channel_luminance(b)
 }
 
-/// Extracts a vibrant dominant RGB accent colour from RGBA pixel data with contrast safeguard
-/// against Lumen's `#000000` island background (`FR-MUS-6`).
+/// Extracts a vibrant dominant RGB accent colour from RGBA pixel data using quantized
+/// hue-frequency clustering with contrast safeguard against `#000000` (`FR-MUS-6`).
 #[must_use]
 pub fn extract_dominant_accent_from_rgba(rgba: &[u8]) -> String {
     if rgba.len() < 4 {
         return DEFAULT_MEDIA_ACCENT.to_string();
     }
 
-    let mut best_score = 0.0f64;
-    let mut best_rgb = None;
+    // 8x8x8 quantized color buckets: (weighted_score, sum_r, sum_g, sum_b, count)
+    let mut buckets: Vec<(f64, u64, u64, u64, u64)> = vec![(0.0, 0, 0, 0, 0); 512];
+    let step = if rgba.len() > 4 * 16_384 { 4 } else { 1 };
 
-    for chunk in rgba.as_chunks::<4>().0.iter().step_by(4) {
+    for chunk in rgba.as_chunks::<4>().0.iter().step_by(step) {
         let (r, g, b, a) = (chunk[0], chunk[1], chunk[2], chunk[3]);
         if a < 180 {
             continue;
         }
         let max_c = r.max(g).max(b);
         let min_c = r.min(g).min(b);
-        if max_c < 40 {
+        if max_c < 42 {
             continue;
         }
         let saturation = f64::from(max_c - min_c) / f64::from(max_c.max(1));
-        let brightness = f64::from(max_c) / 255.0;
-        let score = saturation * 2.0 + brightness * 0.6;
-        if saturation > 0.18 && score > best_score {
-            best_score = score;
-            best_rgb = Some((r, g, b));
+        if saturation <= 0.18 {
+            continue;
         }
+        let brightness = f64::from(max_c) / 255.0;
+        // Favor saturated, mid-bright dominant artwork colors over dark shadows or washed highlights.
+        let weight = saturation * saturation * 2.4 + brightness * 0.55;
+        let idx = (((r as usize) >> 5) << 6) | (((g as usize) >> 5) << 3) | ((b as usize) >> 5);
+        let entry = &mut buckets[idx];
+        entry.0 += weight;
+        entry.1 += u64::from(r);
+        entry.2 += u64::from(g);
+        entry.3 += u64::from(b);
+        entry.4 += 1;
     }
 
-    let Some((mut r, mut g, mut b)) = best_rgb else {
+    let best_bucket = buckets
+        .into_iter()
+        .filter(|b| b.4 > 0)
+        .max_by(|a, b| a.0.total_cmp(&b.0));
+
+    let Some((_, sum_r, sum_g, sum_b, count)) = best_bucket else {
         return DEFAULT_MEDIA_ACCENT.to_string();
     };
+
+    let mut r = (sum_r / count) as u8;
+    let mut g = (sum_g / count) as u8;
+    let mut b = (sum_b / count) as u8;
 
     // Contrast safeguard against pure black (#000000): ensure luminance >= 0.22 (>= 5.4:1 contrast).
     for _ in 0..8 {
@@ -301,7 +318,7 @@ mod platform {
 
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use windows::Foundation::TimeSpan;
-    use windows::Graphics::Imaging::BitmapDecoder;
+    use windows::Graphics::Imaging::{BitmapDecoder, BitmapPixelFormat};
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSession,
         GlobalSystemMediaTransportControlsSessionManager,
@@ -422,8 +439,14 @@ mod platform {
             && let Ok(decoder) = dec_op.join()
             && let Ok(px_op) = decoder.GetPixelDataAsync()
             && let Ok(px_provider) = px_op.join()
-            && let Ok(pixels) = px_provider.DetachPixelData()
+            && let Ok(mut pixels) = px_provider.DetachPixelData()
         {
+            // Windows BitmapDecoder commonly yields BGRA8; swap B<->R into RGBA before extraction.
+            if decoder.BitmapPixelFormat().ok() == Some(BitmapPixelFormat::Bgra8) {
+                for chunk in pixels.as_chunks_mut::<4>().0 {
+                    chunk.swap(0, 2);
+                }
+            }
             accent = extract_dominant_accent_from_rgba(pixels.as_slice());
         }
 
@@ -626,7 +649,10 @@ mod platform {
                 (art, acc)
             } else {
                 let (art, acc) = read_thumbnail(session);
-                if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+                // Only cache once Chrome/player has actually populated thumbnail artwork.
+                if art.is_some()
+                    && let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock()
+                {
                     *guard = Some((cache_key, art.clone(), acc.clone()));
                 }
                 (art, acc)

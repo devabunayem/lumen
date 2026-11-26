@@ -343,7 +343,7 @@ export function IslandShell({
       void systemBatteryStatus().then((b) => active && b && setBatteryState(b));
     };
     poll();
-    const timer = window.setInterval(poll, 3000);
+    const timer = window.setInterval(poll, 1500);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -1056,9 +1056,6 @@ export function IslandShell({
   const isNowPlaying = effectiveState === "hud" && activeNowPlaying !== null;
   const liveTrack = media?.active ?? null;
   const mediaAccent = liveTrack?.accent_hex || "var(--accent-blue)";
-  const celebratingMascot = Boolean(
-    waterSummary?.goal_reached || (pomodoro && pomodoro.chime_tick > 0 && !pomodoro.running),
-  );
   const activeLyricsLines = useMemo(
     () => (liveTrack?.title ? lyricsLines : []),
     [liveTrack?.title, lyricsLines],
@@ -1552,22 +1549,6 @@ export function IslandShell({
                           data-testid="resting-focus-dot"
                           className="h-2 w-2 shrink-0 rounded-full"
                           style={{ backgroundColor: "var(--accent-focus)" }}
-                        />
-                      )}
-                      {!(
-                        (restingShowSensorDots && (privacyDevices[0] || privacyDevices[1])) ||
-                        (restingShowBatteryRing &&
-                          batteryState &&
-                          (batteryState[1] || batteryState[0] <= 20)) ||
-                        pomodoro?.running
-                      ) && (
-                        <span
-                          aria-hidden="true"
-                          className="h-1.5 w-1.5 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor: "var(--accent-blue)",
-                            opacity: celebratingMascot ? 1 : 0.75,
-                          }}
                         />
                       )}
                     </div>

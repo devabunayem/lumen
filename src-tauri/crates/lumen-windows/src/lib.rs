@@ -612,22 +612,64 @@ mod win32 {
         Ok(())
     }
 
-    /// Checks Windows CapabilityAccessManager ConsentStore in HKCU to detect if any app
-    /// is currently using the webcam or microphone (`LastUsedTimeStop == 0`).
+    /// Checks active camera (ConsentStore `KEY_READ`) and real-time WASAPI active microphone capture sessions.
     #[must_use]
     pub fn privacy_device_status() -> (bool, bool) {
-        (
-            is_consent_device_active(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam",
-            ),
-            is_consent_device_active(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone",
-            ),
-        )
+        let webcam = is_consent_device_active(
+            "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam",
+        );
+        let mic = is_wasapi_mic_capture_active();
+        (webcam, mic)
+    }
+
+    fn is_wasapi_mic_capture_active() -> bool {
+        use windows::Win32::Media::Audio::{
+            AudioSessionStateActive, DEVICE_STATE_ACTIVE, IAudioSessionManager2,
+            IMMDeviceEnumerator, MMDeviceEnumerator, eCapture,
+        };
+        use windows::Win32::System::Com::{
+            CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+        };
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let Ok(enumerator): Result<IMMDeviceEnumerator, _> =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            else {
+                return false;
+            };
+            let Ok(collection) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
+            else {
+                return false;
+            };
+            let count = collection.GetCount().unwrap_or(0);
+            for dev_idx in 0..count {
+                let Ok(device) = collection.Item(dev_idx) else {
+                    continue;
+                };
+                let Ok(mgr) = device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) else {
+                    continue;
+                };
+                let Ok(sessions) = mgr.GetSessionEnumerator() else {
+                    continue;
+                };
+                let sess_count = sessions.GetCount().unwrap_or(0);
+                for s_idx in 0..sess_count {
+                    let Ok(ctrl) = sessions.GetSession(s_idx) else {
+                        continue;
+                    };
+                    if ctrl.GetState().ok() == Some(AudioSessionStateActive) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     fn is_consent_device_active(base_subkey: &str) -> bool {
-        use windows::Win32::System::Registry::{REG_QWORD, REG_VALUE_TYPE, RegEnumKeyExW};
+        use windows::Win32::System::Registry::{
+            KEY_READ, REG_QWORD, REG_VALUE_TYPE, RegEnumKeyExW,
+        };
 
         fn check_key(hkey: HKEY, depth: u8) -> bool {
             let mut stop_val = 0u64;
@@ -694,13 +736,7 @@ mod win32 {
                 // SAFETY: `buf[..len]` is valid UTF-16 subkey name.
                 let sub_wide: Vec<u16> = buf[..len as usize].iter().copied().chain([0]).collect();
                 if unsafe {
-                    RegOpenKeyExW(
-                        hkey,
-                        PCWSTR(sub_wide.as_ptr()),
-                        Some(0),
-                        KEY_QUERY_VALUE,
-                        &mut sub,
-                    )
+                    RegOpenKeyExW(hkey, PCWSTR(sub_wide.as_ptr()), Some(0), KEY_READ, &mut sub)
                 } == ERROR_SUCCESS
                 {
                     let active = check_key(sub, depth + 1);
@@ -715,13 +751,13 @@ mod win32 {
 
         let subkey = HSTRING::from(base_subkey);
         let mut root = HKEY::default();
-        // SAFETY: Read-only open under HKCU.
+        // SAFETY: Read-only open under HKCU with KEY_READ so NonPackaged subkeys enumerate.
         if unsafe {
             RegOpenKeyExW(
                 HKEY_CURRENT_USER,
                 PCWSTR(subkey.as_ptr()),
                 Some(0),
-                KEY_QUERY_VALUE,
+                KEY_READ,
                 &mut root,
             )
         } != ERROR_SUCCESS

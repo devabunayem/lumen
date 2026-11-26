@@ -12,13 +12,11 @@ export interface GlowLayerProps {
  * Three-layer transform-only Living Ambient Glow behind Home content inside the island clip.
  * Respects Reduce Transparency (solid static ambient washes) and Reduce Motion (no drift/parallax).
  */
-export function GlowLayer({ palette, reduceMotion, isVisible, parallaxOffset }: GlowLayerProps) {
+export function GlowLayer({ palette, reduceMotion, isVisible }: GlowLayerProps) {
   if (!palette.glowEnabled) {
     return null;
   }
 
-  const px = reduceMotion ? 0 : parallaxOffset.x;
-  const py = reduceMotion ? 0 : parallaxOffset.y;
   const shouldDrift = isVisible && !reduceMotion && !palette.reduceTransparency;
   const crossfadeStyle = {
     transition: `background ${MOTION_PRESETS.glowCrossfade.duration}s ease-in-out, opacity ${MOTION_PRESETS.glowCrossfade.duration}s ease-in-out`,
@@ -36,13 +34,7 @@ export function GlowLayer({ palette, reduceMotion, isVisible, parallaxOffset }: 
         ...crossfadeStyle,
       }}
     >
-      <div
-        className={shouldDrift ? "lumen-glow-drift absolute inset-0" : "absolute inset-0"}
-        style={{
-          transform: `translate3d(${px}px, ${py}px, 0)`,
-          willChange: shouldDrift ? "transform" : undefined,
-        }}
-      >
+      <div className={shouldDrift ? "lumen-glow-drift absolute -inset-10" : "absolute -inset-10"}>
         {/* (a) Sun / Time-of-day glow: ellipse 360x200 at 78% / 22% */}
         <div
           className="absolute inset-0"

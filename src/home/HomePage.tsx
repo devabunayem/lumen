@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useState } from "react";
 import type {
   CalendarEvent,
   ClipboardChipSnapshot,
@@ -92,7 +92,6 @@ export interface HomePageProps {
 
 export function HomePage(props: HomePageProps) {
   const [zoomMode, setZoomMode] = useState<ArcZoomMode>("day");
-  const [parallaxOffset, setParallaxOffset] = useState({ x: 0, y: 0 });
 
   const geometry = useDayArcGeometry({
     schedule: props.schedule,
@@ -126,40 +125,18 @@ export function HomePage(props: HomePageProps) {
     reduceTransparency: props.reduceTransparency,
   });
 
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!props.parallaxEnabled || !props.isVisible || props.reduceMotion) {
-      return;
-    }
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return;
-    }
-    const nx = (e.clientX - rect.left) / rect.width - 0.5;
-    const ny = (e.clientY - rect.top) / rect.height - 0.5;
-    setParallaxOffset({
-      x: Math.max(-12, Math.min(12, nx * 24)),
-      y: Math.max(-12, Math.min(12, ny * 24)),
-    });
-  };
-
-  const handleMouseLeave = () => {
-    setParallaxOffset({ x: 0, y: 0 });
-  };
-
   return (
     <div
       data-testid="home-page"
       data-reduce-motion={props.reduceMotion ? "true" : "false"}
       data-reduce-transparency={props.reduceTransparency ? "true" : "false"}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
       className="relative flex h-full w-full flex-col justify-start overflow-hidden px-[14px] pt-[12px] pb-[14px]"
     >
       <GlowLayer
         palette={palette}
         reduceMotion={props.reduceMotion}
         isVisible={props.isVisible}
-        parallaxOffset={parallaxOffset}
+        parallaxOffset={{ x: 0, y: 0 }}
       />
 
       {/* 1. Header Row (height 28) */}

@@ -133,6 +133,13 @@ export function MusicCard({
       className={`home-glass-card relative flex h-[94px] cursor-pointer items-center gap-2.5 overflow-hidden px-[12px] py-[10px] text-left ${
         reduceMotion ? "" : "transition-transform duration-100 active:scale-[0.985]"
       }`}
+      style={
+        session?.accent_hex
+          ? {
+              backgroundImage: `radial-gradient(140px 90px at 14% 50%, ${session.accent_hex}28, transparent 78%)`,
+            }
+          : undefined
+      }
     >
       {/* 60px artwork square (radius 14) */}
       <div
@@ -171,8 +178,11 @@ export function MusicCard({
           <div className="w-full">
             <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/15">
               <div
-                className="h-full rounded-full bg-white transition-[width] duration-300 ease-out"
-                style={{ width: `${pct}%` }}
+                className="h-full rounded-full transition-[width,background-color] duration-300 ease-out"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: session.accent_hex || "#ffffff",
+                }}
               />
             </div>
             <div
