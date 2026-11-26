@@ -12,6 +12,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Home Bento Polish — Standard `NextCard` Hours/Minutes & Animated `WaterCard` Liquid Vessel:**
+  - Updated `NextCard` (`formatNextCountdown`) to render durations `< 60 min` in minutes (e.g. `45 min`) and `>= 60 min` cleanly in standard hours/minutes (e.g. `575` -> `9h 35m`, localized for English & Bangla).
+  - Added an animated GPU-composited dual-wave liquid fill vessel with subtle rising bubbles beside the readout inside `WaterCard` (`lumen-water-wave-a`/`b`, `reduce-motion` safe).
+
 - **Redesigned Music Player & Prayer Solar Dashboard (`580×208`):**
   - Rebuilt `MusicWidget` with a `96×96` squircle artwork + album-tinted ambient glow, output device/session switcher pill, automatic 2-line synced lyrics preview, interactive 46-bar audio waveform scrubber, pure-white circular play/pause transport button, shuffle toggle, and always-accessible capsule volume bar.
   - Rebuilt `PrayerWidget` with emerald/amber ambient washes, interactive SQLite-synced **Tasbih** pill (`+1` / right-click reset), offline great-circle **Qibla** compass bearing toggle, parabolic de Casteljau solar arc curve with dashed drop guides, and a 5-prayer status strip with green checkmark circles.

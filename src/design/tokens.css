@@ -296,6 +296,58 @@ a:focus-visible,
   will-change: transform;
 }
 
+@keyframes lumen-water-wave-a {
+  0% {
+    transform: translate3d(0%, 0px, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0px, 0);
+  }
+}
+
+@keyframes lumen-water-wave-b {
+  0% {
+    transform: translate3d(-50%, 0px, 0);
+  }
+  100% {
+    transform: translate3d(0%, 0px, 0);
+  }
+}
+
+@keyframes lumen-water-bubble {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 6px, 0) scale(0.75);
+  }
+  30% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-2px, -36px, 0) scale(1.1);
+  }
+}
+
+.lumen-water-wave-a {
+  animation: lumen-water-wave-a 3.4s linear infinite;
+  will-change: transform;
+}
+
+.lumen-water-wave-b {
+  animation: lumen-water-wave-b 4.8s linear infinite;
+  will-change: transform;
+}
+
+.lumen-water-bubble-1 {
+  animation: lumen-water-bubble 2.8s ease-in infinite;
+  will-change: transform, opacity;
+}
+
+.lumen-water-bubble-2 {
+  animation: lumen-water-bubble 3.6s ease-in 1.3s infinite;
+  will-change: transform, opacity;
+}
+
 .lumen-skeleton-shimmer {
   position: relative;
   overflow: hidden;
@@ -324,6 +376,10 @@ a:focus-visible,
 [data-reduce-motion="true"] .lumen-halo-breath,
 [data-reduce-motion="true"] .lumen-glow-drift,
 [data-reduce-motion="true"] .lumen-aurora-blob-a,
-[data-reduce-motion="true"] .lumen-aurora-blob-b {
+[data-reduce-motion="true"] .lumen-aurora-blob-b,
+[data-reduce-motion="true"] .lumen-water-wave-a,
+[data-reduce-motion="true"] .lumen-water-wave-b,
+[data-reduce-motion="true"] .lumen-water-bubble-1,
+[data-reduce-motion="true"] .lumen-water-bubble-2 {
   animation: none;
 }

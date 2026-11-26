@@ -56,6 +56,7 @@ describe("Home Page & /dev/states 20 UI states", () => {
     expect(tasbih).toHaveTextContent("34");
 
     const waterCard = await screen.findByTestId("home-water-card");
+    expect(within(waterCard).getByTestId("water-liquid-visual")).toBeInTheDocument();
     fireEvent.click(waterCard);
     await waitFor(() => {
       expect(waterCard).toHaveTextContent("0.3 L");

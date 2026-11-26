@@ -171,6 +171,8 @@
     "next": {
       "label": "Next",
       "min": "min",
+      "hour": "h",
+      "minShort": "m",
       "tasksLeft": "{{count}} tasks left today",
       "allClear": "All clear",
       "openAgenda": "Open agenda"

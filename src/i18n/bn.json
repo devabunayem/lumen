@@ -171,6 +171,8 @@
     "next": {
       "label": "পরবর্তী",
       "min": "মি.",
+      "hour": "ঘ",
+      "minShort": "মি",
       "tasksLeft": "আজ {{count}}টি কাজ বাকি",
       "allClear": "সব সম্পন্ন",
       "openAgenda": "অ্যাজেন্ডা খুলুন"

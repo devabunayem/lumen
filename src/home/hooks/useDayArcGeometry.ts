@@ -561,6 +561,22 @@ export function resolveNextCountdown(
   };
 }
 
+/**
+ * Formats countdown durations in minutes (< 60 min) or compact standard hours/minutes (>= 60 min).
+ */
+export function formatNextCountdown(
+  totalMinutes: number,
+  units: { min: string; hour: string; minShort: string },
+): string {
+  const safeMins = Math.max(0, Math.round(totalMinutes));
+  if (safeMins < 60) {
+    return `${safeMins} ${units.min}`;
+  }
+  const hours = Math.floor(safeMins / 60);
+  const mins = safeMins % 60;
+  return mins === 0 ? `${hours}${units.hour}` : `${hours}${units.hour} ${mins}${units.minShort}`;
+}
+
 export function useDayArcGeometry(input: ComputeDayArcInput): DayArcGeometry {
   const {
     schedule,

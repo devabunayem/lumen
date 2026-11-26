@@ -3,7 +3,7 @@ import { COLOR_TOKENS } from "../../design/tokens";
 import { getMessages } from "../../i18n";
 import { formatDigits, interpolateMsg } from "../../i18n/digits";
 import type { CalendarEvent, PrayerSchedule, ReminderItem, TaskItem } from "../../lib/ipc";
-import { resolveNextCountdown } from "../hooks/useDayArcGeometry";
+import { formatNextCountdown, resolveNextCountdown } from "../hooks/useDayArcGeometry";
 import { DigitRoll } from "./DigitRoll";
 
 export interface NextCardProps {
@@ -70,12 +70,12 @@ export function NextCard({
       </div>
 
       <div className="mt-auto">
-        <div className="type-home-stat-lg text-white">
+        <div className="type-home-stat-lg whitespace-nowrap text-white">
           {summary.isAllClear || summary.minsUntil === null ? (
             <span>{msg.home.next.allClear}</span>
           ) : (
             <DigitRoll
-              value={`${summary.minsUntil} ${msg.home.next.min}`}
+              value={formatNextCountdown(summary.minsUntil, msg.home.next)}
               banglaDigits={banglaDigits}
               reduceMotion={reduceMotion}
             />

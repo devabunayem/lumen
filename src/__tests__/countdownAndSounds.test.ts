@@ -9,7 +9,7 @@ import {
   buildContrastSafeGlowRgba,
   contrastRatioAgainstWhite,
 } from "../home/hooks/useAmbientPalette";
-import { resolveNextCountdown } from "../home/hooks/useDayArcGeometry";
+import { formatNextCountdown, resolveNextCountdown } from "../home/hooks/useDayArcGeometry";
 import { formatDigits } from "../i18n/digits";
 
 describe("Countdown rules, contrast guard, i18n digits & sound silence rules", () => {
@@ -101,5 +101,12 @@ describe("Countdown rules, contrast guard, i18n digits & sound silence rules", (
     }
 
     expect(formatDigits("29° · 5:11 PM", true)).toBe("২৯° · ৫:১১ PM");
+  });
+
+  it("formats NextCard countdowns in minutes (<60) and hours+minutes (>=60)", () => {
+    const units = { min: "min", hour: "h", minShort: "m" };
+    expect(formatNextCountdown(45, units)).toBe("45 min");
+    expect(formatNextCountdown(60, units)).toBe("1h");
+    expect(formatNextCountdown(575, units)).toBe("9h 35m");
   });
 });
