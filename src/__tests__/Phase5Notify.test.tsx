@@ -41,4 +41,23 @@ describe("NotificationToast (FR-NT-1..2)", () => {
     expect(img).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
     expect(screen.getByText("Google Chrome")).toBeInTheDocument();
   });
+
+  it("displays full multi-line message previews without CSS truncation", () => {
+    const fullMessage =
+      "Hey team, please review the updated release candidate build before 8:00 PM tonight and drop your sign-off in the thread!";
+    render(
+      <NotificationToast
+        notification={{
+          id: 3,
+          app_name: "WhatsApp",
+          title: "Abu Nayem",
+          body: fullMessage,
+        }}
+        onDismiss={vi.fn()}
+      />,
+    );
+    const bodyEl = screen.getByTestId("notification-body");
+    expect(bodyEl).toHaveTextContent(fullMessage);
+    expect(bodyEl.className).not.toContain("truncate");
+  });
 });

@@ -161,11 +161,11 @@ export function NotificationToast({ notification, onDismiss }: NotificationToast
       }}
       onClick={onDismiss}
       transition={getMotionTransition("collapse", prefersReducedMotion)}
-      className="flex h-full w-full cursor-pointer items-center justify-between gap-2.5 px-4"
+      className="flex h-full w-full cursor-pointer items-start gap-3 overflow-y-auto px-4 py-3"
     >
       <div
         data-testid="notification-app-icon"
-        className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+        className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl"
         style={{
           backgroundColor: showRealLogo ? "rgba(255,255,255,0.06)" : "var(--surface-button)",
           border: "1px solid var(--hairline-top)",
@@ -195,20 +195,30 @@ export function NotificationToast({ notification, onDismiss }: NotificationToast
       </div>
 
       <div className="min-w-0 flex-1">
-        <div
-          className="type-caption truncate font-semibold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          {notification.title}
+        <div className="flex items-start justify-between gap-2">
+          <div
+            className="text-[13px] font-semibold leading-snug break-words"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {notification.title}
+          </div>
+          <span
+            className="type-caption shrink-0 pt-0.5 font-medium"
+            style={{ color: "var(--text-tertiary)" }}
+          >
+            {notification.app_name}
+          </span>
         </div>
-        <div className="type-caption truncate" style={{ color: "var(--text-secondary)" }}>
-          {notification.body}
-        </div>
+        {notification.body && (
+          <div
+            data-testid="notification-body"
+            className="mt-1 text-[12px] leading-[1.38] whitespace-pre-wrap break-words"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            {notification.body}
+          </div>
+        )}
       </div>
-
-      <span className="type-caption shrink-0" style={{ color: "var(--text-tertiary)" }}>
-        {notification.app_name}
-      </span>
     </motion.div>
   );
 }

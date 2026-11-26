@@ -37,8 +37,8 @@ use lumen_windows::{
     get_windows_location_opt_in, is_autostart_enabled, is_caps_lock_on, is_keep_awake,
     is_other_app_fullscreen, lock_workstation, ocr_screen_to_clipboard, open_shell_target,
     privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
-    set_click_through, set_keep_awake, set_window_bounds_atomic, set_window_pill_region,
-    toggle_radio_kind, write_clipboard_text,
+    set_click_through, set_keep_awake, set_window_bounds_atomic, toggle_radio_kind,
+    write_clipboard_text,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -1421,63 +1421,22 @@ pub fn run() {
             let hit_config = Arc::clone(&shared_config);
             tauri::async_runtime::spawn(async move {
                 let mut last_pass_through: Option<bool> = None;
-                let mut applied_rgn: Option<(i32, i32, i32, i32, bool)> = None;
-                let mut shrink_deadline: Option<tokio::time::Instant> = None;
 
                 loop {
-                    let (visible, w_logical, h_logical, top_logical, corner_logical) = {
+                    let (visible, w_logical, h_logical, top_logical) = {
                         let c = hit_config.lock().map(|cfg| *cfg).unwrap_or_default();
                         (
                             c.visible,
                             c.width_logical,
                             c.height_logical,
                             c.top_offset_logical,
-                            c.corner_radius_logical,
                         )
                     };
 
                     let scale = hit_window.scale_factor().unwrap_or(1.0);
-                    let win_w_px = hit_window
-                        .outer_size()
-                        .map(|s| s.width as i32)
-                        .unwrap_or((CANVAS_WIN_W * scale).round() as i32);
                     let pill_w_px = (w_logical * scale).round() as i32;
                     let pill_h_px = (h_logical * scale).round() as i32;
                     let top_px = (top_logical * scale).round() as i32;
-                    let rel_x = (win_w_px - pill_w_px) / 2;
-                    let desired_rgn = (rel_x, top_px, pill_w_px, pill_h_px, visible);
-
-                    if applied_rgn != Some(desired_rgn) {
-                        let is_expanding = match applied_rgn {
-                            None => false,
-                            Some((_, _, prev_w, prev_h, prev_vis)) => {
-                                (visible && !prev_vis) || pill_w_px > prev_w || pill_h_px > prev_h
-                            }
-                        };
-                        if is_expanding || applied_rgn.is_none() {
-                            shrink_deadline = None;
-                            let corner_px = (corner_logical * scale).round() as i32;
-                            set_window_pill_region(
-                                own_hwnd, rel_x, top_px, pill_w_px, pill_h_px, corner_px, visible,
-                            );
-                            applied_rgn = Some(desired_rgn);
-                        } else {
-                            let deadline = shrink_deadline.get_or_insert_with(|| {
-                                tokio::time::Instant::now() + Duration::from_millis(320)
-                            });
-                            if tokio::time::Instant::now() >= *deadline {
-                                shrink_deadline = None;
-                                let corner_px = (corner_logical * scale).round() as i32;
-                                set_window_pill_region(
-                                    own_hwnd, rel_x, top_px, pill_w_px, pill_h_px, corner_px,
-                                    visible,
-                                );
-                                applied_rgn = Some(desired_rgn);
-                            }
-                        }
-                    } else {
-                        shrink_deadline = None;
-                    }
 
                     let pass_through = if !visible {
                         true
@@ -1506,8 +1465,9 @@ pub fn run() {
                         set_click_through(own_hwnd, pass_through);
                     }
 
-                    // 30 Hz for responsive hit-testing
-                    tokio::time::sleep(Duration::from_millis(33)).await;
+                    // 60 Hz cursor hit-test using pure WS_EX_TRANSPARENT + DirectComposition
+                    // (no GDI SetWindowRgn polygon clipping, avoiding DWM corner artifacts).
+                    tokio::time::sleep(Duration::from_millis(16)).await;
                 }
             });
 

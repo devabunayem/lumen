@@ -671,10 +671,11 @@ export function IslandShell({
       if (hudTimerRef.current !== null) {
         window.clearTimeout(hudTimerRef.current);
       }
+      const durationMs = popup.body.length > 100 ? 11_000 : 8_500;
       hudTimerRef.current = window.setTimeout(() => {
         setActiveNotification(null);
         dispatch({ type: "HUD_DISMISS" });
-      }, 4500);
+      }, durationMs);
     }).then((fn) => {
       unlistenNotify = fn;
     });
@@ -855,11 +856,25 @@ export function IslandShell({
       case "expanded":
         return isHomePage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
       case "hud":
-        return activeReminderAlert !== null ? BASE_GEOMETRY.reminder : BASE_GEOMETRY.hud;
+        if (activeReminderAlert !== null) {
+          return BASE_GEOMETRY.reminder;
+        }
+        if (activeNotification !== null) {
+          const titleLines = Math.max(1, Math.ceil(activeNotification.title.length / 40));
+          const bodyLines = activeNotification.body
+            ? Math.max(1, Math.ceil(activeNotification.body.length / 48))
+            : 0;
+          const neededHeight = 36 + titleLines * 18 + bodyLines * 17;
+          return {
+            width: BASE_GEOMETRY.notification.width,
+            height: Math.max(BASE_GEOMETRY.notification.height, Math.min(200, neededHeight)),
+          };
+        }
+        return BASE_GEOMETRY.hud;
       default:
         return BASE_GEOMETRY.collapsed;
     }
-  }, [effectiveState, isSlimQuiet, isHomePage, activeReminderAlert]);
+  }, [effectiveState, isSlimQuiet, isHomePage, activeReminderAlert, activeNotification]);
 
   const width = Math.round(dimensions.width * scaleFactor);
   const height = Math.round(dimensions.height * scaleFactor);
@@ -878,12 +893,14 @@ export function IslandShell({
       cornerRadius: isFloatingPill
         ? isExpanded
           ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
-          : activeReminderAlert !== null && effectiveState === "hud"
+          : (activeReminderAlert !== null || activeNotification !== null) &&
+              effectiveState === "hud"
             ? 24 * scaleFactor
             : Math.round(height / 2)
         : isExpanded
           ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
-          : activeReminderAlert !== null && effectiveState === "hud"
+          : (activeReminderAlert !== null || activeNotification !== null) &&
+              effectiveState === "hud"
             ? 24 * scaleFactor
             : Math.round(height / 2),
       homeVisible: homeVisibleNow,
@@ -929,6 +946,7 @@ export function IslandShell({
     isHomePage,
     homeVisibleNow,
     activeReminderAlert,
+    activeNotification,
     effectiveState,
   ]);
   const isReminderAlert = effectiveState === "hud" && activeReminderAlert !== null;
@@ -962,14 +980,14 @@ export function IslandShell({
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
   const surfaceBorderRadius = isFloatingPill
-    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : isReminderAlert ? 24 : Math.round(height / 2), Math.round(height / 2))}px`
+    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : isReminderAlert || isNotify ? 24 : Math.round(height / 2), Math.round(height / 2))}px`
     : isSlimQuiet
       ? "0px 0px 8px 8px"
       : isExpanded
         ? isHomePage
           ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
           : "0px 0px 24px 24px"
-        : isReminderAlert
+        : isReminderAlert || isNotify
           ? "0px 0px 24px 24px"
           : "0px 0px 15px 15px";
 
@@ -1059,7 +1077,11 @@ export function IslandShell({
           isHoveredRef.current = true;
           clearHoverTimers();
           setSlimReturnActive(false);
-          if (!isExpanded && !isHidden && !isHud && !isNotify && hoverToOpen) {
+          if (isNotify && hudTimerRef.current !== null) {
+            window.clearTimeout(hudTimerRef.current);
+            hudTimerRef.current = null;
+          }
+          if (!isExpanded && !isHidden && !isHud && !isNotify && !isReminderAlert && hoverToOpen) {
             hoverOpenTimerRef.current = window.setTimeout(() => {
               hoverOpenTimerRef.current = null;
               if (!isHoveredRef.current) {
@@ -1076,13 +1098,20 @@ export function IslandShell({
             window.clearTimeout(hoverOpenTimerRef.current);
             hoverOpenTimerRef.current = null;
           }
+          if (isNotify && hudTimerRef.current === null) {
+            hudTimerRef.current = window.setTimeout(() => {
+              hudTimerRef.current = null;
+              setActiveNotification(null);
+              dispatch({ type: "HUD_DISMISS" });
+            }, 3500);
+          }
           if (isExpanded) {
             const recentlyExpanded = Date.now() - expandedAtRef.current < 180;
             scheduleAutoClose(recentlyExpanded ? 420 : 350);
           }
         }}
         onClick={() => {
-          if (!isExpanded && !isHidden) {
+          if (!isExpanded && !isHidden && !isHud && !isNotify && !isReminderAlert) {
             clearHoverTimers();
             setSlimReturnActive(false);
             dispatch({ type: "CLICK" });
@@ -1209,6 +1238,10 @@ export function IslandShell({
                 <NotificationToast
                   notification={activeNotification}
                   onDismiss={() => {
+                    if (hudTimerRef.current !== null) {
+                      window.clearTimeout(hudTimerRef.current);
+                      hudTimerRef.current = null;
+                    }
                     setActiveNotification(null);
                     dispatch({ type: "HUD_DISMISS" });
                   }}

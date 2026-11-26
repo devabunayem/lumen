@@ -15,6 +15,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Larger Full-Preview Notifications, Extended Display Duration & Clean Notch Corners:**
+  - Enlarged `NotificationToast` sizing from the compact `240×56` HUD box to a dedicated `440×84` container (growing dynamically up to `200px` height) with full multi-line wrapping instead of single-line truncation when previews are enabled.
+  - Extended notification auto-dismiss duration from `4.5s` to `8.5s` (`11s` for longer messages) and paused dismissal while hovering over the toast.
+  - Removed GDI `SetWindowRgn` polygon corner clipping from the transparent overlay hit-test loop (`60 Hz` `WS_EX_TRANSPARENT`), eliminating the light-blue/white corner triangles around the concave Notch ears while keeping background click pass-through intact.
+
 - **Win32 Access Violation (`0xc0000005`) Crash Fixes:**
   - Updated `lumen-media::sounds` (`LazyWaveOut::play_blocking`) to synchronize `WAVEHDR.dwFlags` (`WHDR_DONE`) via unaligned reads + memory fence before calling `waveOutUnprepareHeader` and dropping the PCM buffer, preventing audio driver DMA read-after-free crashes.
   - Updated `lumen-notify` to skip WinRT `UserNotificationListener` COM probing when `wpndatabase.db` is present and isolated Shell `SHCreateItemFromParsingName` / `IShellItemImageFactory::GetImage` icon extraction onto a dedicated STA COM thread with bitmap dimension bounds checking.
