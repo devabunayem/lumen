@@ -16,7 +16,7 @@ import {
 } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import { playUiSound } from "../design/sounds";
-import { BASE_GEOMETRY, type ShapeStyle } from "../design/tokens";
+import { BASE_GEOMETRY, measureNotificationDimensions, type ShapeStyle } from "../design/tokens";
 import { HomePage } from "../home/HomePage";
 import { type AppLanguage, getMessages } from "../i18n";
 import { formatDigits } from "../i18n/digits";
@@ -967,25 +967,7 @@ export function IslandShell({
           return BASE_GEOMETRY.reminder;
         }
         if (activeNotification !== null) {
-          if (notifyExpanded) {
-            return BASE_GEOMETRY.notificationExpanded;
-          }
-          const titleLines = Math.min(
-            2,
-            Math.max(1, Math.ceil(activeNotification.title.length / 40)),
-          );
-          const bodyLines = activeNotification.body
-            ? Math.min(3, Math.max(1, Math.ceil(activeNotification.body.length / 48)))
-            : 0;
-          const isLong =
-            activeNotification.body.length > 150 ||
-            activeNotification.title.length > 75 ||
-            activeNotification.body.split("\n").length > 3;
-          const neededHeight = 36 + titleLines * 18 + bodyLines * 18 + (isLong ? 24 : 0);
-          return {
-            width: BASE_GEOMETRY.notification.width,
-            height: Math.max(BASE_GEOMETRY.notification.height, Math.min(148, neededHeight)),
-          };
+          return measureNotificationDimensions(activeNotification, notifyExpanded);
         }
         if (activeNowPlaying !== null) {
           return BASE_GEOMETRY.nowPlaying;
@@ -1164,12 +1146,6 @@ export function IslandShell({
         }}
         className={`relative select-none ${isHidden ? "pointer-events-none" : "pointer-events-auto cursor-pointer"}`}
         style={{
-          backgroundColor: "var(--surface)",
-          borderColor: "var(--hairline)",
-          borderStyle: "solid",
-          borderWidth: "1px",
-          borderTopWidth: isFloatingPill ? "1px" : "0px",
-          boxShadow: "0 10px 28px rgba(0, 0, 0, 0.42)",
           transformOrigin: "top center",
         }}
         initial={false}
@@ -1265,7 +1241,7 @@ export function IslandShell({
               height="16"
               viewBox="0 0 16 16"
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 -left-[15px]"
+              className="pointer-events-none absolute top-0 -left-[15px] z-10"
             >
               <path d="M 16 0 L 0 0 C 8.8 0 16 7.2 16 16 Z" fill="var(--surface)" />
             </svg>
@@ -1274,45 +1250,56 @@ export function IslandShell({
               height="16"
               viewBox="0 0 16 16"
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 -right-[15px]"
+              className="pointer-events-none absolute top-0 -right-[15px] z-10"
             >
               <path d="M 0 0 L 16 0 C 7.2 0 0 7.2 0 16 Z" fill="var(--surface)" />
             </svg>
           </>
         )}
 
-        <div className="relative h-full w-full overflow-hidden rounded-[inherit]">
-          <ActionGlowLayer
-            mode={actionGlowMode}
-            active={Boolean(
-              activeLumiAction ||
-              activeNotification ||
-              activeNowPlaying ||
-              activeReminderAlert ||
-              liveTrack?.is_playing,
-            )}
-            mood={
-              activeLumiAction?.mood ??
-              (activeNotification || activeReminderAlert
-                ? "confirm"
-                : activeNowPlaying || liveTrack?.is_playing || liveTrack
-                  ? "music"
-                  : focusOn || pomodoro?.running
-                    ? "sleep"
-                    : "idle")
-            }
-            accentHex={
-              activeLumiAction?.accentHex ?? activeNowPlaying?.accentHex ?? liveTrack?.accent_hex
-            }
-            expanded={isExpanded}
-            paused={Boolean(
-              liveTrack &&
-              !liveTrack.is_playing &&
-              !activeLumiAction &&
-              !activeNotification &&
-              !activeReminderAlert,
-            )}
-          />
+        <ActionGlowLayer
+          mode={actionGlowMode}
+          active={Boolean(
+            activeLumiAction ||
+            activeNotification ||
+            activeNowPlaying ||
+            activeReminderAlert ||
+            liveTrack?.is_playing,
+          )}
+          mood={
+            activeLumiAction?.mood ??
+            (activeNotification || activeReminderAlert
+              ? "confirm"
+              : activeNowPlaying || liveTrack?.is_playing || liveTrack
+                ? "music"
+                : focusOn || pomodoro?.running
+                  ? "sleep"
+                  : "idle")
+          }
+          accentHex={
+            activeLumiAction?.accentHex ?? activeNowPlaying?.accentHex ?? liveTrack?.accent_hex
+          }
+          expanded={isExpanded}
+          paused={Boolean(
+            liveTrack &&
+            !liveTrack.is_playing &&
+            !activeLumiAction &&
+            !activeNotification &&
+            !activeReminderAlert,
+          )}
+        />
+
+        <div
+          className="relative z-10 h-full w-full overflow-hidden rounded-[inherit]"
+          style={{
+            backgroundColor: "var(--surface)",
+            borderColor: "var(--hairline)",
+            borderStyle: "solid",
+            borderWidth: "1px",
+            borderTopWidth: isFloatingPill ? "1px" : "0px",
+            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.42)",
+          }}
+        >
           {isExpanded && activeReminderAlert && (
             <div
               className="absolute inset-x-0 top-0 z-50 h-[108px] border-b border-white/10"

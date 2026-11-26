@@ -6,6 +6,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Content-Fitted Notification Sizing & Under-Notch Aurora Glow:**
+  - Replaced the oversized `440×84` minimum toast footprint with dynamic `measureNotificationDimensions()` (`248×58` up to `428×138`) and tightened `NotificationToast` padding (`px-3.5 py-2.5`) so notification bubbles hug their actual title and body copy with only subtle rim breathing room.
+  - Moved `ActionGlowLayer` behind the pure `#000000` notch surface wrapper (`z-0` under `z-10` notch body + ears, projecting `~15px` below the bottom border) so the movable glow radiates cleanly underneath any notch state (idle, music, notification, or expanded) without overlaying a separate black interior slab.
+
 - **Interactive Play/Pause Movable Notch Glow & Reliable SMTC Thumbnail/Color Sync:**
   - Updated `IslandShell` and `ActionGlowLayer` so the bottom flowing aurora glow remains active and smoothly drifting in sync with the playing media's extracted artwork `accent_hex` (`color-mix` harmonized stops) throughout active playback, and immediately pauses/stops when music is paused.
   - Reworked `lumen-media`'s Windows SMTC thumbnail extractor (`read_stream_bytes` chunked reads -> `InMemoryRandomAccessStream` -> `BitmapDecoder::GetPixelDataTransformedAsync` into `64×64` `Rgba8` + MIME header detection) and eliminated redundant `TryGetMediaPropertiesAsync()` IPC calls per poll, preventing WebP/stream-seek decode drops so album art thumbnails and accent colors sync reliably across Chrome, Edge, and desktop players.

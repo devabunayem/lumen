@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationToast } from "../app/NotificationToast";
+import { BASE_GEOMETRY, measureNotificationDimensions } from "../design/tokens";
 
 describe("NotificationToast (FR-NT-1..2)", () => {
   it("renders sanitized notification and dismisses on click", () => {
@@ -100,5 +101,36 @@ describe("NotificationToast (FR-NT-1..2)", () => {
     expect(screen.getByTestId("notification-body").className).not.toContain("line-clamp-3");
     expect(screen.getByTestId("notification-more-btn")).toHaveTextContent("Show less");
     expect(screen.getByTestId("notification-close-btn")).toBeInTheDocument();
+  });
+
+  it("fits notification width and height tightly to content without wasted black space", () => {
+    const titleOnlySize = measureNotificationDimensions(
+      { app_name: "Lumen", title: "Saved", body: "" },
+      false,
+    );
+    expect(titleOnlySize).toEqual(BASE_GEOMETRY.notification);
+
+    const shortSize = measureNotificationDimensions(
+      { app_name: "Lumen", title: "Saved", body: "Done" },
+      false,
+    );
+    expect(shortSize).toEqual({ width: 248, height: 62 });
+
+    const singleLineSize = measureNotificationDimensions(
+      {
+        app_name: "Antigravity",
+        title: "Antigravity",
+        body: "Agent finished: Lumen SRS And Implementation Steps",
+      },
+      false,
+    );
+    expect(singleLineSize.width).toBeLessThan(420);
+    expect(singleLineSize.height).toBeLessThanOrEqual(66);
+
+    const expandedSize = measureNotificationDimensions(
+      { app_name: "Messenger", title: "Long", body: "x".repeat(300) },
+      true,
+    );
+    expect(expandedSize).toEqual(BASE_GEOMETRY.notificationExpanded);
   });
 });

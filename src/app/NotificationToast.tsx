@@ -179,11 +179,11 @@ export function NotificationToast({
         }
       }}
       transition={getMotionTransition("collapse", prefersReducedMotion)}
-      className={`flex h-full w-full items-start gap-3 px-4 py-3 ${expanded ? "" : "cursor-pointer"}`}
+      className={`flex h-full w-full items-start gap-2.5 px-3.5 py-2.5 ${expanded ? "" : "cursor-pointer"}`}
     >
       <div
         data-testid="notification-app-icon"
-        className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+        className="relative mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl"
         style={{
           backgroundColor: showRealLogo ? "rgba(255,255,255,0.06)" : "var(--surface-button)",
           border: "1px solid var(--hairline-top)",

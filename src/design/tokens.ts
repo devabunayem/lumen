@@ -74,7 +74,7 @@ export const BASE_GEOMETRY = {
   homeExpanded: { width: 640, height: 312 },
   hud: { width: 240, height: 56 },
   nowPlaying: { width: 320, height: 60 },
-  notification: { width: 440, height: 84 },
+  notification: { width: 248, height: 58 },
   notificationExpanded: { width: 460, height: 260 },
   reminder: { width: 380, height: 108 },
   notchBottomRadius: 24,
@@ -119,4 +119,54 @@ export function resolveScaleFactor(setting: IslandScaleSetting, autoFactor?: num
     return typeof autoFactor === "number" ? autoFactor : resolveAutoScaleFactor();
   }
   return setting / 100;
+}
+
+/**
+ * Computes tight, content-fitted dimensions for toast notifications with subtle glow clearance.
+ */
+export function measureNotificationDimensions(
+  notification: { title: string; body: string; app_name: string },
+  expanded: boolean,
+): { width: number; height: number } {
+  if (expanded) {
+    return BASE_GEOMETRY.notificationExpanded;
+  }
+  const title = notification.title.trim();
+  const body = notification.body.trim();
+  const appName = notification.app_name.trim();
+
+  const titleRowPx =
+    Math.ceil(title.length * 7.5) + (appName.length > 0 ? Math.ceil(appName.length * 6.5) + 18 : 0);
+  const longestBodyLineChars =
+    body.length > 0 ? Math.max(...body.split("\n").map((line) => line.length)) : 0;
+  const bodyRowPx = Math.ceil(longestBodyLineChars * 6.4);
+  const width = Math.max(
+    BASE_GEOMETRY.notification.width,
+    Math.min(428, Math.max(titleRowPx, bodyRowPx) + 88),
+  );
+
+  const textWidth = width - 82;
+  const titlePerLine = Math.max(16, Math.floor(textWidth / 7.3));
+  const bodyPerLine = Math.max(20, Math.floor(textWidth / 6.3));
+  const titleLines = Math.min(2, Math.max(1, Math.ceil(Math.max(1, title.length) / titlePerLine)));
+  const bodyLines = body
+    ? Math.min(
+        3,
+        Math.max(
+          1,
+          body
+            .split("\n")
+            .reduce((sum, seg) => sum + Math.max(1, Math.ceil(seg.length / bodyPerLine)), 0),
+        ),
+      )
+    : 0;
+  const isLong = body.length > 150 || title.length > 75 || body.split("\n").length > 3;
+
+  // 20 px vertical padding + 6 px subtle bottom cushion + wrapped content rows
+  const neededHeight =
+    26 + titleLines * 17 + (bodyLines > 0 ? 3 + bodyLines * 16 : 0) + (isLong ? 22 : 0);
+  return {
+    width,
+    height: Math.max(BASE_GEOMETRY.notification.height, Math.min(138, neededHeight)),
+  };
 }
