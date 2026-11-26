@@ -1331,13 +1331,17 @@ export function IslandShell({
           <ActionGlowLayer
             mode={actionGlowMode}
             active={Boolean(
-              activeLumiAction || activeNotification || activeNowPlaying || activeReminderAlert,
+              activeLumiAction ||
+              activeNotification ||
+              activeNowPlaying ||
+              activeReminderAlert ||
+              liveTrack?.is_playing,
             )}
             mood={
               activeLumiAction?.mood ??
               (activeNotification || activeReminderAlert
                 ? "confirm"
-                : activeNowPlaying
+                : activeNowPlaying || liveTrack?.is_playing || liveTrack
                   ? "music"
                   : focusOn || pomodoro?.running
                     ? "sleep"
@@ -1347,6 +1351,13 @@ export function IslandShell({
               activeLumiAction?.accentHex ?? activeNowPlaying?.accentHex ?? liveTrack?.accent_hex
             }
             expanded={isExpanded}
+            paused={Boolean(
+              liveTrack &&
+              !liveTrack.is_playing &&
+              !activeLumiAction &&
+              !activeNotification &&
+              !activeReminderAlert,
+            )}
           />
           {isExpanded && activeReminderAlert && (
             <div

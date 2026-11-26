@@ -11,11 +11,12 @@ export interface ActionGlowLayerProps {
   mood: LumiMood;
   accentHex?: string | null;
   expanded?: boolean;
+  paused?: boolean;
 }
 
 function resolveAuroraStops(mood: LumiMood, accentHex?: string | null): [string, string] {
   if (accentHex && mood === "music") {
-    return [accentHex, COLOR_TOKENS.auroraWaveB];
+    return [accentHex, `color-mix(in srgb, ${accentHex} 72%, ${COLOR_TOKENS.auroraWaveB} 28%)`];
   }
   switch (mood) {
     case "celebrate":
@@ -42,6 +43,7 @@ export function ActionGlowLayer({
   mood,
   accentHex,
   expanded = false,
+  paused = false,
 }: ActionGlowLayerProps) {
   const prefersReduced = useReducedMotion() ?? false;
   if (mode === "off") {
@@ -50,6 +52,7 @@ export function ActionGlowLayer({
   const visible = mode === "always" || (mode === "action" && active);
   const [colorA, colorB] = resolveAuroraStops(mood, accentHex);
   const targetOpacity = active ? (expanded ? 0.42 : 0.96) : expanded ? 0.24 : 0.56;
+  const playState = prefersReduced || paused ? "paused" : "running";
 
   return (
     <AnimatePresence>
@@ -58,6 +61,7 @@ export function ActionGlowLayer({
           key="lumen-action-glow"
           data-testid="lumen-action-glow"
           data-mood={mood}
+          data-paused={paused ? "true" : "false"}
           aria-hidden="true"
           initial={{ opacity: 0 }}
           animate={{ opacity: targetOpacity }}
@@ -81,6 +85,7 @@ export function ActionGlowLayer({
             style={{
               background: `radial-gradient(62% 95% at 32% 95%, ${colorA}, transparent 72%)`,
               filter: "blur(8px)",
+              animationPlayState: playState,
             }}
           />
           {/* Right-to-left counter-drifting aurora lobe */}
@@ -93,6 +98,7 @@ export function ActionGlowLayer({
             style={{
               background: `radial-gradient(60% 90% at 70% 95%, ${colorB}, transparent 72%)`,
               filter: "blur(9px)",
+              animationPlayState: playState,
             }}
           />
         </motion.div>

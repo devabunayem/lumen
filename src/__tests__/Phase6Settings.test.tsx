@@ -66,6 +66,20 @@ describe("Phase 6 Settings, Mascot & Bangla i18n", () => {
     rerenderGlow(<ActionGlowLayer mode="always" active={false} mood="wave" />);
     expect(screen.getByTestId("lumen-action-glow")).toBeInTheDocument();
 
+    rerenderGlow(
+      <ActionGlowLayer mode="always" active={false} mood="music" accentHex="#FF6B4A" paused />,
+    );
+    const pausedMusicGlow = screen.getByTestId("lumen-action-glow");
+    expect(pausedMusicGlow).toHaveAttribute("data-mood", "music");
+    expect(pausedMusicGlow).toHaveAttribute("data-paused", "true");
+
+    rerenderGlow(
+      <ActionGlowLayer mode="action" active mood="music" accentHex="#FF6B4A" paused={false} />,
+    );
+    const playingMusicGlow = screen.getByTestId("lumen-action-glow");
+    expect(playingMusicGlow).toHaveAttribute("data-mood", "music");
+    expect(playingMusicGlow).toHaveAttribute("data-paused", "false");
+
     rerenderGlow(<ActionGlowLayer mode="off" active mood="wave" />);
     expect(screen.queryByTestId("lumen-action-glow")).toBeNull();
 

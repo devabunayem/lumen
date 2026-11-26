@@ -4,6 +4,12 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+
+- **Interactive Play/Pause Movable Notch Glow & Reliable SMTC Thumbnail/Color Sync:**
+  - Updated `IslandShell` and `ActionGlowLayer` so the bottom flowing aurora glow remains active and smoothly drifting in sync with the playing media's extracted artwork `accent_hex` (`color-mix` harmonized stops) throughout active playback, and immediately pauses/stops when music is paused.
+  - Reworked `lumen-media`'s Windows SMTC thumbnail extractor (`read_stream_bytes` chunked reads -> `InMemoryRandomAccessStream` -> `BitmapDecoder::GetPixelDataTransformedAsync` into `64×64` `Rgba8` + MIME header detection) and eliminated redundant `TryGetMediaPropertiesAsync()` IPC calls per poll, preventing WebP/stream-seek decode drops so album art thumbnails and accent colors sync reliably across Chrome, Edge, and desktop players.
+
 ### Added
 
 - **Redesigned Music Player & Prayer Solar Dashboard (`580×208`):**

@@ -247,6 +247,22 @@ fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
         + 0.0722 * srgb_channel_luminance(b)
 }
 
+/// Detects canonical image MIME type from encoded thumbnail header bytes.
+#[must_use]
+pub fn detect_image_mime(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        "image/png"
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        "image/gif"
+    } else if bytes.starts_with(b"BM") {
+        "image/bmp"
+    } else {
+        "image/jpeg"
+    }
+}
+
 /// Extracts a vibrant dominant RGB accent colour from RGBA pixel data using quantized
 /// hue-frequency clustering with contrast safeguard against `#000000` (`FR-MUS-6`).
 #[must_use]
@@ -318,13 +334,19 @@ mod platform {
 
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use windows::Foundation::TimeSpan;
-    use windows::Graphics::Imaging::{BitmapDecoder, BitmapPixelFormat};
+    use windows::Graphics::Imaging::{
+        BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat, BitmapTransform, ColorManagementMode,
+        ExifOrientationMode,
+    };
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSession,
         GlobalSystemMediaTransportControlsSessionManager,
+        GlobalSystemMediaTransportControlsSessionMediaProperties,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus,
     };
-    use windows::Storage::Streams::DataReader;
+    use windows::Storage::Streams::{
+        DataReader, DataWriter, IRandomAccessStreamWithContentType, InMemoryRandomAccessStream,
+    };
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::Media::Audio::{
         EDataFlow, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole, eRender,
@@ -382,42 +404,140 @@ mod platform {
         sessions
     }
 
-    fn pick_session<'a>(
-        sessions: &'a [GlobalSystemMediaTransportControlsSession],
+    fn pick_session_index(
+        sessions: &[GlobalSystemMediaTransportControlsSession],
         preferred_app_id: Option<&str>,
-    ) -> Option<&'a GlobalSystemMediaTransportControlsSession> {
+    ) -> Option<usize> {
         if let Some(pref) = preferred_app_id
-            && let Some(found) = sessions.iter().find(|s| {
+            && let Some(idx) = sessions.iter().position(|s| {
                 s.SourceAppUserModelId()
                     .map(|id| id.to_string_lossy() == pref)
                     .unwrap_or(false)
                     && session_is_playing(s)
             })
         {
-            return Some(found);
+            return Some(idx);
         }
-        if let Some(playing) = sessions.iter().find(|s| session_is_playing(s)) {
-            return Some(playing);
+        if let Some(idx) = sessions.iter().position(session_is_playing) {
+            return Some(idx);
         }
         if let Some(pref) = preferred_app_id
-            && let Some(found) = sessions.iter().find(|s| {
+            && let Some(idx) = sessions.iter().position(|s| {
                 s.SourceAppUserModelId()
                     .map(|id| id.to_string_lossy() == pref)
                     .unwrap_or(false)
             })
         {
-            return Some(found);
+            return Some(idx);
         }
-        sessions.first()
+        (!sessions.is_empty()).then_some(0)
     }
 
-    fn read_thumbnail(
-        session: &GlobalSystemMediaTransportControlsSession,
-    ) -> (Option<String>, String) {
-        let Ok(op) = session.TryGetMediaPropertiesAsync() else {
-            return (None, DEFAULT_MEDIA_ACCENT.to_string());
+    fn pick_session<'a>(
+        sessions: &'a [GlobalSystemMediaTransportControlsSession],
+        preferred_app_id: Option<&str>,
+    ) -> Option<&'a GlobalSystemMediaTransportControlsSession> {
+        pick_session_index(sessions, preferred_app_id).map(|idx| &sessions[idx])
+    }
+
+    fn read_stream_bytes(stream: &IRandomAccessStreamWithContentType) -> Option<Vec<u8>> {
+        const MAX_THUMB_BYTES: usize = 4_000_000;
+        let _ = stream.Seek(0);
+        let declared = stream.Size().unwrap_or(0).min(MAX_THUMB_BYTES as u64) as usize;
+        let reader = DataReader::CreateDataReader(stream).ok()?;
+        let target = if declared > 0 {
+            declared
+        } else {
+            MAX_THUMB_BYTES
         };
-        let Ok(props) = op.join() else {
+        let mut bytes = Vec::with_capacity(declared.max(4096));
+        while bytes.len() < target {
+            let chunk_len = ((target - bytes.len()).min(65_536)) as u32;
+            let Ok(load_op) = reader.LoadAsync(chunk_len) else {
+                break;
+            };
+            let Ok(loaded) = load_op.join() else {
+                break;
+            };
+            if loaded == 0 {
+                break;
+            }
+            let mut chunk = vec![0u8; loaded as usize];
+            if reader.ReadBytes(&mut chunk).is_err() {
+                break;
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let _ = reader.DetachStream();
+        if bytes.is_empty() { None } else { Some(bytes) }
+    }
+
+    fn decode_accent_from_bytes(bytes: &[u8]) -> String {
+        let Ok(mem) = InMemoryRandomAccessStream::new() else {
+            return DEFAULT_MEDIA_ACCENT.to_string();
+        };
+        let Ok(writer) = DataWriter::CreateDataWriter(&mem) else {
+            return DEFAULT_MEDIA_ACCENT.to_string();
+        };
+        if writer.WriteBytes(bytes).is_err() {
+            let _ = writer.DetachStream();
+            return DEFAULT_MEDIA_ACCENT.to_string();
+        }
+        if writer
+            .StoreAsync()
+            .ok()
+            .and_then(|op| op.join().ok())
+            .is_none()
+        {
+            let _ = writer.DetachStream();
+            return DEFAULT_MEDIA_ACCENT.to_string();
+        }
+        let _ = writer.FlushAsync().ok().and_then(|op| op.join().ok());
+        let _ = writer.DetachStream();
+        let _ = mem.Seek(0);
+
+        let Ok(dec_op) = BitmapDecoder::CreateAsync(&mem) else {
+            return DEFAULT_MEDIA_ACCENT.to_string();
+        };
+        let Ok(decoder) = dec_op.join() else {
+            return DEFAULT_MEDIA_ACCENT.to_string();
+        };
+
+        if let Ok(transform) = BitmapTransform::new() {
+            let _ = transform.SetScaledWidth(64);
+            let _ = transform.SetScaledHeight(64);
+            if let Ok(px_op) = decoder.GetPixelDataTransformedAsync(
+                BitmapPixelFormat::Rgba8,
+                BitmapAlphaMode::Straight,
+                &transform,
+                ExifOrientationMode::IgnoreExifOrientation,
+                ColorManagementMode::DoNotColorManage,
+            ) && let Ok(px_provider) = px_op.join()
+                && let Ok(pixels) = px_provider.DetachPixelData()
+            {
+                return extract_dominant_accent_from_rgba(pixels.as_slice());
+            }
+        }
+
+        if let Ok(px_op) = decoder.GetPixelDataAsync()
+            && let Ok(px_provider) = px_op.join()
+            && let Ok(mut pixels) = px_provider.DetachPixelData()
+        {
+            if decoder.BitmapPixelFormat().ok() == Some(BitmapPixelFormat::Bgra8) {
+                for chunk in pixels.as_chunks_mut::<4>().0 {
+                    chunk.swap(0, 2);
+                }
+            }
+            return extract_dominant_accent_from_rgba(pixels.as_slice());
+        }
+
+        DEFAULT_MEDIA_ACCENT.to_string()
+    }
+
+    fn read_thumbnail_from_props(
+        props: Option<&GlobalSystemMediaTransportControlsSessionMediaProperties>,
+    ) -> (Option<String>, String) {
+        let Some(props) = props else {
             return (None, DEFAULT_MEDIA_ACCENT.to_string());
         };
         let Ok(thumb_ref) = props.Thumbnail() else {
@@ -429,46 +549,13 @@ mod platform {
         let Ok(stream) = stream_op.join() else {
             return (None, DEFAULT_MEDIA_ACCENT.to_string());
         };
-        let size = stream.Size().unwrap_or(0).min(1_500_000) as u32;
-        if size == 0 {
+        // Read encoded bytes BEFORE decoding so WIC BitmapDecoder cannot exhaust or lock the WinRT stream.
+        let Some(bytes) = read_stream_bytes(&stream) else {
             return (None, DEFAULT_MEDIA_ACCENT.to_string());
-        }
+        };
 
-        let mut accent = DEFAULT_MEDIA_ACCENT.to_string();
-        if let Ok(dec_op) = BitmapDecoder::CreateAsync(&stream)
-            && let Ok(decoder) = dec_op.join()
-            && let Ok(px_op) = decoder.GetPixelDataAsync()
-            && let Ok(px_provider) = px_op.join()
-            && let Ok(mut pixels) = px_provider.DetachPixelData()
-        {
-            // Windows BitmapDecoder commonly yields BGRA8; swap B<->R into RGBA before extraction.
-            if decoder.BitmapPixelFormat().ok() == Some(BitmapPixelFormat::Bgra8) {
-                for chunk in pixels.as_chunks_mut::<4>().0 {
-                    chunk.swap(0, 2);
-                }
-            }
-            accent = extract_dominant_accent_from_rgba(pixels.as_slice());
-        }
-
-        let _ = stream.Seek(0);
-        let Ok(reader) = DataReader::CreateDataReader(&stream) else {
-            return (None, accent);
-        };
-        let Ok(load_op) = reader.LoadAsync(size) else {
-            return (None, accent);
-        };
-        if load_op.join().is_err() {
-            return (None, accent);
-        }
-        let mut bytes = vec![0u8; size as usize];
-        if reader.ReadBytes(&mut bytes).is_err() {
-            return (None, accent);
-        }
-        let mime = if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
-            "image/png"
-        } else {
-            "image/jpeg"
-        };
+        let mime = super::detect_image_mime(&bytes);
+        let accent = decode_accent_from_bytes(&bytes);
         let encoded = STANDARD.encode(&bytes);
         (Some(format!("data:{mime};base64,{encoded}")), accent)
     }
@@ -540,33 +627,29 @@ mod platform {
     pub fn read_media_state(preferred_app_id: Option<&str>) -> MediaStateSnapshot {
         let sessions = get_sessions();
         let mut summaries = Vec::with_capacity(sessions.len());
+        let mut props_by_idx: Vec<
+            Option<GlobalSystemMediaTransportControlsSessionMediaProperties>,
+        > = Vec::with_capacity(sessions.len());
 
         for session in &sessions {
             let app_id = session
                 .SourceAppUserModelId()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let is_playing = session
-                .GetPlaybackInfo()
-                .and_then(|p| p.PlaybackStatus())
-                .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
-                .unwrap_or(false);
-            let (title, artist) = session
+            let is_playing = session_is_playing(session);
+            let props = session
                 .TryGetMediaPropertiesAsync()
                 .ok()
-                .and_then(|op| op.join().ok())
-                .map(|props| {
-                    (
-                        props
-                            .Title()
-                            .map(|t| t.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                        props
-                            .Artist()
-                            .map(|a| a.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                    )
-                })
+                .and_then(|op| op.join().ok());
+            let title = props
+                .as_ref()
+                .and_then(|p| p.Title().ok())
+                .map(|t| t.to_string_lossy().trim().to_string())
+                .unwrap_or_default();
+            let artist = props
+                .as_ref()
+                .and_then(|p| p.Artist().ok())
+                .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
 
             if !title.is_empty() || !app_id.is_empty() {
@@ -577,29 +660,25 @@ mod platform {
                     is_playing,
                 });
             }
+            props_by_idx.push(props);
         }
 
-        let active = pick_session(&sessions, preferred_app_id).and_then(|session| {
+        let active = pick_session_index(&sessions, preferred_app_id).and_then(|idx| {
+            let session = &sessions[idx];
+            let props = props_by_idx.get(idx).and_then(|p| p.as_ref());
             let app_id = session
                 .SourceAppUserModelId()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let props = session
-                .TryGetMediaPropertiesAsync()
-                .ok()
-                .and_then(|op| op.join().ok());
             let raw_title = props
-                .as_ref()
                 .and_then(|p| p.Title().ok())
                 .map(|t| t.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
             let artist = props
-                .as_ref()
                 .and_then(|p| p.Artist().ok())
                 .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
             let album_title = props
-                .as_ref()
                 .and_then(|p| p.AlbumTitle().ok())
                 .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
@@ -648,7 +727,7 @@ mod platform {
             let (album_art_data_url, accent_hex) = if let Some((_, art, acc)) = cached {
                 (art, acc)
             } else {
-                let (art, acc) = read_thumbnail(session);
+                let (art, acc) = read_thumbnail_from_props(props);
                 // Only cache once Chrome/player has actually populated thumbnail artwork.
                 if art.is_some()
                     && let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock()
@@ -875,5 +954,17 @@ mod tests {
         assert_eq!(friendly_media_app_label("chrome.exe"), "Google Chrome");
         assert_eq!(friendly_media_app_label("vlc.exe"), "VLC Media Player");
         assert_eq!(friendly_media_app_label("MSEdge"), "Microsoft Edge");
+    }
+
+    #[test]
+    fn detects_thumbnail_mime_headers() {
+        assert_eq!(
+            detect_image_mime(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00]),
+            "image/png"
+        );
+        assert_eq!(detect_image_mime(b"RIFF1234WEBPVP8 "), "image/webp");
+        assert_eq!(detect_image_mime(b"GIF89a..."), "image/gif");
+        assert_eq!(detect_image_mime(b"BM\x00\x01"), "image/bmp");
+        assert_eq!(detect_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), "image/jpeg");
     }
 }
