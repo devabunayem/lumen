@@ -35,7 +35,7 @@ function resolveAuroraStops(mood: LumiMood, accentHex?: string | null): [string,
 }
 
 /**
- * Flowing, GPU-composited under-notch aurora glow radiating cleanly beneath the bottom edge.
+ * Flowing, GPU-composited bottom aurora edge glow constrained cleanly inside the notch silhouette.
  */
 export function ActionGlowLayer({
   mode,
@@ -51,7 +51,7 @@ export function ActionGlowLayer({
   }
   const visible = mode === "always" || (mode === "action" && active);
   const [colorA, colorB] = resolveAuroraStops(mood, accentHex);
-  const targetOpacity = active ? (expanded ? 0.62 : 0.94) : expanded ? 0.28 : 0.56;
+  const targetOpacity = active ? (expanded ? 0.42 : 0.96) : expanded ? 0.24 : 0.56;
   const playState = prefersReduced || paused ? "paused" : "running";
 
   return (
@@ -67,31 +67,37 @@ export function ActionGlowLayer({
           animate={{ opacity: targetOpacity }}
           exit={{ opacity: 0 }}
           transition={prefersReduced ? MOTION_PRESETS.reducedMotionFade : MOTION_PRESETS.auroraFade}
-          className="pointer-events-none absolute -inset-x-3 -bottom-[15px] z-0 h-[34px] overflow-visible"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[32px] max-h-full overflow-hidden rounded-[inherit]"
+          style={{
+            maskImage:
+              "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.58) 46%, transparent 96%)",
+            WebkitMaskImage:
+              "linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.58) 46%, transparent 96%)",
+          }}
         >
-          {/* Left-to-right flowing aurora lobe beneath notch contour */}
+          {/* Left-to-right flowing aurora lobe */}
           <div
             className={
               prefersReduced
-                ? "absolute -inset-x-3 inset-y-0"
-                : "lumen-aurora-blob-a absolute -inset-x-3 inset-y-0"
+                ? "absolute -inset-x-6 -bottom-3 h-full"
+                : "lumen-aurora-blob-a absolute -inset-x-6 -bottom-3 h-full"
             }
             style={{
-              background: `radial-gradient(56% 74% at 32% 55%, ${colorA}, transparent 74%)`,
-              filter: "blur(11px)",
+              background: `radial-gradient(62% 95% at 32% 95%, ${colorA}, transparent 72%)`,
+              filter: "blur(8px)",
               animationPlayState: playState,
             }}
           />
-          {/* Right-to-left counter-drifting aurora lobe beneath notch contour */}
+          {/* Right-to-left counter-drifting aurora lobe */}
           <div
             className={
               prefersReduced
-                ? "absolute -inset-x-3 inset-y-0"
-                : "lumen-aurora-blob-b absolute -inset-x-3 inset-y-0"
+                ? "absolute -inset-x-6 -bottom-3 h-full"
+                : "lumen-aurora-blob-b absolute -inset-x-6 -bottom-3 h-full"
             }
             style={{
-              background: `radial-gradient(56% 74% at 68% 55%, ${colorB}, transparent 74%)`,
-              filter: "blur(12px)",
+              background: `radial-gradient(60% 90% at 70% 95%, ${colorB}, transparent 72%)`,
+              filter: "blur(9px)",
               animationPlayState: playState,
             }}
           />

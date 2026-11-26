@@ -1146,6 +1146,12 @@ export function IslandShell({
         }}
         className={`relative select-none ${isHidden ? "pointer-events-none" : "pointer-events-auto cursor-pointer"}`}
         style={{
+          backgroundColor: "var(--surface)",
+          borderColor: "var(--hairline)",
+          borderStyle: "solid",
+          borderWidth: "1px",
+          borderTopWidth: isFloatingPill ? "1px" : "0px",
+          boxShadow: "0 10px 28px rgba(0, 0, 0, 0.42)",
           transformOrigin: "top center",
         }}
         initial={false}
@@ -1241,7 +1247,7 @@ export function IslandShell({
               height="16"
               viewBox="0 0 16 16"
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 -left-[15px] z-10"
+              className="pointer-events-none absolute top-0 -left-[15px]"
             >
               <path d="M 16 0 L 0 0 C 8.8 0 16 7.2 16 16 Z" fill="var(--surface)" />
             </svg>
@@ -1250,56 +1256,45 @@ export function IslandShell({
               height="16"
               viewBox="0 0 16 16"
               aria-hidden="true"
-              className="pointer-events-none absolute top-0 -right-[15px] z-10"
+              className="pointer-events-none absolute top-0 -right-[15px]"
             >
               <path d="M 0 0 L 16 0 C 7.2 0 0 7.2 0 16 Z" fill="var(--surface)" />
             </svg>
           </>
         )}
 
-        <ActionGlowLayer
-          mode={actionGlowMode}
-          active={Boolean(
-            activeLumiAction ||
-            activeNotification ||
-            activeNowPlaying ||
-            activeReminderAlert ||
-            liveTrack?.is_playing,
-          )}
-          mood={
-            activeLumiAction?.mood ??
-            (activeNotification || activeReminderAlert
-              ? "confirm"
-              : activeNowPlaying || liveTrack?.is_playing || liveTrack
-                ? "music"
-                : focusOn || pomodoro?.running
-                  ? "sleep"
-                  : "idle")
-          }
-          accentHex={
-            activeLumiAction?.accentHex ?? activeNowPlaying?.accentHex ?? liveTrack?.accent_hex
-          }
-          expanded={isExpanded}
-          paused={Boolean(
-            liveTrack &&
-            !liveTrack.is_playing &&
-            !activeLumiAction &&
-            !activeNotification &&
-            !activeReminderAlert,
-          )}
-        />
-
-        <div
-          className="relative z-10 h-full w-full overflow-hidden rounded-[inherit]"
-          style={{
-            backgroundColor: "var(--surface)",
-            borderColor: "var(--hairline)",
-            borderStyle: "solid",
-            borderWidth: "1px",
-            borderTopWidth: isFloatingPill ? "1px" : "0px",
-            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.42)",
-          }}
-        >
+        <div className="relative h-full w-full overflow-hidden rounded-[inherit]">
+          <ActionGlowLayer
+            mode={actionGlowMode}
+            active={Boolean(
+              activeLumiAction ||
+              activeNotification ||
+              activeNowPlaying ||
+              activeReminderAlert ||
+              liveTrack?.is_playing,
+            )}
+            mood={
+              activeLumiAction?.mood ??
+              (activeNotification || activeReminderAlert
+                ? "confirm"
+                : activeNowPlaying || liveTrack?.is_playing || liveTrack
+                  ? "music"
+                  : focusOn || pomodoro?.running
+                    ? "sleep"
+                    : "idle")
+            }
+            accentHex={
+              activeLumiAction?.accentHex ?? activeNowPlaying?.accentHex ?? liveTrack?.accent_hex
+            }
+            expanded={isExpanded}
+            paused={Boolean(
+              liveTrack &&
+              !liveTrack.is_playing &&
+              !activeLumiAction &&
+              !activeNotification &&
+              !activeReminderAlert,
+            )}
+          />
           {isExpanded && activeReminderAlert && (
             <div
               className="absolute inset-x-0 top-0 z-50 h-[108px] border-b border-white/10"
