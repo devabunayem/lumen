@@ -85,8 +85,8 @@ export function PrayerWidget({
         (c.name_en.toLowerCase() === schedule.city_name.toLowerCase() ||
           c.name_bn === schedule.city_name),
     );
-    const lat = cityMatch?.latitude ?? 23.8103;
-    const lon = cityMatch?.longitude ?? 90.4125;
+    const lat = schedule?.latitude ?? cityMatch?.latitude ?? 23.8103;
+    const lon = schedule?.longitude ?? cityMatch?.longitude ?? 90.4125;
     const deg = computeQiblaBearingDeg(lat, lon);
     return { deg, cardinal: compassDirection(deg) };
   }, [cities, schedule]);

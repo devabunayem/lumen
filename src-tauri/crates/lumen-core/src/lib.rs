@@ -477,7 +477,7 @@ pub struct LumenSettings {
     pub sound_reminders: bool,
     #[serde(default)]
     pub custom_adhan_path: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub location_opt_in: bool,
     #[serde(default)]
     pub reduce_transparency: bool,
@@ -548,7 +548,7 @@ impl Default for LumenSettings {
             sound_interface: true,
             sound_reminders: true,
             custom_adhan_path: None,
-            location_opt_in: false,
+            location_opt_in: true,
             reduce_transparency: false,
             glow_enabled: true,
             parallax_enabled: true,

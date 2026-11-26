@@ -114,6 +114,8 @@ export interface PrayerSlot {
 
 export interface PrayerSchedule {
   city_name: string;
+  latitude?: number;
+  longitude?: number;
   next_name_en: string;
   next_name_bn: string;
   next_time_12h: string;

@@ -22,6 +22,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Auto-Tracked Windows Location Across Weather, Prayer Times, Iftar/Sehri, Day Arc & Qibla:**
+  - Enabled fast Windows Geolocation tracking (`locationOptIn` defaulting to `true` with `GetGeopositionWithAgeAndTimeoutAsync` 5s timeout & 10-min cache) on startup, settings toggle, weather refresh, and periodic 30-minute background checks.
+  - Wired resolved coordinates (`latitude`, `longitude`), host local timezone offset, and offline `resolve_city_name_for_coords` directly into `AppState.prayer_config`, recomputing all 5 daily prayers, Ramadan Sehri/Iftar countdowns, Qibla compass bearing (`PrayerSchedule.latitude/longitude`), Day Arc curve, and coordinate-scoped Open-Meteo weather cache simultaneously.
+
 - **Real-Time WASAPI Peak Audio Sync (`AudioPeakReader` at `~30 fps`):**
   - Added Windows Core Audio `IAudioMeterInformation::GetPeakValue()` metering in `lumen-media` (`AudioPeakReader` + perceptual `shape_audio_peak` attack/decay shaper) streaming `lumen://audio-peak` events at `~30 fps` strictly while media playback is active (`0%` CPU/IPC when paused or in fullscreen).
   - Wired `audioPeak` into `ActionGlowLayer` (opacity + GPU bottom scale pulse) and `LiveWaveform` so the notch bottom aurora glow and right-side waveform react smoothly and accurately to real-time playback audio energy.

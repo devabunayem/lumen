@@ -117,7 +117,7 @@
       "soundInterface": "Interface Ticks & Toggles",
       "soundReminders": "Chimes & Reminders",
       "customAdhan": "Custom Adhan Audio Path (optional)",
-      "locationOptIn": "Use Windows Location (opt-in)",
+      "locationOptIn": "Auto-Track Location (Windows)",
       "reduceTransparency": "Reduce Transparency (solid glass fallback)",
       "glowEnabled": "Living Ambient Glow",
       "parallaxEnabled": "Pointer Glow Parallax",

@@ -1255,7 +1255,11 @@ export function SettingsWindow({
                   </div>
                   <AppleRow
                     label={msg.settings.homeTab.locationOptIn}
-                    hint="When off, Day Arc and Weather use your selected manual city offline-first"
+                    hint={
+                      isBn
+                        ? "চালু থাকলে Windows লোকেশন থেকে নামাজ, সেহরি/ইফতার, কিবলা, সূর্যের আর্ক ও আবহাওয়া স্বয়ংক্রিয়ভাবে আপডেট হবে"
+                        : "Automatically syncs prayer times, Iftar/Sehri, Qibla compass, Day Arc, and weather from your Windows location"
+                    }
                   >
                     <AppleToggle
                       checked={settings.locationOptIn}

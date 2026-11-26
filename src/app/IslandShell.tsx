@@ -228,7 +228,7 @@ export function IslandShell({
   glowEnabled = true,
   parallaxEnabled = true,
   banglaDigits = false,
-  locationOptIn = false,
+  locationOptIn = true,
   chipFocusEnabled = true,
   chipLedgerEnabled = true,
   chipClipboardEnabled = true,
@@ -645,6 +645,12 @@ export function IslandShell({
       .then((w) => {
         if (!cancelled && w) {
           setWeather(w);
+        }
+        return prayerGetSchedule();
+      })
+      .then((sched) => {
+        if (!cancelled && sched) {
+          setPrayerSchedule(sched);
         }
       })
       .finally(() => {

@@ -166,6 +166,10 @@ pub struct PrayerSlot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrayerSchedule {
     pub city_name: String,
+    #[serde(default)]
+    pub latitude: f64,
+    #[serde(default)]
+    pub longitude: f64,
     pub next_name_en: String,
     pub next_name_bn: String,
     pub next_time_12h: String,
@@ -256,6 +260,54 @@ fn approximate_hijri_date(date: NaiveDate) -> (i32, String) {
     ];
     let month_name = MONTHS[(h_month - 1) as usize];
     (h_month, format!("{h_day} {month_name} {h_year} AH"))
+}
+
+const REGIONAL_CITIES: &[(&str, f64, f64)] = &[
+    ("Gazipur", 23.9999, 90.4203),
+    ("Narayanganj", 23.6238, 90.5000),
+    ("Cumilla", 23.4607, 91.1809),
+    ("Bogura", 24.8465, 89.3773),
+    ("Cox's Bazar", 21.4272, 92.0058),
+    ("Jessore", 23.1664, 89.2081),
+    ("Kolkata", 22.5726, 88.3639),
+    ("Delhi", 28.6139, 77.2090),
+    ("Mumbai", 19.0760, 72.8777),
+    ("Makkah", 21.3891, 39.8579),
+    ("Madinah", 24.5247, 39.5692),
+    ("Riyadh", 24.7136, 46.6753),
+    ("Dubai", 25.2048, 55.2708),
+    ("Singapore", 1.3521, 103.8198),
+    ("Kuala Lumpur", 3.1390, 101.6869),
+    ("London", 51.5072, -0.1276),
+    ("New York", 40.7128, -74.0060),
+    ("Toronto", 43.6532, -79.3832),
+    ("Sydney", -33.8688, 151.2093),
+    ("Tokyo", 35.6762, 139.6503),
+];
+
+/// Resolves an offline city label for auto-tracked coordinates, falling back to `lat°, lon°`.
+#[must_use]
+pub fn resolve_city_name_for_coords(lat: f64, lon: f64) -> String {
+    let mut best: Option<(&str, f64)> = None;
+    for city in BANGLADESH_CITIES {
+        let d2 = (city.latitude - lat).powi(2) + (city.longitude - lon).powi(2);
+        if best.is_none_or(|(_, cur)| d2 < cur) {
+            best = Some((city.name_en, d2));
+        }
+    }
+    for &(name, clat, clon) in REGIONAL_CITIES {
+        let d2 = (clat - lat).powi(2) + (clon - lon).powi(2);
+        if best.is_none_or(|(_, cur)| d2 < cur) {
+            best = Some((name, d2));
+        }
+    }
+    // ~0.60 deg (~65 km) radius match for nearest metropolitan area
+    if let Some((name, d2)) = best
+        && d2 <= 0.36
+    {
+        return name.to_string();
+    }
+    format!("{lat:.2}°, {lon:.2}°")
 }
 
 /// Computes the offline prayer schedule for `now_utc` and `config` (`FR-PR-1..6`).
@@ -405,6 +457,8 @@ pub fn compute_prayer_schedule(now_utc: DateTime<Utc>, config: &PrayerConfig) ->
 
     PrayerSchedule {
         city_name: config.city_name.clone(),
+        latitude: config.latitude,
+        longitude: config.longitude,
         next_name_en: next_en,
         next_name_bn: next_bn,
         next_time_12h: format_12h(next_min),
@@ -523,5 +577,17 @@ mod tests {
         assert!(sched.is_ramadan);
         assert!(sched.sehri_min < sched.iftar_min);
         assert!(!sched.sehri_iftar_label.is_empty());
+    }
+
+    #[test]
+    fn resolves_nearest_city_and_embeds_coordinates() {
+        assert_eq!(resolve_city_name_for_coords(23.81, 90.41), "Dhaka");
+        assert_eq!(resolve_city_name_for_coords(22.85, 89.54), "Khulna");
+        assert_eq!(resolve_city_name_for_coords(25.20, 55.27), "Dubai");
+        assert_eq!(resolve_city_name_for_coords(12.34, 45.67), "12.34°, 45.67°");
+
+        let sched = compute_prayer_schedule(Utc::now(), &PrayerConfig::default());
+        assert!((sched.latitude - 23.8103).abs() < 0.001);
+        assert!((sched.longitude - 90.4125).abs() < 0.001);
     }
 }

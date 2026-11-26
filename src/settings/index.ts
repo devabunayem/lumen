@@ -84,7 +84,7 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   soundInterface: true,
   soundReminders: true,
   customAdhanPath: null,
-  locationOptIn: false,
+  locationOptIn: true,
   reduceTransparency: false,
   glowEnabled: true,
   parallaxEnabled: true,

@@ -1040,14 +1040,22 @@ mod win32 {
         KEEP_AWAKE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// Reads current Windows Geolocation coordinates ONLY when the user explicitly opts in.
+    /// Reads current Windows Geolocation coordinates using fast OS cached/timed lookup.
     pub fn get_windows_location_opt_in() -> Result<(f64, f64), String> {
-        use windows::Devices::Geolocation::Geolocator;
+        use windows::Devices::Geolocation::{Geolocator, PositionAccuracy};
+        use windows::Foundation::TimeSpan;
 
         let locator = Geolocator::new().map_err(|e| format!("Geolocator init failed: {e}"))?;
+        let _ = locator.SetDesiredAccuracy(PositionAccuracy::Default);
+        let max_age = TimeSpan {
+            Duration: 10 * 60 * 10_000_000,
+        };
+        let timeout = TimeSpan {
+            Duration: 5 * 10_000_000,
+        };
         let pos = locator
-            .GetGeopositionAsync()
-            .map_err(|e| format!("GetGeopositionAsync failed: {e}"))?
+            .GetGeopositionAsyncWithAgeAndTimeout(max_age, timeout)
+            .map_err(|e| format!("GetGeopositionAsyncWithAgeAndTimeout failed: {e}"))?
             .join()
             .map_err(|e| format!("Geoposition join failed: {e}"))?;
         let coord = pos
@@ -1057,6 +1065,9 @@ mod win32 {
         let basic = point
             .Position()
             .map_err(|e| format!("Position failed: {e}"))?;
+        if !basic.Latitude.is_finite() || !basic.Longitude.is_finite() {
+            return Err("invalid non-finite geolocation coordinates".into());
+        }
         Ok((basic.Latitude, basic.Longitude))
     }
 

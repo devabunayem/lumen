@@ -117,7 +117,7 @@
       "soundInterface": "ইন্টারফেস টিক ও টগল",
       "soundReminders": "চাইম ও রিমাইন্ডার",
       "customAdhan": "কাস্টম আজান অডিও ফাইল (ঐচ্ছিক)",
-      "locationOptIn": "Windows লোকেশন ব্যবহার করুন (ঐচ্ছিক)",
+      "locationOptIn": "অটো লোকেশন ট্র্যাকিং (Windows)",
       "reduceTransparency": "স্বচ্ছতা কমান (সলিড কার্ড)",
       "glowEnabled": "লিভিং অ্যাম্বিয়েন্ট গ্লো",
       "parallaxEnabled": "কার্সর প্যারালাক্স গ্লো",

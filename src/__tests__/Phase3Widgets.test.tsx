@@ -62,67 +62,68 @@ describe("Phase 3 Core Widgets", () => {
 
   it("renders PrayerWidget sun-arc chart and Bangla names", () => {
     const onSelectCity = vi.fn();
-    render(
+    const baseSchedule = {
+      city_name: "Dhaka",
+      next_name_en: "Asr",
+      next_name_bn: "আসর",
+      next_time_12h: "4:15 PM",
+      next_is_tomorrow: false,
+      countdown_text: "in 2 h 10 min",
+      progress_pct: 55,
+      sun_arc_ratio: 0.62,
+      hijri_date: "14 Jumada II 1448 AH",
+      sehri_iftar_label: "Iftar in 3 h 5 min",
+      slots: [
+        {
+          id: "fajr",
+          name_en: "Fajr",
+          name_bn: "ফজর",
+          time_12h: "5:02 AM",
+          minute_of_day: 302,
+          arc_ratio: 0,
+          passed: true,
+        },
+        {
+          id: "dhuhr",
+          name_en: "Dhuhr",
+          name_bn: "যোহর",
+          time_12h: "11:51 AM",
+          minute_of_day: 711,
+          arc_ratio: 0.45,
+          passed: true,
+        },
+        {
+          id: "asr",
+          name_en: "Asr",
+          name_bn: "আসর",
+          time_12h: "4:15 PM",
+          minute_of_day: 975,
+          arc_ratio: 0.72,
+          passed: false,
+        },
+        {
+          id: "maghrib",
+          name_en: "Maghrib",
+          name_bn: "মাগরিব",
+          time_12h: "5:12 PM",
+          minute_of_day: 1032,
+          arc_ratio: 0.85,
+          passed: false,
+        },
+        {
+          id: "isha",
+          name_en: "Isha",
+          name_bn: "এশা",
+          time_12h: "6:32 PM",
+          minute_of_day: 1112,
+          arc_ratio: 1,
+          passed: false,
+        },
+      ],
+    };
+    const { rerender } = render(
       <PrayerWidget
-        schedule={{
-          city_name: "Dhaka",
-          next_name_en: "Asr",
-          next_name_bn: "আসর",
-          next_time_12h: "4:15 PM",
-          next_is_tomorrow: false,
-          countdown_text: "in 2 h 10 min",
-          progress_pct: 55,
-          sun_arc_ratio: 0.62,
-          hijri_date: "14 Jumada II 1448 AH",
-          sehri_iftar_label: "Iftar in 3 h 5 min",
-          slots: [
-            {
-              id: "fajr",
-              name_en: "Fajr",
-              name_bn: "ফজর",
-              time_12h: "5:02 AM",
-              minute_of_day: 302,
-              arc_ratio: 0,
-              passed: true,
-            },
-            {
-              id: "dhuhr",
-              name_en: "Dhuhr",
-              name_bn: "যোহর",
-              time_12h: "11:51 AM",
-              minute_of_day: 711,
-              arc_ratio: 0.45,
-              passed: true,
-            },
-            {
-              id: "asr",
-              name_en: "Asr",
-              name_bn: "আসর",
-              time_12h: "4:15 PM",
-              minute_of_day: 975,
-              arc_ratio: 0.72,
-              passed: false,
-            },
-            {
-              id: "maghrib",
-              name_en: "Maghrib",
-              name_bn: "মাগরিব",
-              time_12h: "5:12 PM",
-              minute_of_day: 1032,
-              arc_ratio: 0.85,
-              passed: false,
-            },
-            {
-              id: "isha",
-              name_en: "Isha",
-              name_bn: "এশা",
-              time_12h: "6:32 PM",
-              minute_of_day: 1112,
-              arc_ratio: 1,
-              passed: false,
-            },
-          ],
-        }}
+        schedule={baseSchedule}
         cities={[
           {
             id: "dhaka",
@@ -158,5 +159,22 @@ describe("Phase 3 Core Widgets", () => {
 
     fireEvent.click(screen.getByTestId("prayer-qibla-btn"));
     expect(screen.getByText("কিবলা · 278° W")).toBeInTheDocument();
+
+    // Auto-tracked custom coordinates override city fallback for Qibla compass bearing
+    rerender(
+      <PrayerWidget
+        schedule={{
+          ...baseSchedule,
+          city_name: "London",
+          latitude: 51.5072,
+          longitude: -0.1276,
+        }}
+        cities={[]}
+        language="en"
+        onSelectCity={onSelectCity}
+        onToggleLanguage={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Qibla · 119° SE")).toBeInTheDocument();
   });
 });

@@ -40,7 +40,7 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 
 - **To-Do List:** Quick inline tasks with due timestamps, SQLite persistence, and JSON export/import
 - **Water Tracker:** Daily hydration ring (default `1500 ml`), quick log + 5-second undo, 7-day history
-- **Offline Prayer Times (`adhan`):** Bangladesh defaults (`Karachi` / `Hanafi`), Dhaka/Khulna & 8 BD cities, English & Bangla (`বাংলা`) UI, Hijri date, Sehri/Iftar countdown, sun-arc progress
+- **Offline Prayer Times & Auto-Tracked Location (`adhan`):** Auto-tracks Windows Geolocation coordinates (`locationOptIn` enabled by default) to resolve nearest city + host timezone offset cleanly for Weather (`Open-Meteo`), all 5 daily Prayer times, Ramadan Sehri/Iftar countdowns, Qibla bearing (`latitude`/`longitude`), and Day Arc solar positions, with manual Bangladesh city fallback (`Karachi` / `Hanafi`, Dhaka/Khulna & 8 BD cities, English & Bangla)
 - **Pomodoro Focus Timer:** Rust-owned Focus / Short Break / Long Break cycles with collapsed live badge & daily focus minutes
 - **File & Link Shelf:** Zero-copy local file/folder/URL shelf opening natively via Windows Shell (`cap 50`)
 

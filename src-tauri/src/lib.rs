@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use lumen_core::{
     IslandEvent, IslandMachine, IslandSnapshot, LumenSettings, PomodoroController, PomodoroPhase,
     PomodoroSnapshot,
@@ -23,7 +23,7 @@ use lumen_notify::{
 use lumen_plugins::{LoadedPlugin, discover_plugins};
 use lumen_prayer::{
     BANGLADESH_CITIES, CalculationMethod, Madhab, PrayerCityPreset, PrayerConfig, PrayerSchedule,
-    compute_prayer_schedule,
+    compute_prayer_schedule, resolve_city_name_for_coords,
 };
 use lumen_storage::{
     CalendarEvent, ReminderItem, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState,
@@ -805,6 +805,13 @@ fn settings_update(
         }
     }
 
+    if !prev.location_opt_in && clean.location_opt_in {
+        let loc_app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = sync_auto_location_if_enabled(&loc_app).await;
+        });
+    }
+
     let _ = app.emit("lumen://settings-updated", &clean);
 
     Ok(SettingsUpdateResult {
@@ -1109,29 +1116,65 @@ fn prayer_set_method(
     Ok(compute_prayer_schedule(Utc::now(), &cfg))
 }
 
+fn apply_auto_coordinates_to_prayer(
+    state: &AppState,
+    glat: f64,
+    glon: f64,
+) -> Option<(String, PrayerSchedule, bool)> {
+    let tz_offset_minutes = Local::now().offset().local_minus_utc() / 60;
+    let city_name = resolve_city_name_for_coords(glat, glon);
+    let mut cfg = state.prayer_config.lock().ok()?;
+    let changed = (cfg.latitude - glat).abs() > 0.005
+        || (cfg.longitude - glon).abs() > 0.005
+        || cfg.tz_offset_minutes != tz_offset_minutes
+        || cfg.city_name != city_name;
+    cfg.city_name = city_name.clone();
+    cfg.latitude = glat;
+    cfg.longitude = glon;
+    cfg.tz_offset_minutes = tz_offset_minutes;
+    let schedule = compute_prayer_schedule(Utc::now(), &cfg);
+    Some((city_name, schedule, changed))
+}
+
+async fn sync_auto_location_if_enabled(app: &tauri::AppHandle) -> Option<(String, f64, f64)> {
+    let state = app.try_state::<AppState>()?;
+    let location_opt_in = state
+        .settings
+        .lock()
+        .map(|s| s.location_opt_in)
+        .unwrap_or(true);
+    if !location_opt_in {
+        return None;
+    }
+    let (glat, glon) = tokio::task::spawn_blocking(get_windows_location_opt_in)
+        .await
+        .ok()?
+        .ok()?;
+    if let Some((city, schedule, changed)) = apply_auto_coordinates_to_prayer(&state, glat, glon) {
+        if changed {
+            let _ = app.emit("lumen://prayer-updated", &schedule);
+        }
+        return Some((city, glat, glon));
+    }
+    None
+}
+
 #[tauri::command]
-async fn weather_get_current(state: State<'_, AppState>) -> Result<OpenMeteoWeather, String> {
-    let (city_name, mut lat, mut lon) = {
+async fn weather_get_current(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<OpenMeteoWeather, String> {
+    let _ = sync_auto_location_if_enabled(&app).await;
+
+    let (city_name, lat, lon) = {
         let cfg = state
             .prayer_config
             .lock()
             .map_err(|_| "prayer config mutex poisoned".to_string())?;
         (cfg.city_name.clone(), cfg.latitude, cfg.longitude)
     };
-    let location_opt_in = state
-        .settings
-        .lock()
-        .map(|s| s.location_opt_in)
-        .unwrap_or(false);
 
-    if location_opt_in
-        && let Ok(Ok((glat, glon))) = tokio::task::spawn_blocking(get_windows_location_opt_in).await
-    {
-        lat = glat;
-        lon = glon;
-    }
-
-    let city_key = city_name.to_ascii_lowercase();
+    let city_key = format!("{city_name}@{lat:.2}_{lon:.2}").to_ascii_lowercase();
     if let Ok(Some((payload_json, fetched_at))) = state.storage.get_weather_cache(&city_key)
         && let Ok(dt) = DateTime::parse_from_rfc3339(&fetched_at)
         && (Utc::now() - dt.with_timezone(&Utc)).num_minutes() < 30
@@ -1359,6 +1402,12 @@ pub fn run() {
             recenter_window(&window, CANVAS_WIN_W, CANVAS_WIN_H, &initial_settings);
             let _ = window.set_ignore_cursor_events(true);
             let _ = window.show();
+
+            // Immediately sync Windows Geolocation on startup for prayer, Iftar/Sehri, Qibla, and weather
+            let startup_loc_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = sync_auto_location_if_enabled(&startup_loc_app).await;
+            });
 
             // System tray icon & menu (FR-WIN-7)
             let toggle_item =
@@ -1636,8 +1685,10 @@ pub fn run() {
                         }
                     }
 
-                    // Prayer schedule recomputation every 60s when not hidden/fullscreen
-                    if tick_count.is_multiple_of(120)
+                    // Prayer schedule recomputation every 60s (and auto-location refresh every 30 min)
+                    if tick_count.is_multiple_of(3600) && !fullscreen {
+                        let _ = sync_auto_location_if_enabled(fs_window.app_handle()).await;
+                    } else if tick_count.is_multiple_of(120)
                         && !fullscreen
                         && let Some(sched) = fs_window.try_state::<AppState>().and_then(|s| {
                             s.prayer_config
