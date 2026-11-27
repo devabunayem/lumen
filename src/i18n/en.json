@@ -10,6 +10,8 @@
   "pages": {
     "homeLead": "Day",
     "homeAccent": "Home",
+    "waqtLead": "Waqt",
+    "waqtAccent": "Timeline",
     "controlLead": "Control",
     "controlAccent": "Center",
     "calendarLead": "Today",

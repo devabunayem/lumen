@@ -1268,6 +1268,65 @@ export function SettingsWindow({
                   </AppleRow>
                 </div>
               </AppleGroup>
+
+              <AppleGroup title={isBn ? "ওয়াক্ত টাইমলাইন" : "Waqt Timeline"}>
+                <div className="divide-y divide-[#2c2c2e]/70">
+                  <AppleRow
+                    label={isBn ? "রাতের সমাপ্তি (Bedtime)" : "Night Block Bedtime"}
+                    hint={
+                      isBn
+                        ? "ইশার পর রাতের ব্লক কোন সময় শেষ হবে"
+                        : "Trims the Night Waqt block end time"
+                    }
+                  >
+                    <input
+                      type="time"
+                      value={settings.waqtBedtimeHHMM}
+                      onChange={(e) =>
+                        void commit({ ...settings, waqtBedtimeHHMM: e.target.value || "23:30" })
+                      }
+                      className="rounded-lg border border-[#38383a] bg-[#2c2c2e] px-2.5 py-1 text-xs text-white outline-none"
+                    />
+                  </AppleRow>
+                  <AppleRow
+                    label={isBn ? "নামাজের সময় ফোকাস চললে" : "When Prayer Arrives During Focus"}
+                    hint={
+                      isBn
+                        ? "ফোকাস টাইমার চলার সময় আজান/ওয়াক্ত এলে আচরণ"
+                        : "Choose whether to ask, auto-pause, or keep going"
+                    }
+                  >
+                    <select
+                      value={settings.waqtPrayerPauseMode}
+                      onChange={(e) =>
+                        void commit({
+                          ...settings,
+                          waqtPrayerPauseMode: e.target.value as "ask" | "auto_pause" | "ignore",
+                        })
+                      }
+                      className="rounded-lg border border-[#38383a] bg-[#2c2c2e] px-2.5 py-1 text-xs text-white outline-none"
+                    >
+                      <option value="ask">{isBn ? "জিজ্ঞাসা করুন" : "Ask"}</option>
+                      <option value="auto_pause">{isBn ? "অটো পজ" : "Auto-pause"}</option>
+                      <option value="ignore">{isBn ? "চালিয়ে যান" : "Ignore"}</option>
+                    </select>
+                  </AppleRow>
+                  <AppleRow
+                    label={isBn ? "ফজরে দিন রোলওভার" : "Roll Over Unfinished Tasks at Fajr"}
+                  >
+                    <AppleToggle
+                      checked={settings.waqtRolloverAtFajr}
+                      onChange={(v) => void commit({ ...settings, waqtRolloverAtFajr: v })}
+                    />
+                  </AppleRow>
+                  <AppleRow label={isBn ? "রমজানে তারাবিহ ব্লক" : "Show Taraweeh Block in Ramadan"}>
+                    <AppleToggle
+                      checked={settings.waqtRamadanTaraweeh}
+                      onChange={(v) => void commit({ ...settings, waqtRamadanTaraweeh: v })}
+                    />
+                  </AppleRow>
+                </div>
+              </AppleGroup>
             </div>
           )}
 

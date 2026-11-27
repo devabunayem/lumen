@@ -139,6 +139,11 @@ export function App() {
       hiddenPages={settings.hiddenPages}
       initialWaterGoalMl={settings.waterGoalMl}
       mediaExclusions={settings.mediaExclusions}
+      waqtBedtimeHHMM={settings.waqtBedtimeHHMM}
+      waqtPrayerPauseMode={settings.waqtPrayerPauseMode}
+      waqtRamadanTaraweeh={settings.waqtRamadanTaraweeh}
+      waqtHintDismissed={settings.waqtHintDismissed}
+      waqtBlockNames={settings.waqtBlockNames}
       onShapeChange={handleShapeChange}
     />
   );

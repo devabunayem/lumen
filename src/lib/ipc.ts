@@ -81,6 +81,93 @@ export interface TaskItem {
   done: boolean;
   due_at: string | null;
   created_at: string;
+  estimate_min?: number;
+  block_id?: string | null;
+  start_at?: string | null;
+  fixed?: boolean;
+  done_at?: string | null;
+  source?: "local" | "calendar" | string;
+  calendar_event_id?: number | null;
+  client?: string | null;
+  kind?: "task" | "meeting" | "habit" | "deadline" | string;
+  sort_order?: number;
+}
+
+export interface ActivityLogItem {
+  id: number;
+  start_at: string;
+  end_at: string | null;
+  kind: "focus" | "music" | "prayer" | "water" | "ledger" | "break" | string;
+  ref_id: string | null;
+  note: string | null;
+}
+
+export interface WaqtBlockItem {
+  id: number;
+  title: string;
+  kind: "task" | "meeting" | "habit" | "deadline" | string;
+  source: "local" | "calendar" | string;
+  estimate_min: number;
+  done: boolean;
+  done_at: string | null;
+  fixed: boolean;
+  start_at: string | null;
+  slot_start_min: number;
+  slot_end_min: number;
+  client: string | null;
+  calendar_event_id: number | null;
+  sort_order: number;
+}
+
+export interface WaqtBlockView {
+  id: string;
+  default_name: string;
+  name: string;
+  prayer_label: string;
+  start_min: number;
+  end_min: number;
+  range_label: string;
+  is_past: boolean;
+  is_current: boolean;
+  fill_ratio_pct: number;
+  remaining_min: number;
+  free_capacity_min: number;
+  used_capacity_min: number;
+  capacity_status: "free" | "tight" | "overbooked";
+  focus_minutes: number;
+  status_text: string;
+  items: WaqtBlockItem[];
+}
+
+export interface WaqtTimelineState {
+  date_label: string;
+  now_min: number;
+  rail_start_min: number;
+  rail_end_min: number;
+  sun_progress_pct: number;
+  is_friday: boolean;
+  is_ramadan: boolean;
+  sehri_min: number;
+  iftar_min: number;
+  location_configured: boolean;
+  active_block_id: string;
+  next_prayer_name: string;
+  next_prayer_in_min: number;
+  current_focus_task_id: number | null;
+  yesterday_rollover_count: number;
+  total_focus_min: number;
+  prayers_done_count: number;
+  water_today_ml: number;
+  focus_bars: number[];
+  blocks: WaqtBlockView[];
+  unplanned: TaskItem[];
+  activity_log: ActivityLogItem[];
+}
+
+export interface WaqtFocusFlowResult {
+  waqt: WaqtTimelineState;
+  pomodoro: PomodoroSnapshot;
+  ledger: TimeLedgerState;
 }
 
 export interface WaterDayPoint {
@@ -915,6 +1002,138 @@ export async function subscribePrayerUpdated(
     return () => {};
   }
   return listen<PrayerSchedule>("lumen://prayer-updated", (event) => {
+    onUpdate(event.payload);
+  });
+}
+
+export async function waqtGetState(): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_get_state");
+}
+
+export async function waqtAddTask(input: {
+  title: string;
+  estimateMin?: number;
+  blockId?: string | null;
+  kind?: string;
+  fixed?: boolean;
+  startAt?: string | null;
+  client?: string | null;
+}): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_add_task", {
+    title: input.title,
+    estimateMin: input.estimateMin ?? null,
+    blockId: input.blockId ?? null,
+    kind: input.kind ?? null,
+    fixed: input.fixed ?? null,
+    startAt: input.startAt ?? null,
+    client: input.client ?? null,
+  });
+}
+
+export async function waqtAssignTask(
+  taskId: number,
+  blockId: string | null,
+  sortOrder?: number | null,
+): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_assign_task", {
+    taskId,
+    blockId,
+    sortOrder: sortOrder ?? null,
+  });
+}
+
+export async function waqtUpdateTaskMeta(input: {
+  taskId: number;
+  estimateMin?: number;
+  kind?: string;
+  blockId?: string | null;
+  client?: string | null;
+}): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_update_task_meta", {
+    taskId: input.taskId,
+    estimateMin: input.estimateMin ?? null,
+    kind: input.kind ?? null,
+    blockId: input.blockId === undefined ? null : input.blockId,
+    client: input.client === undefined ? null : input.client,
+  });
+}
+
+export async function waqtMoveOverflowToNext(
+  fromBlockId: string,
+): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_move_overflow_to_next", { fromBlockId });
+}
+
+export async function waqtRenameBlock(
+  blockId: string,
+  name: string,
+): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_rename_block", { blockId, name });
+}
+
+export async function waqtRolloverYesterday(accept: boolean): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_rollover_yesterday", { accept });
+}
+
+export async function waqtStartFocusFlow(
+  taskId?: number | null,
+): Promise<WaqtFocusFlowResult | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtFocusFlowResult>("waqt_start_focus_flow", { taskId: taskId ?? null });
+}
+
+export async function waqtDismissHint(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("waqt_dismiss_hint");
+}
+
+export async function waqtLogActivity(
+  kind: string,
+  refId?: string | null,
+  note?: string | null,
+): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_log_activity", {
+    kind,
+    refId: refId ?? null,
+    note: note ?? null,
+  });
+}
+
+export async function subscribeWaqtUpdated(
+  onUpdate: (state: WaqtTimelineState) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+  return listen<WaqtTimelineState>("lumen://waqt-updated", (event) => {
     onUpdate(event.payload);
   });
 }

@@ -339,7 +339,8 @@ impl PomodoroController {
     }
 }
 
-const BUILTIN_PAGE_ORDER: [&str; 7] = [
+const BUILTIN_PAGE_ORDER: [&str; 8] = [
+    "waqt",
     "control",
     "calendar",
     "reminders",
@@ -405,6 +406,12 @@ fn default_action_glow_mode() -> String {
 }
 fn default_dev_pulse_ports() -> Vec<u16> {
     vec![3000, 5173, 1420]
+}
+fn default_waqt_bedtime() -> String {
+    "23:30".into()
+}
+fn default_waqt_prayer_pause_mode() -> String {
+    "ask".into()
 }
 
 /// Versioned user preferences persisted in `%APPDATA%/Lumen/settings.json` (`NFR-REL-2`).
@@ -494,6 +501,18 @@ pub struct LumenSettings {
     pub notification_duration_seconds: u32,
     #[serde(default = "default_action_glow_mode")]
     pub action_glow_mode: String,
+    #[serde(default = "default_waqt_bedtime")]
+    pub waqt_bedtime_hhmm: String,
+    #[serde(default = "default_waqt_prayer_pause_mode")]
+    pub waqt_prayer_pause_mode: String,
+    #[serde(default = "default_true")]
+    pub waqt_rollover_at_fajr: bool,
+    #[serde(default)]
+    pub waqt_ramadan_taraweeh: bool,
+    #[serde(default)]
+    pub waqt_hint_dismissed: bool,
+    #[serde(default)]
+    pub waqt_block_names: std::collections::HashMap<String, String>,
 }
 
 impl Default for LumenSettings {
@@ -544,6 +563,12 @@ impl Default for LumenSettings {
             now_playing_banner_seconds: default_now_playing_banner_seconds(),
             notification_duration_seconds: default_notification_duration_seconds(),
             action_glow_mode: default_action_glow_mode(),
+            waqt_bedtime_hhmm: default_waqt_bedtime(),
+            waqt_prayer_pause_mode: default_waqt_prayer_pause_mode(),
+            waqt_rollover_at_fajr: true,
+            waqt_ramadan_taraweeh: false,
+            waqt_hint_dismissed: false,
+            waqt_block_names: std::collections::HashMap::new(),
         }
     }
 }
@@ -574,6 +599,15 @@ impl LumenSettings {
         if !matches!(self.action_glow_mode.as_str(), "action" | "always" | "off") {
             self.action_glow_mode = default_action_glow_mode();
         }
+        if !matches!(
+            self.waqt_prayer_pause_mode.as_str(),
+            "ask" | "auto_pause" | "ignore"
+        ) {
+            self.waqt_prayer_pause_mode = default_waqt_prayer_pause_mode();
+        }
+        if self.waqt_bedtime_hhmm.trim().is_empty() || !self.waqt_bedtime_hhmm.contains(':') {
+            self.waqt_bedtime_hhmm = default_waqt_bedtime();
+        }
         self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
         self.reminder_snooze_minutes = self.reminder_snooze_minutes.clamp(1, 30);
         self.reminder_default_lead_minutes = self.reminder_default_lead_minutes.clamp(0, 120);
@@ -600,7 +634,11 @@ impl LumenSettings {
         }
         for builtin in BUILTIN_PAGE_ORDER {
             if !deduped.iter().any(|p| p == builtin) {
-                deduped.push(builtin.to_string());
+                if builtin == "waqt" {
+                    deduped.insert(0, builtin.to_string());
+                } else {
+                    deduped.push(builtin.to_string());
+                }
             }
         }
         self.page_order = deduped;
@@ -714,7 +752,8 @@ mod tests {
         assert_eq!(migrated.water_goal_ml, 10_000);
         assert_eq!(migrated.position_offset_x, -400);
         assert_eq!(migrated.scale, "auto");
-        assert_eq!(migrated.page_order.len(), 7);
+        assert_eq!(migrated.page_order.len(), 8);
+        assert_eq!(migrated.page_order[0], "waqt");
         assert_eq!(migrated.reminder_snooze_minutes, 3);
         assert_eq!(migrated.reminder_default_lead_minutes, 10);
 

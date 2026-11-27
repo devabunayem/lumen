@@ -23,6 +23,7 @@ use lumen_prayer::{
     BANGLADESH_CITIES, CalculationMethod, Madhab, PrayerCityPreset, PrayerConfig, PrayerSchedule,
     compute_prayer_schedule, resolve_city_name_for_coords,
 };
+use lumen_storage::waqt::{WaqtAnchor, WaqtComputeInput, WaqtTimelineState, compute_waqt_timeline};
 use lumen_storage::{
     CalendarEvent, ReminderItem, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState,
     WaterSummary,
@@ -107,6 +108,7 @@ struct AppState {
     home_visible: Arc<AtomicBool>,
     clipboard_secret: Arc<Mutex<Option<(String, Instant)>>>,
     is_fullscreen: Arc<AtomicBool>,
+    waqt_focus_task_id: Arc<Mutex<Option<i64>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -464,7 +466,17 @@ fn water_log(
     reset_hour: u32,
     state: State<'_, AppState>,
 ) -> Result<WaterSummary, String> {
-    state.storage.log_water(ml, Utc::now(), goal_ml, reset_hour)
+    let summary = state
+        .storage
+        .log_water(ml, Utc::now(), goal_ml, reset_hour)?;
+    let _ = state.storage.log_activity(
+        "water",
+        &Utc::now().to_rfc3339(),
+        Some(&Utc::now().to_rfc3339()),
+        None,
+        Some(&format!("+{ml} ml")),
+    );
+    Ok(summary)
 }
 
 #[tauri::command]
@@ -526,7 +538,23 @@ fn pomodoro_toggle(state: State<'_, AppState>) -> Result<PomodoroSnapshot, Strin
         .lock()
         .map_err(|_| "pomodoro lock poisoned".to_string())?;
     guard.toggle_start_pause();
-    Ok(guard.snapshot())
+    let snap = guard.snapshot();
+    drop(guard);
+    let now = Utc::now().to_rfc3339();
+    if snap.running && snap.phase == PomodoroPhase::Focus {
+        let task_ref = state
+            .waqt_focus_task_id
+            .lock()
+            .ok()
+            .and_then(|g| *g)
+            .map(|id| id.to_string());
+        let _ = state
+            .storage
+            .log_activity("focus", &now, None, task_ref.as_deref(), None);
+    } else {
+        let _ = state.storage.finish_open_focus_activity(&now);
+    }
+    Ok(snap)
 }
 
 #[tauri::command]
@@ -1156,7 +1184,317 @@ fn ledger_toggle(
     client_name: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TimeLedgerState, String> {
-    state.storage.toggle_ledger(client_name.as_deref())
+    let next = state.storage.toggle_ledger(client_name.as_deref())?;
+    if next.running {
+        let _ = state.storage.log_activity(
+            "ledger",
+            &Utc::now().to_rfc3339(),
+            None,
+            None,
+            Some(&next.client_name),
+        );
+    }
+    Ok(next)
+}
+
+fn build_waqt_snapshot(state: &AppState) -> Result<WaqtTimelineState, String> {
+    let cfg = state
+        .prayer_config
+        .lock()
+        .map_err(|_| "prayer config mutex poisoned".to_string())?
+        .clone();
+    let now_utc = Utc::now();
+    let sched = compute_prayer_schedule(now_utc, &cfg);
+    let anchors: Vec<WaqtAnchor> = sched
+        .slots
+        .iter()
+        .map(|s| WaqtAnchor {
+            id: s.id.clone(),
+            label: s.name_en.clone(),
+            time_12h: s.time_12h.clone(),
+            minute_of_day: s.minute_of_day,
+            passed: s.passed,
+            is_next: s.name_en == sched.next_name_en,
+        })
+        .collect();
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "settings mutex poisoned".to_string())?
+        .clone();
+    let tasks = state.storage.list_tasks()?;
+    let calendar_events = state.storage.list_calendar_events()?;
+    let day_start = StorageRepo::day_window_start_utc(now_utc, 0).to_rfc3339();
+    let activity_log = state.storage.list_activity_since(&day_start)?;
+    let water = state
+        .storage
+        .water_summary(now_utc, settings.water_goal_ml, 4)?;
+    let daily_focus = state.storage.daily_focus_minutes(now_utc).unwrap_or(0) as i32;
+    let current_focus_task_id = state.waqt_focus_task_id.lock().ok().and_then(|g| *g);
+    let location_configured = settings.location_opt_in || !cfg.city_name.trim().is_empty();
+
+    Ok(compute_waqt_timeline(&WaqtComputeInput {
+        now_utc,
+        anchors: &anchors,
+        tasks: &tasks,
+        calendar_events: &calendar_events,
+        activity_log: &activity_log,
+        custom_block_names: &settings.waqt_block_names,
+        bedtime_hhmm: &settings.waqt_bedtime_hhmm,
+        ramadan_taraweeh: settings.waqt_ramadan_taraweeh,
+        is_friday: sched.is_friday,
+        is_ramadan: sched.is_ramadan,
+        sehri_min: sched.sehri_min,
+        iftar_min: sched.iftar_min,
+        location_configured,
+        pomodoro_focus_min: daily_focus,
+        water_today_ml: water.today_ml,
+        rollover_at_fajr: settings.waqt_rollover_at_fajr,
+        current_focus_task_id,
+    }))
+}
+
+fn emit_waqt_updated(app: &tauri::AppHandle, state: &AppState) {
+    if let Ok(snap) = build_waqt_snapshot(state)
+        && let Some(win) = app.get_webview_window("island")
+    {
+        let _ = win.emit("lumen://waqt-updated", snap);
+    }
+}
+
+#[tauri::command]
+fn waqt_get_state(state: State<'_, AppState>) -> Result<WaqtTimelineState, String> {
+    build_waqt_snapshot(&state)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+fn waqt_add_task(
+    title: String,
+    estimate_min: Option<i64>,
+    block_id: Option<String>,
+    kind: Option<String>,
+    fixed: Option<bool>,
+    start_at: Option<String>,
+    client: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let _ = state.storage.add_planner_task(
+        &title,
+        None,
+        estimate_min.unwrap_or(25),
+        block_id,
+        fixed.unwrap_or(false),
+        start_at,
+        client,
+        kind.as_deref().unwrap_or("task"),
+    )?;
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_assign_task(
+    task_id: i64,
+    block_id: Option<String>,
+    sort_order: Option<i64>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let _ = state
+        .storage
+        .assign_task_block(task_id, block_id, sort_order)?;
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_update_task_meta(
+    task_id: i64,
+    estimate_min: Option<i64>,
+    kind: Option<String>,
+    block_id: Option<Option<String>>,
+    client: Option<Option<String>>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let _ = state
+        .storage
+        .update_task_planner(task_id, estimate_min, kind, block_id, client)?;
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_move_overflow_to_next(
+    from_block_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let current = build_waqt_snapshot(&state)?;
+    if let Some(pos) = current.blocks.iter().position(|b| b.id == from_block_id)
+        && let Some(next_block) = current.blocks.get(pos + 1)
+    {
+        let block = &current.blocks[pos];
+        let mut excess = (-block.free_capacity_min).max(0);
+        for item in block
+            .items
+            .iter()
+            .rev()
+            .filter(|i| !i.fixed && !i.done && i.id > 0)
+        {
+            if excess <= 0 {
+                break;
+            }
+            let _ = state
+                .storage
+                .assign_task_block(item.id, Some(next_block.id.clone()), None)?;
+            excess -= (item.estimate_min as i32) + 5;
+        }
+    }
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_rename_block(
+    block_id: String,
+    name: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let trimmed = name.trim();
+    if let Ok(mut guard) = state.settings.lock() {
+        if trimmed.is_empty() {
+            guard.waqt_block_names.remove(&block_id);
+        } else {
+            guard.waqt_block_names.insert(block_id, trimmed.to_string());
+        }
+        let _ = guard.save_to_path(&state.settings_path);
+        let _ = app.emit("lumen://settings-updated", guard.clone());
+    }
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_rollover_yesterday(
+    accept: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let _ = state.storage.rollover_yesterday_tasks(accept)?;
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WaqtFocusFlowResult {
+    waqt: WaqtTimelineState,
+    pomodoro: PomodoroSnapshot,
+    ledger: TimeLedgerState,
+}
+
+#[tauri::command]
+fn waqt_start_focus_flow(
+    task_id: Option<i64>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtFocusFlowResult, String> {
+    let tasks = state.storage.list_tasks()?;
+    let chosen = task_id
+        .and_then(|id| tasks.iter().find(|t| t.id == id))
+        .or_else(|| tasks.iter().find(|t| !t.done));
+
+    if let Ok(mut focus_id) = state.waqt_focus_task_id.lock() {
+        *focus_id = chosen.map(|t| t.id);
+    }
+
+    let mut pom = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?;
+    let mut pom_snap = pom.snapshot();
+    if !pom_snap.running {
+        pom.toggle_start_pause();
+        pom_snap = pom.snapshot();
+    }
+    drop(pom);
+
+    let ledger = {
+        let cur = state.storage.get_active_ledger()?;
+        if !cur.running {
+            let client = chosen
+                .and_then(|t| t.client.as_deref())
+                .or_else(|| chosen.map(|t| t.title.as_str()));
+            state.storage.toggle_ledger(client)?
+        } else {
+            cur
+        }
+    };
+
+    let now = Utc::now().to_rfc3339();
+    let ref_str = chosen.map(|t| t.id.to_string());
+    let note = chosen.map(|t| t.title.clone());
+    let _ = state
+        .storage
+        .log_activity("focus", &now, None, ref_str.as_deref(), note.as_deref());
+
+    let waqt = build_waqt_snapshot(&state)?;
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.emit("lumen://waqt-updated", &waqt);
+        let _ = win.emit("lumen://pomodoro-tick", &pom_snap);
+    }
+    Ok(WaqtFocusFlowResult {
+        waqt,
+        pomodoro: pom_snap,
+        ledger,
+    })
+}
+
+#[tauri::command]
+fn waqt_dismiss_hint(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LumenSettings, String> {
+    let updated = {
+        let mut guard = state
+            .settings
+            .lock()
+            .map_err(|_| "settings mutex poisoned".to_string())?;
+        guard.waqt_hint_dismissed = true;
+        guard.save_to_path(&state.settings_path)?;
+        guard.clone()
+    };
+    let _ = app.emit("lumen://settings-updated", updated.clone());
+    Ok(updated)
+}
+
+#[tauri::command]
+fn waqt_log_activity(
+    kind: String,
+    ref_id: Option<String>,
+    note: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let now = Utc::now().to_rfc3339();
+    let _ =
+        state
+            .storage
+            .log_activity(&kind, &now, Some(&now), ref_id.as_deref(), note.as_deref())?;
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
 }
 
 #[tauri::command]
@@ -1272,6 +1610,7 @@ pub fn run() {
             let clipboard_secret: Arc<Mutex<Option<(String, Instant)>>> =
                 Arc::new(Mutex::new(None));
             let is_fullscreen = Arc::new(AtomicBool::new(false));
+            let shared_waqt_focus_task_id = Arc::new(Mutex::new(None));
 
             let hotkey_app = app.handle().clone();
             let hotkeys = GlobalHotkeyManager::start(
@@ -1311,6 +1650,7 @@ pub fn run() {
                 home_visible: Arc::clone(&home_visible),
                 clipboard_secret: Arc::clone(&clipboard_secret),
                 is_fullscreen: Arc::clone(&is_fullscreen),
+                waqt_focus_task_id: Arc::clone(&shared_waqt_focus_task_id),
             });
 
             let Some(window) = app.get_webview_window("island") else {
@@ -1672,6 +2012,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let mut last_snapshot: Option<MediaStateSnapshot> = None;
                 let mut half_tick: u64 = 0;
+                let mut last_waqt_minute: i64 = -1;
                 let watcher = Arc::new(Mutex::new(SystemNotificationWatcher::new()));
 
                 loop {
@@ -1774,6 +2115,16 @@ pub fn run() {
                                     media_window.emit("lumen://reminders-updated", &updated_list);
                             }
                         }
+
+                        // Recompute Waqt blocks cleanly once a minute (and close completed focus sessions)
+                        let now_minute_epoch = Utc::now().timestamp() / 60;
+                        if now_minute_epoch != last_waqt_minute {
+                            last_waqt_minute = now_minute_epoch;
+                            let app_handle = media_window.app_handle();
+                            if let Some(st) = app_handle.try_state::<AppState>() {
+                                emit_waqt_updated(app_handle, &st);
+                            }
+                        }
                     }
 
                     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1849,7 +2200,17 @@ pub fn run() {
             clipboard_copy_latest,
             home_set_visible,
             system_battery_status,
-            monitor_auto_scale_factor
+            monitor_auto_scale_factor,
+            waqt_get_state,
+            waqt_add_task,
+            waqt_assign_task,
+            waqt_update_task_meta,
+            waqt_move_overflow_to_next,
+            waqt_rename_block,
+            waqt_rollover_yesterday,
+            waqt_start_focus_flow,
+            waqt_dismiss_hint,
+            waqt_log_activity
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

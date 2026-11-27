@@ -1,6 +1,7 @@
 import type { LoadedPlugin } from "../lib/ipc";
 
 export const BUILTIN_WIDGET_IDS = [
+  "waqt",
   "control",
   "calendar",
   "reminders",

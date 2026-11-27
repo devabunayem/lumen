@@ -10,6 +10,8 @@
   "pages": {
     "homeLead": "দিন",
     "homeAccent": "হোম",
+    "waqtLead": "ওয়াক্ত",
+    "waqtAccent": "টাইমলাইন",
     "controlLead": "কন্ট্রোল",
     "controlAccent": "প্যানেল",
     "calendarLead": "আজকের",

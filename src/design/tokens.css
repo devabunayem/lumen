@@ -75,6 +75,17 @@
   --aurora-focus-a: rgba(114, 112, 255, 0.8);
   --aurora-focus-b: rgba(24, 148, 255, 0.74);
 
+  --waqt-task: #5e5ce6;
+  --waqt-meeting: #30d158;
+  --waqt-habit: #ff9f0a;
+  --waqt-deadline: #ff453a;
+  --waqt-amber-border: rgba(255, 176, 32, 0.75);
+  --waqt-amber-glow: rgba(255, 176, 32, 0.2);
+  --waqt-glow-indigo: rgba(94, 92, 230, 0.48);
+  --waqt-glow-green: rgba(48, 209, 88, 0.24);
+  --waqt-glow-amber: rgba(255, 176, 32, 0.2);
+  --waqt-card-radius: 16px;
+
   --island-padding: 14px;
   --island-gap: 6px;
   --card-radius: 18px;

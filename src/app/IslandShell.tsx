@@ -79,6 +79,7 @@ import {
   subscribeRemindersUpdated,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
+  subscribeWaqtUpdated,
   syncPillBounds,
   systemBatteryStatus,
   systemGetMicMuted,
@@ -99,6 +100,17 @@ import {
   tasksList,
   tasksToggle,
   type TimeLedgerState,
+  waqtAddTask,
+  waqtAssignTask,
+  waqtDismissHint,
+  waqtGetState,
+  waqtLogActivity,
+  waqtMoveOverflowToNext,
+  waqtRenameBlock,
+  waqtRolloverYesterday,
+  waqtStartFocusFlow,
+  waqtUpdateTaskMeta,
+  type WaqtTimelineState,
   waterGetSummary,
   waterLog,
   type WaterSummary,
@@ -113,7 +125,8 @@ import {
   snoozeLocalReminder,
   stopLocalReminder,
 } from "../lib/remindersLocal";
-import { DEFAULT_SETTINGS, type ActionGlowMode } from "../settings";
+import { DEFAULT_SETTINGS, type ActionGlowMode, type WaqtPrayerPauseMode } from "../settings";
+import { WaqtTimeline } from "../waqt/WaqtTimeline";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
 import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
@@ -170,6 +183,11 @@ export interface IslandShellProps {
   hiddenPages?: string[];
   initialWaterGoalMl?: number;
   mediaExclusions?: string[];
+  waqtBedtimeHHMM?: string;
+  waqtPrayerPauseMode?: WaqtPrayerPauseMode;
+  waqtRamadanTaraweeh?: boolean;
+  waqtHintDismissed?: boolean;
+  waqtBlockNames?: Record<string, string>;
   onShapeChange?: (next: ShapeStyle) => void;
   onOpenSettings?: () => void;
 }
@@ -244,6 +262,11 @@ export function IslandShell({
   hiddenPages = DEFAULT_SETTINGS.hiddenPages,
   initialWaterGoalMl = 1500,
   mediaExclusions = [],
+  waqtBedtimeHHMM = DEFAULT_SETTINGS.waqtBedtimeHHMM,
+  waqtPrayerPauseMode = DEFAULT_SETTINGS.waqtPrayerPauseMode,
+  waqtRamadanTaraweeh = DEFAULT_SETTINGS.waqtRamadanTaraweeh,
+  waqtHintDismissed = DEFAULT_SETTINGS.waqtHintDismissed,
+  waqtBlockNames = DEFAULT_SETTINGS.waqtBlockNames,
   onShapeChange,
   onOpenSettings,
 }: IslandShellProps) {
@@ -275,6 +298,8 @@ export function IslandShell({
     remindersRef.current = reminders;
   }, [reminders]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [waqtState, setWaqtState] = useState<WaqtTimelineState | null>(null);
+  const [localWaqtNames, setLocalWaqtNames] = useState<Record<string, string>>({});
   const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
   const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
   const [waterSummary, setWaterSummary] = useState<WaterSummary | null>(null);
@@ -482,6 +507,15 @@ export function IslandShell({
   const pages = useMemo<IslandPageMeta[]>(() => {
     const catalog = new Map<string, IslandPageMeta>([
       [
+        "waqt",
+        {
+          id: "waqt",
+          titleLead: msg.pages.waqtLead,
+          titleAccent: msg.pages.waqtAccent,
+          accentVar: "var(--arc-progress)",
+        },
+      ],
+      [
         "control",
         {
           id: "control",
@@ -603,6 +637,7 @@ export function IslandShell({
     void pluginsList().then(setPlugins);
     void tasbihGet().then((ts) => ts && setTasbih(ts));
     void ledgerGet().then((l) => l && setLedger(l));
+    void waqtGetState().then((w) => w && setWaqtState(w));
     void clipboardGetLatest().then((c) => c && setClipboard(c));
     void systemBatteryStatus().then((b) => b && setBatteryState(b));
     void systemQuickTogglesState().then((qt) => {
@@ -662,6 +697,7 @@ export function IslandShell({
     let unlistenDevPulse: (() => void) | undefined;
     let unlistenClip: (() => void) | undefined;
     let unlistenPrayer: (() => void) | undefined;
+    let unlistenWaqt: (() => void) | undefined;
     let unlistenReminderAlert: (() => void) | undefined;
     let unlistenRemindersList: (() => void) | undefined;
 
@@ -836,6 +872,9 @@ export function IslandShell({
     void subscribePrayerUpdated((sched) => setPrayerSchedule(sched)).then((fn) => {
       unlistenPrayer = fn;
     });
+    void subscribeWaqtUpdated((nextWaqt) => setWaqtState(nextWaqt)).then((fn) => {
+      unlistenWaqt = fn;
+    });
 
     return () => {
       unlistenFs?.();
@@ -849,6 +888,7 @@ export function IslandShell({
       unlistenDevPulse?.();
       unlistenClip?.();
       unlistenPrayer?.();
+      unlistenWaqt?.();
       unlistenReminderAlert?.();
       unlistenRemindersList?.();
     };
@@ -874,6 +914,8 @@ export function IslandShell({
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
+  const isWaqtPage = activePage.id === "waqt";
+  const isHomeSizedPage = isHomePage || isWaqtPage;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -893,7 +935,10 @@ export function IslandShell({
         dispatch({ type: "ESCAPE" });
       } else if (state === "expanded" && event.key === "ArrowRight") {
         const ae = document.activeElement as HTMLElement | null;
-        if (ae && ae.closest('[data-testid="day-arc-section"]')) {
+        if (
+          ae &&
+          ae.closest('[data-testid="day-arc-section"], [data-testid="waqt-rail"], input, textarea')
+        ) {
           return;
         }
         setOpenedViaHomeCard(false);
@@ -901,7 +946,10 @@ export function IslandShell({
         setActivePageIndex((idx) => (idx + 1) % pages.length);
       } else if (state === "expanded" && event.key === "ArrowLeft") {
         const ae = document.activeElement as HTMLElement | null;
-        if (ae && ae.closest('[data-testid="day-arc-section"]')) {
+        if (
+          ae &&
+          ae.closest('[data-testid="day-arc-section"], [data-testid="waqt-rail"], input, textarea')
+        ) {
           return;
         }
         setOpenedViaHomeCard(false);
@@ -968,7 +1016,7 @@ export function IslandShell({
       case "live":
         return BASE_GEOMETRY.collapsed;
       case "expanded":
-        return isHomePage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
+        return isHomeSizedPage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
       case "hud":
         if (activeReminderAlert !== null) {
           return BASE_GEOMETRY.reminder;
@@ -986,7 +1034,7 @@ export function IslandShell({
   }, [
     effectiveState,
     isSlimQuiet,
-    isHomePage,
+    isHomeSizedPage,
     activeReminderAlert,
     activeNotification,
     notifyExpanded,
@@ -997,7 +1045,7 @@ export function IslandShell({
   const height = Math.round(dimensions.height * scaleFactor);
   const isFloatingPill = shapeStyle === "pill";
   const topOffset = isFloatingPill ? Math.round(BASE_GEOMETRY.pillFloatOffset * scaleFactor) : 0;
-  const homeVisibleNow = isExpanded && isHomePage && !isHidden;
+  const homeVisibleNow = isExpanded && isHomeSizedPage && !isHidden;
   const isBannerHud =
     effectiveState === "hud" &&
     (activeReminderAlert !== null || activeNotification !== null || activeNowPlaying !== null);
@@ -1012,12 +1060,12 @@ export function IslandShell({
       hideInFullscreen,
       cornerRadius: isFloatingPill
         ? isExpanded
-          ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
+          ? (isHomeSizedPage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
           : isBannerHud
             ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2)
         : isExpanded
-          ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
+          ? (isHomeSizedPage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
           : isBannerHud
             ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2),
@@ -1061,7 +1109,7 @@ export function IslandShell({
     scaleFactor,
     isFloatingPill,
     isExpanded,
-    isHomePage,
+    isHomeSizedPage,
     homeVisibleNow,
     activeReminderAlert,
     activeNotification,
@@ -1084,11 +1132,11 @@ export function IslandShell({
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
   const surfaceBorderRadius = isFloatingPill
-    ? `${Math.min(isExpanded ? (isHomePage ? BASE_GEOMETRY.homeBottomRadius : 28) : isBannerHud ? (isNowPlaying && !isNotify ? 22 : 24) : Math.round(height / 2), Math.round(height / 2))}px`
+    ? `${Math.min(isExpanded ? (isHomeSizedPage ? BASE_GEOMETRY.homeBottomRadius : 28) : isBannerHud ? (isNowPlaying && !isNotify ? 22 : 24) : Math.round(height / 2), Math.round(height / 2))}px`
     : isSlimQuiet
       ? "0px 0px 8px 8px"
       : isExpanded
-        ? isHomePage
+        ? isHomeSizedPage
           ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
           : "0px 0px 24px 24px"
         : isBannerHud
@@ -1843,6 +1891,198 @@ export function IslandShell({
                     setClipboard(next);
                   }}
                   onToggleShape={() => onShapeChange?.(nextShape)}
+                />
+              </motion.div>
+            ) : isWaqtPage ? (
+              <motion.div
+                key="expanded-waqt"
+                initial={{ opacity: 0 }}
+                animate={{
+                  opacity: 1,
+                  transition: prefersReducedMotion
+                    ? getMotionTransition("reducedMotionFade", true)
+                    : {
+                        duration: 0.14,
+                        ease: "easeOut",
+                      },
+                }}
+                exit={{
+                  opacity: 0,
+                  transition: { duration: 0.08 },
+                }}
+                className="absolute top-0 origin-top"
+                style={{
+                  left: "50%",
+                  x: "-50%",
+                  scale: scaleFactor,
+                  width: `${BASE_GEOMETRY.homeExpanded.width}px`,
+                  height: `${BASE_GEOMETRY.homeExpanded.height}px`,
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <WaqtTimeline
+                  waqtState={waqtState}
+                  nowDate={nowDate}
+                  schedule={prayerSchedule}
+                  tasks={tasks}
+                  calendarEvents={calendarEvents}
+                  pomodoro={
+                    pomodoro ?? {
+                      phase: "focus",
+                      remaining_secs: 25 * 60,
+                      total_secs: 25 * 60,
+                      running: false,
+                      cycle_index: 0,
+                      cycles_before_long: 4,
+                      daily_focus_minutes: 0,
+                      chime_tick: 0,
+                    }
+                  }
+                  waterTodayMl={waterSummary?.today_ml ?? 0}
+                  language={language}
+                  banglaDigits={banglaDigits}
+                  reduceMotion={prefersReducedMotion}
+                  reduceTransparency={reduceTransparency}
+                  isVisible={homeVisibleNow}
+                  locationConfigured={locationOptIn || Boolean(prayerSchedule?.city_name)}
+                  bedtimeHHMM={waqtBedtimeHHMM}
+                  prayerPauseMode={waqtPrayerPauseMode}
+                  ramadanTaraweeh={waqtRamadanTaraweeh}
+                  hintDismissed={waqtHintDismissed}
+                  customBlockNames={{ ...waqtBlockNames, ...localWaqtNames }}
+                  pagesCount={pages.length}
+                  activePageIndex={safePageIndex}
+                  onSelectPage={(idx) => {
+                    setOpenedViaHomeCard(false);
+                    setSlideDirection(idx >= safePageIndex ? 1 : -1);
+                    setActivePageIndex(idx);
+                  }}
+                  onOpenSettings={() => {
+                    if (onOpenSettings) {
+                      onOpenSettings();
+                    } else {
+                      void openSettingsWindow();
+                    }
+                  }}
+                  onAssignTask={(taskId, blockId, sortOrder) => {
+                    setTasks((cur) =>
+                      cur.map((t) =>
+                        t.id === taskId
+                          ? { ...t, block_id: blockId, sort_order: sortOrder ?? t.sort_order }
+                          : t,
+                      ),
+                    );
+                    void waqtAssignTask(taskId, blockId, sortOrder).then(
+                      (w) => w && setWaqtState(w),
+                    );
+                    void tasksList().then(setTasks);
+                  }}
+                  onToggleTask={(taskId) => {
+                    const nowIso = new Date().toISOString();
+                    setTasks((cur) =>
+                      cur.map((t) =>
+                        t.id === taskId
+                          ? { ...t, done: !t.done, done_at: !t.done ? nowIso : null }
+                          : t,
+                      ),
+                    );
+                    void tasksToggle(taskId).then((next) => {
+                      setTasks(next);
+                      void waqtGetState().then((w) => w && setWaqtState(w));
+                    });
+                  }}
+                  onAddTask={(title, blockId, estimateMin = 25) => {
+                    const tempId = Date.now();
+                    setTasks((cur) => [
+                      {
+                        id: tempId,
+                        title,
+                        done: false,
+                        due_at: null,
+                        created_at: new Date().toISOString(),
+                        estimate_min: estimateMin,
+                        block_id: blockId,
+                        kind: "task",
+                      },
+                      ...cur,
+                    ]);
+                    void waqtAddTask({ title, blockId, estimateMin }).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
+                  }}
+                  onDeleteTask={(taskId) => {
+                    setTasks((cur) => cur.filter((t) => t.id !== taskId));
+                    void tasksDelete(taskId).then((next) => {
+                      setTasks(next);
+                      void waqtGetState().then((w) => w && setWaqtState(w));
+                    });
+                  }}
+                  onRestoreTask={({ title, blockId, estimateMin }) => {
+                    void waqtAddTask({ title, blockId, estimateMin }).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
+                  }}
+                  onChangeEstimate={(taskId, estimateMin) => {
+                    setTasks((cur) =>
+                      cur.map((t) => (t.id === taskId ? { ...t, estimate_min: estimateMin } : t)),
+                    );
+                    void waqtUpdateTaskMeta({ taskId, estimateMin }).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
+                  }}
+                  onMoveOverflow={(fromBlockId) => {
+                    void waqtMoveOverflowToNext(fromBlockId).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
+                  }}
+                  onRenameBlock={(blockId, name) => {
+                    setLocalWaqtNames((cur) => ({ ...cur, [blockId]: name }));
+                    void waqtRenameBlock(blockId, name).then((w) => w && setWaqtState(w));
+                  }}
+                  onRolloverYesterday={(accept) => {
+                    void waqtRolloverYesterday(accept).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
+                  }}
+                  onStartFocusFlow={(taskId) => {
+                    setFocusOn(true);
+                    triggerLumiReaction("sleep", 2200);
+                    void waqtStartFocusFlow(taskId).then((res) => {
+                      if (res) {
+                        setWaqtState(res.waqt);
+                        setPomodoro(res.pomodoro);
+                        setLedger(res.ledger);
+                      } else {
+                        void pomodoroToggle().then((p) => p && setPomodoro(p));
+                      }
+                    });
+                  }}
+                  onToggleFocusPause={() => {
+                    setFocusOn((f) => !f);
+                    void pomodoroToggle().then((p) => {
+                      if (p) setPomodoro(p);
+                      void waqtGetState().then((w) => w && setWaqtState(w));
+                    });
+                  }}
+                  onResetFocus={() => {
+                    setFocusOn(false);
+                    triggerLumiReaction("celebrate", 2000);
+                    void pomodoroReset().then((p) => {
+                      if (p) setPomodoro(p);
+                      void waqtGetState().then((w) => w && setWaqtState(w));
+                    });
+                  }}
+                  onDismissHint={() => {
+                    void waqtDismissHint();
+                  }}
+                  onLogActivity={(kind, refId, note) => {
+                    void waqtLogActivity(kind, refId, note).then((w) => w && setWaqtState(w));
+                  }}
                 />
               </motion.div>
             ) : (

@@ -59,7 +59,15 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 
-    // Wheel from Home -> Control (560x172) where Pin button lives
+    // Wheel #1 from Home -> Waqt Timeline (640x312), Wheel #2 -> Control (560x172) where Pin button lives
+    fireEvent.wheel(pill, { deltaY: 120 });
+    expect(screen.getByTestId("waqt-timeline-page")).toBeInTheDocument();
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
     fireEvent.wheel(pill, { deltaY: 120 });
     expect(pill).toHaveAttribute("data-target-width", "560");
     expect(pill).toHaveAttribute("data-target-height", "172");
@@ -104,13 +112,19 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(pill).toHaveAttribute("data-state", "expanded");
   });
 
-  it("switches expanded pages on mouse wheel scroll from Home -> Control -> Today Agenda", () => {
+  it("switches expanded pages on mouse wheel scroll from Home -> Waqt Timeline -> Control -> Today Agenda", () => {
     render(<IslandShell hoverToOpen />);
     const pill = screen.getByTestId("lumen-island-pill");
 
     fireEvent.click(pill);
     expect(screen.getByTestId("home-page")).toBeInTheDocument();
 
+    fireEvent.wheel(pill, { deltaY: 120 });
+    expect(screen.getByTestId("waqt-timeline-page")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
     fireEvent.wheel(pill, { deltaY: 120 });
     expect(screen.getByText("Control")).toBeInTheDocument();
 

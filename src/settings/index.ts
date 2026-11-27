@@ -7,6 +7,7 @@ import {
 
 export type MonitorMode = "primary" | "active" | "index";
 export type ActionGlowMode = "action" | "always" | "off";
+export type WaqtPrayerPauseMode = "ask" | "auto_pause" | "ignore";
 
 export interface LumenSettings {
   version: number;
@@ -54,6 +55,12 @@ export interface LumenSettings {
   nowPlayingBannerSeconds: number;
   notificationDurationSeconds: number;
   actionGlowMode: ActionGlowMode;
+  waqtBedtimeHHMM: string;
+  waqtPrayerPauseMode: WaqtPrayerPauseMode;
+  waqtRolloverAtFajr: boolean;
+  waqtRamadanTaraweeh: boolean;
+  waqtHintDismissed: boolean;
+  waqtBlockNames: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -74,7 +81,7 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   startWithWindows: false,
   hotkeyHide: "Ctrl+Alt+L",
   hotkeyExpand: "Ctrl+Alt+Space",
-  pageOrder: ["control", "calendar", "reminders", "todo", "water", "pomodoro", "shelf"],
+  pageOrder: ["waqt", "control", "calendar", "reminders", "todo", "water", "pomodoro", "shelf"],
   hiddenPages: [],
   waterGoalMl: 1500,
   mediaExclusions: [],
@@ -102,6 +109,12 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   nowPlayingBannerSeconds: 4,
   notificationDurationSeconds: 8,
   actionGlowMode: "action",
+  waqtBedtimeHHMM: "23:30",
+  waqtPrayerPauseMode: "ask",
+  waqtRolloverAtFajr: true,
+  waqtRamadanTaraweeh: false,
+  waqtHintDismissed: false,
+  waqtBlockNames: {},
 };
 
 export function resolveSettingsScaleFactor(

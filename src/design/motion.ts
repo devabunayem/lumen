@@ -102,6 +102,15 @@ export const MOTION_PRESETS = {
     duration: 0.28,
     ease: [0.22, 1, 0.36, 1],
   },
+  waqtRailDraw: {
+    duration: 0.6,
+    ease: [0.22, 1, 0.36, 1],
+  },
+  waqtBlurEnter: {
+    duration: 0.2,
+    delay: 0.06,
+    ease: [0.22, 1, 0.36, 1],
+  },
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {

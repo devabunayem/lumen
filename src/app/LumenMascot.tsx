@@ -231,3 +231,126 @@ export function LumenMascot({
     </motion.div>
   );
 }
+
+export type WaqtBodyDoubleState = "idle_working" | "focus" | "looks_up" | "break" | "celebrate";
+
+export interface WaqtBodyDoubleLumiProps {
+  state: WaqtBodyDoubleState;
+  isVisible: boolean;
+  reduceMotion?: boolean;
+}
+
+/**
+ * Original circular Lumi body-double companion for Waqt Focus Flow:
+ * animates gently only when visible and reduceMotion is disabled.
+ */
+export function WaqtBodyDoubleLumi({
+  state,
+  isVisible,
+  reduceMotion = false,
+}: WaqtBodyDoubleLumiProps) {
+  const prefersReduced = (useReducedMotion() ?? false) || reduceMotion;
+  const shouldAnimate = isVisible && !prefersReduced;
+
+  return (
+    <motion.div
+      data-testid="waqt-lumi-body-double"
+      data-body-state={state}
+      className="relative flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full"
+      style={{
+        background: `radial-gradient(circle, ${COLOR_TOKENS.waqtGlowIndigo} 0%, rgba(94, 92, 230, 0.14) 70%, transparent 100%)`,
+      }}
+      animate={
+        shouldAnimate
+          ? state === "celebrate"
+            ? { y: [0, -3, 0], scale: [1, 1.07, 1] }
+            : state === "focus"
+              ? { scale: [1, 1.03, 1] }
+              : state === "break"
+                ? { rotate: [-3, 3, -3] }
+                : { y: [0, -1, 0] }
+          : undefined
+      }
+      transition={
+        shouldAnimate
+          ? state === "celebrate"
+            ? { ...MOTION_PRESETS.bouncy, repeat: 2 }
+            : { duration: 2.6, repeat: Infinity, ease: "easeInOut" }
+          : undefined
+      }
+    >
+      <svg width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        {/* Headphones band */}
+        <path
+          d="M9 19a11 11 0 0 1 22 0"
+          stroke={COLOR_TOKENS.waqtTask}
+          strokeWidth="2.8"
+          strokeLinecap="round"
+        />
+        <rect x="6.5" y="17.5" width="3.5" height="7" rx="1.7" fill={COLOR_TOKENS.waqtTask} />
+        <rect x="30" y="17.5" width="3.5" height="7" rx="1.7" fill={COLOR_TOKENS.waqtTask} />
+
+        {/* Luminous warm circular face */}
+        <circle cx="20" cy="21" r="10.2" fill={COLOR_TOKENS.sunDisc} />
+
+        {state === "focus" ? (
+          <>
+            <path
+              d="M14.8 19.8c.9 1.2 2.3 1.2 3.2 0"
+              stroke={COLOR_TOKENS.surfaceRaised}
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+            <path
+              d="M22 19.8c.9 1.2 2.3 1.2 3.2 0"
+              stroke={COLOR_TOKENS.surfaceRaised}
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </>
+        ) : state === "looks_up" ? (
+          <>
+            <circle cx="16.4" cy="18.2" r="1.4" fill={COLOR_TOKENS.surfaceRaised} />
+            <circle cx="23.6" cy="18.2" r="1.4" fill={COLOR_TOKENS.surfaceRaised} />
+          </>
+        ) : state === "celebrate" || state === "break" ? (
+          <>
+            <path
+              d="M14.8 20.4c.9-1.4 2.3-1.4 3.2 0"
+              stroke={COLOR_TOKENS.surfaceRaised}
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+            <path
+              d="M22 20.4c.9-1.4 2.3-1.4 3.2 0"
+              stroke={COLOR_TOKENS.surfaceRaised}
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </>
+        ) : (
+          <motion.g
+            style={{ transformOrigin: "20px 19.5px" }}
+            animate={shouldAnimate ? { scaleY: [1, 1, 0.15, 1] } : undefined}
+            transition={{ duration: 3.4, repeat: Infinity, times: [0, 0.85, 0.92, 1] }}
+          >
+            <circle cx="16.4" cy="19.5" r="1.35" fill={COLOR_TOKENS.surfaceRaised} />
+            <circle cx="23.6" cy="19.5" r="1.35" fill={COLOR_TOKENS.surfaceRaised} />
+          </motion.g>
+        )}
+
+        {/* Calm mouth */}
+        <path
+          d={
+            state === "celebrate" || state === "break"
+              ? "M17.2 23.6c1.5 1.5 4.1 1.5 5.6 0"
+              : "M17.8 23.8c1.2.9 3.2.9 4.4 0"
+          }
+          stroke={COLOR_TOKENS.surfaceRaised}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      </svg>
+    </motion.div>
+  );
+}

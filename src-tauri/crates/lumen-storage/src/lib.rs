@@ -5,6 +5,8 @@ use chrono::{DateTime, Duration, Local, NaiveTime, TimeZone, Utc};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+pub mod waqt;
+
 /// Core SQLite schema matching SRS Section 7.4.
 pub const INITIAL_SCHEMA_SQL: &str = r"
 CREATE TABLE IF NOT EXISTS tasks (
@@ -12,7 +14,26 @@ CREATE TABLE IF NOT EXISTS tasks (
     title TEXT NOT NULL,
     done INTEGER NOT NULL DEFAULT 0,
     due_at TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    estimate_min INTEGER NOT NULL DEFAULT 25,
+    block_id TEXT,
+    start_at TEXT,
+    fixed INTEGER NOT NULL DEFAULT 0,
+    done_at TEXT,
+    source TEXT NOT NULL DEFAULT 'local',
+    calendar_event_id INTEGER,
+    client TEXT,
+    kind TEXT NOT NULL DEFAULT 'task',
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_at TEXT NOT NULL,
+    end_at TEXT,
+    kind TEXT NOT NULL,
+    ref_id TEXT,
+    note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS water_log (
@@ -113,6 +134,46 @@ pub struct TaskItem {
     pub done: bool,
     pub due_at: Option<String>,
     pub created_at: String,
+    #[serde(default = "default_estimate_min")]
+    pub estimate_min: i64,
+    #[serde(default)]
+    pub block_id: Option<String>,
+    #[serde(default)]
+    pub start_at: Option<String>,
+    #[serde(default)]
+    pub fixed: bool,
+    #[serde(default)]
+    pub done_at: Option<String>,
+    #[serde(default = "default_source_local")]
+    pub source: String,
+    #[serde(default)]
+    pub calendar_event_id: Option<i64>,
+    #[serde(default)]
+    pub client: Option<String>,
+    #[serde(default = "default_task_kind")]
+    pub kind: String,
+    #[serde(default)]
+    pub sort_order: i64,
+}
+
+fn default_estimate_min() -> i64 {
+    25
+}
+fn default_source_local() -> String {
+    "local".into()
+}
+fn default_task_kind() -> String {
+    "task".into()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityLogItem {
+    pub id: i64,
+    pub start_at: String,
+    pub end_at: Option<String>,
+    pub kind: String,
+    pub ref_id: Option<String>,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +228,55 @@ pub struct StorageRepo {
     conn: Mutex<Connection>,
 }
 
+fn migrate_waqt_columns(conn: &Connection) -> Result<(), String> {
+    let existing_cols: std::collections::HashSet<String> = {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(tasks)")
+            .map_err(|e| format!("pragma tasks failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .map_err(|e| format!("pragma map failed: {e}"))?;
+        rows.filter_map(Result::ok).collect()
+    };
+    const ALTERS: [(&str, &str); 10] = [
+        (
+            "estimate_min",
+            "ALTER TABLE tasks ADD COLUMN estimate_min INTEGER NOT NULL DEFAULT 25",
+        ),
+        ("block_id", "ALTER TABLE tasks ADD COLUMN block_id TEXT"),
+        ("start_at", "ALTER TABLE tasks ADD COLUMN start_at TEXT"),
+        (
+            "fixed",
+            "ALTER TABLE tasks ADD COLUMN fixed INTEGER NOT NULL DEFAULT 0",
+        ),
+        ("done_at", "ALTER TABLE tasks ADD COLUMN done_at TEXT"),
+        (
+            "source",
+            "ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'local'",
+        ),
+        (
+            "calendar_event_id",
+            "ALTER TABLE tasks ADD COLUMN calendar_event_id INTEGER",
+        ),
+        ("client", "ALTER TABLE tasks ADD COLUMN client TEXT"),
+        (
+            "kind",
+            "ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task'",
+        ),
+        (
+            "sort_order",
+            "ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+        ),
+    ];
+    for (col, sql) in ALTERS {
+        if !existing_cols.contains(col) {
+            conn.execute(sql, [])
+                .map_err(|e| format!("migrate tasks.{col} failed: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 impl StorageRepo {
     pub fn open(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
@@ -176,6 +286,7 @@ impl StorageRepo {
         let conn = Connection::open(path).map_err(|e| format!("SQLite open failed: {e}"))?;
         conn.execute_batch(INITIAL_SCHEMA_SQL)
             .map_err(|e| format!("SQLite migration failed: {e}"))?;
+        migrate_waqt_columns(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -185,6 +296,7 @@ impl StorageRepo {
         let conn = Connection::open_in_memory().map_err(|e| format!("SQLite open failed: {e}"))?;
         conn.execute_batch(INITIAL_SCHEMA_SQL)
             .map_err(|e| format!("SQLite migration failed: {e}"))?;
+        migrate_waqt_columns(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -194,7 +306,9 @@ impl StorageRepo {
         let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, title, done, due_at, created_at FROM tasks ORDER BY done ASC, id DESC",
+                "SELECT id, title, done, due_at, created_at, estimate_min, block_id, start_at,
+                        fixed, done_at, source, calendar_event_id, client, kind, sort_order
+                 FROM tasks ORDER BY done ASC, sort_order ASC, id DESC",
             )
             .map_err(|e| format!("prepare tasks failed: {e}"))?;
         let rows = stmt
@@ -205,6 +319,16 @@ impl StorageRepo {
                     done: row.get::<_, i64>(2)? != 0,
                     due_at: row.get(3)?,
                     created_at: row.get(4)?,
+                    estimate_min: row.get(5)?,
+                    block_id: row.get(6)?,
+                    start_at: row.get(7)?,
+                    fixed: row.get::<_, i64>(8)? != 0,
+                    done_at: row.get(9)?,
+                    source: row.get(10)?,
+                    calendar_event_id: row.get(11)?,
+                    client: row.get(12)?,
+                    kind: row.get(13)?,
+                    sort_order: row.get(14)?,
                 })
             })
             .map_err(|e| format!("query tasks failed: {e}"))?;
@@ -216,16 +340,55 @@ impl StorageRepo {
     }
 
     pub fn add_task(&self, title: &str, due_at: Option<String>) -> Result<Vec<TaskItem>, String> {
+        self.add_planner_task(title, due_at, 25, None, false, None, None, "task")
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_planner_task(
+        &self,
+        title: &str,
+        due_at: Option<String>,
+        estimate_min: i64,
+        block_id: Option<String>,
+        fixed: bool,
+        start_at: Option<String>,
+        client: Option<String>,
+        kind: &str,
+    ) -> Result<Vec<TaskItem>, String> {
         let trimmed = title.trim();
         if trimmed.is_empty() {
             return Err("task title cannot be empty".into());
         }
         let now = Utc::now().to_rfc3339();
+        let est = estimate_min.clamp(5, 240);
+        let safe_kind = match kind {
+            "meeting" | "habit" | "deadline" => kind,
+            _ => "task",
+        };
         {
             let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            let next_order: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(1);
             conn.execute(
-                "INSERT INTO tasks (title, done, due_at, created_at) VALUES (?1, 0, ?2, ?3)",
-                params![trimmed, due_at, now],
+                "INSERT INTO tasks (title, done, due_at, created_at, estimate_min, block_id, start_at, fixed, source, client, kind, sort_order)
+                 VALUES (?1, 0, ?2, ?3, ?4, ?5, ?6, ?7, 'local', ?8, ?9, ?10)",
+                params![
+                    trimmed,
+                    due_at,
+                    now,
+                    est,
+                    block_id,
+                    start_at,
+                    i64::from(fixed),
+                    client,
+                    safe_kind,
+                    next_order
+                ],
             )
             .map_err(|e| format!("insert task failed: {e}"))?;
         }
@@ -233,15 +396,165 @@ impl StorageRepo {
     }
 
     pub fn toggle_task(&self, id: i64) -> Result<Vec<TaskItem>, String> {
+        let now = Utc::now().to_rfc3339();
         {
             let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
             conn.execute(
-                "UPDATE tasks SET done = CASE WHEN done = 0 THEN 1 ELSE 0 END WHERE id = ?1",
-                params![id],
+                "UPDATE tasks
+                 SET done = CASE WHEN done = 0 THEN 1 ELSE 0 END,
+                     done_at = CASE WHEN done = 0 THEN ?2 ELSE NULL END
+                 WHERE id = ?1",
+                params![id, now],
             )
             .map_err(|e| format!("toggle task failed: {e}"))?;
         }
         self.list_tasks()
+    }
+
+    pub fn assign_task_block(
+        &self,
+        id: i64,
+        block_id: Option<String>,
+        sort_order: Option<i64>,
+    ) -> Result<Vec<TaskItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            let order = match sort_order {
+                Some(o) => o,
+                None => conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(1),
+            };
+            conn.execute(
+                "UPDATE tasks SET block_id = ?1, sort_order = ?2 WHERE id = ?3",
+                params![block_id, order, id],
+            )
+            .map_err(|e| format!("assign task block failed: {e}"))?;
+        }
+        self.list_tasks()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_task_planner(
+        &self,
+        id: i64,
+        estimate_min: Option<i64>,
+        kind: Option<String>,
+        block_id: Option<Option<String>>,
+        client: Option<Option<String>>,
+    ) -> Result<Vec<TaskItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            if let Some(est) = estimate_min {
+                conn.execute(
+                    "UPDATE tasks SET estimate_min = ?1 WHERE id = ?2",
+                    params![est.clamp(5, 240), id],
+                )
+                .map_err(|e| format!("update task estimate failed: {e}"))?;
+            }
+            if let Some(ref k) = kind {
+                let safe = match k.as_str() {
+                    "meeting" | "habit" | "deadline" => k.as_str(),
+                    _ => "task",
+                };
+                conn.execute(
+                    "UPDATE tasks SET kind = ?1 WHERE id = ?2",
+                    params![safe, id],
+                )
+                .map_err(|e| format!("update task kind failed: {e}"))?;
+            }
+            if let Some(b) = block_id {
+                conn.execute(
+                    "UPDATE tasks SET block_id = ?1 WHERE id = ?2",
+                    params![b, id],
+                )
+                .map_err(|e| format!("update task block failed: {e}"))?;
+            }
+            if let Some(c) = client {
+                conn.execute("UPDATE tasks SET client = ?1 WHERE id = ?2", params![c, id])
+                    .map_err(|e| format!("update task client failed: {e}"))?;
+            }
+        }
+        self.list_tasks()
+    }
+
+    pub fn rollover_yesterday_tasks(&self, accept: bool) -> Result<Vec<TaskItem>, String> {
+        let now = Utc::now().to_rfc3339();
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            if accept {
+                conn.execute(
+                    "UPDATE tasks SET created_at = ?1 WHERE done = 0 AND block_id IS NOT NULL",
+                    params![now],
+                )
+                .map_err(|e| format!("rollover tasks failed: {e}"))?;
+            } else {
+                conn.execute(
+                    "UPDATE tasks SET block_id = NULL, created_at = ?1 WHERE done = 0 AND block_id IS NOT NULL",
+                    params![now],
+                )
+                .map_err(|e| format!("dismiss rollover failed: {e}"))?;
+            }
+        }
+        self.list_tasks()
+    }
+
+    pub fn log_activity(
+        &self,
+        kind: &str,
+        start_at: &str,
+        end_at: Option<&str>,
+        ref_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<i64, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO activity_log (start_at, end_at, kind, ref_id, note) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![start_at, end_at, kind, ref_id, note],
+        )
+        .map_err(|e| format!("insert activity_log failed: {e}"))?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn finish_open_focus_activity(&self, end_at: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "UPDATE activity_log SET end_at = ?1 WHERE kind = 'focus' AND end_at IS NULL",
+            params![end_at],
+        )
+        .map_err(|e| format!("finish focus log failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn list_activity_since(&self, since_rfc3339: &str) -> Result<Vec<ActivityLogItem>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, start_at, end_at, kind, ref_id, note
+                 FROM activity_log WHERE start_at >= ?1 ORDER BY id ASC",
+            )
+            .map_err(|e| format!("prepare activity_log failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![since_rfc3339], |row| {
+                Ok(ActivityLogItem {
+                    id: row.get(0)?,
+                    start_at: row.get(1)?,
+                    end_at: row.get(2)?,
+                    kind: row.get(3)?,
+                    ref_id: row.get(4)?,
+                    note: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("query activity_log failed: {e}"))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("activity row decode failed: {e}"))?);
+        }
+        Ok(out)
     }
 
     pub fn update_task(

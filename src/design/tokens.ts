@@ -68,6 +68,15 @@ export const COLOR_TOKENS = {
   auroraConfirmB: "var(--aurora-confirm-b)",
   auroraFocusA: "var(--aurora-focus-a)",
   auroraFocusB: "var(--aurora-focus-b)",
+  waqtTask: "var(--waqt-task)",
+  waqtMeeting: "var(--waqt-meeting)",
+  waqtHabit: "var(--waqt-habit)",
+  waqtDeadline: "var(--waqt-deadline)",
+  waqtAmberBorder: "var(--waqt-amber-border)",
+  waqtAmberGlow: "var(--waqt-amber-glow)",
+  waqtGlowIndigo: "var(--waqt-glow-indigo)",
+  waqtGlowGreen: "var(--waqt-glow-green)",
+  waqtGlowAmber: "var(--waqt-glow-amber)",
 } as const;
 
 export const BASE_GEOMETRY = {
@@ -89,6 +98,7 @@ export const BASE_GEOMETRY = {
   blockGap: 6,
   innerCardRadius: 18,
   homeCardRadius: 20,
+  waqtCardRadius: 16,
   chipRadius: 99,
   controlRadius: 14,
   capsuleButtonHeight: 28,

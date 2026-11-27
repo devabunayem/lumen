@@ -34,6 +34,11 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Waqt Timeline Planner Page (`640×312`, Page 2 right after Home):**
+  - Added derived Waqt Block scheduling across `Fajr → Dhuhr (Morning)`, `Dhuhr → Asr (Midday / Jumu'ah)`, `Asr → Maghrib (Afternoon)`, `Maghrib → Isha (Evening)`, and `Isha → Bedtime (Night)` (plus optional Ramadan Sehri/Iftar ticks & Taraweeh block) in `lumen-storage::waqt` and `src/waqt/WaqtTimeline.tsx`, matching the exact `640×312` Home island dimensions and design tokens.
+  - Extended SQLite `tasks` schema (additive migrations) and added `activity_log` table alongside 10 Rust IPC commands (`waqt_get_state`, `waqt_add_task`, `waqt_assign_task`, `waqt_update_task_meta`, `waqt_move_overflow_to_next`, `waqt_rename_block`, `waqt_rollover_yesterday`, `waqt_start_focus_flow`, `waqt_dismiss_hint`, `waqt_log_activity`) + configurable Settings (`waqtBedtimeHHMM`, `waqtPrayerPauseMode`, `waqtRolloverAtFajr`, `waqtRamadanTaraweeh`).
+  - Built interactive 5-segment rail with 5-minute snapped draggable Sun scrubber & pin lock, drag-and-drop block/unplanned scheduling, keyboard `M` Move menu, long-press estimate wheel (`5/10/15/25/45/60m`), swipe-left 5s undoable delete, `WaqtBodyDoubleLumi` body-double states (`idle_working` / `focus` / `looks_up` / `break` / `celebrate`) synced with Pomodoro & Time Ledger, and 5s `Replay day` sweep + offline **Day Wrapped** Canvas PNG export.
+
 - **Custom Shaded Golden Sun & Two-Star Crescent Moon Celestial Icons (`DayArc` & Weather) + Decluttered Arch Layout:**
   - Replaced the flat circle marker on `DayArc` and plain outline weather glyphs with custom token-driven vector art (`SunGlyph` 8-ray shaded golden sun shifting warmer at dawn/dusk with subtle ray spin, plus `MoonStarGlyph` luminous silver-lavender crescent moon with twinkling 5-point stars and dark cutout stroke).
   - Compacted the top-left next-prayer header into a clean 2-line block (removing the duplicate horizontal bar), centered `Tasbih`, `Qibla`, and Ramadan chips inside the open arch dome above the horizon, softened guide stroke contrast, and added a surface-matched backing disc behind the moving celestial glyph so the arc stroke terminates cleanly without text or chip overlap.
