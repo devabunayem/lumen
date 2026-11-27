@@ -33,26 +33,6 @@ pub enum IslandEvent {
     DragEnter,
 }
 
-impl IslandEvent {
-    /// Parses an IPC command string into an [`IslandEvent`].
-    #[must_use]
-    pub fn from_command(name: &str) -> Option<Self> {
-        match name {
-            "hover_expand" => Some(Self::HoverExpand),
-            "hover_collapse_slim" => Some(Self::HoverCollapseSlim),
-            "restore_normal" => Some(Self::RestoreNormal),
-            "click" => Some(Self::Click),
-            "escape" => Some(Self::Escape),
-            "hotkey_toggle_hide" => Some(Self::HotkeyToggleHide),
-            "hotkey_toggle_expand" => Some(Self::HotkeyToggleExpand),
-            "notification" => Some(Self::Notification),
-            "hud_dismiss" => Some(Self::HudDismiss),
-            "drag_enter" => Some(Self::DragEnter),
-            _ => None,
-        }
-    }
-}
-
 /// Serializable state snapshot emitted to the React frontend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IslandSnapshot {
@@ -474,8 +454,6 @@ pub struct LumenSettings {
     pub sound_interface: bool,
     #[serde(default = "default_true")]
     pub sound_reminders: bool,
-    #[serde(default)]
-    pub custom_adhan_path: Option<String>,
     #[serde(default = "default_true")]
     pub location_opt_in: bool,
     #[serde(default)]
@@ -546,7 +524,6 @@ impl Default for LumenSettings {
             sound_volume: default_sound_volume(),
             sound_interface: true,
             sound_reminders: true,
-            custom_adhan_path: None,
             location_opt_in: true,
             reduce_transparency: false,
             glow_enabled: true,

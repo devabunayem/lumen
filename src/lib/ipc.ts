@@ -75,11 +75,6 @@ export interface MediaStateSnapshot {
   muted: boolean;
 }
 
-export interface LyricLine {
-  time_ms: number;
-  text: string;
-}
-
 export interface TaskItem {
   id: number;
   title: string;
@@ -262,20 +257,6 @@ export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-export async function getIslandSnapshot(): Promise<IslandSnapshot | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<IslandSnapshot>("get_island_snapshot");
-}
-
-export async function dispatchIslandCommand(eventName: string): Promise<IslandSnapshot | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<IslandSnapshot>("dispatch_island_event", { eventName });
-}
-
 export async function syncPillBounds(bounds: PillBoundsPayload): Promise<void> {
   if (!isTauriRuntime()) {
     return;
@@ -346,13 +327,6 @@ export async function selectMediaSession(appId: string): Promise<MediaStateSnaps
   return invoke<MediaStateSnapshot>("media_select_session", { appId });
 }
 
-export async function mediaGetLyrics(artist: string, title: string): Promise<LyricLine[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<LyricLine[]>("media_get_lyrics", { artist, title });
-}
-
 export async function tasksList(): Promise<TaskItem[]> {
   if (!isTauriRuntime()) {
     return [];
@@ -379,13 +353,6 @@ export async function tasksDelete(id: number): Promise<TaskItem[]> {
     return [];
   }
   return invoke<TaskItem[]>("tasks_delete", { id });
-}
-
-export async function tasksExportJson(): Promise<string> {
-  if (!isTauriRuntime()) {
-    return "[]";
-  }
-  return invoke<string>("tasks_export_json");
 }
 
 export async function waterGetSummary(goalMl = 1500, resetHour = 4): Promise<WaterSummary | null> {
@@ -882,13 +849,6 @@ export async function ledgerToggle(clientName?: string): Promise<TimeLedgerState
     return null;
   }
   return invoke<TimeLedgerState>("ledger_toggle", { clientName: clientName ?? null });
-}
-
-export async function ledgerReset(clientName?: string): Promise<TimeLedgerState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<TimeLedgerState>("ledger_reset", { clientName: clientName ?? null });
 }
 
 export async function clipboardGetLatest(): Promise<ClipboardChipSnapshot> {

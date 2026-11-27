@@ -21,6 +21,9 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Changed
 
+- **Codebase Dead-Code Cleanup:**
+  - Removed unused [src/design/shapes.ts](file:///d:/Real%20client%20project/Personal%20Project/Lumen/src/design/shapes.ts) (and its isolated test), orphaned `src/widgets/types.ts`, 7 orphaned SVG icons from [icons.tsx](file:///d:/Real%20client%20project/Personal%20Project/Lumen/src/design/icons.tsx), unused CSS variables/class `.type-display` from [tokens.css](file:///d:/Real%20client%20project/Personal%20Project/Lumen/src/design/tokens.css), `registerWidget`, unused `customAdhanPath` settings field (`LumenSettings`), orphaned i18n keys (`en.json`/`bn.json`), and unused Tauri commands/helpers (`get_island_snapshot`, `dispatch_island_event`, `media_get_lyrics` / LRCLIB `Web_Http`, `tasks_update`, `tasks_export_json`, `tasks_import_json`, `notify_listener_status`, `ledger_reset`).
+
 - **Unified Home Prayer Dashboard (`DayArc`) & Removed Standalone Prayer Page:**
   - Integrated Qibla compass bearing toggle (`home-qibla-btn` using live `schedule.latitude`/`longitude`), green checkmark passed-prayer markers (`✓`), click-to-open 5-prayer quick strip (`home-prayer-popover`), prayer interval progress indicator + `Tomorrow` badge, and inline weather/arc City Switcher directly into Home's `DayArc`.
   - Removed the redundant standalone `prayer` island page (`PrayerWidget` + `BUILTIN_WIDGET_IDS` / `BUILTIN_PAGE_ORDER` / `SettingsWindow` / `ControlPanelWidget` / `IslandShell` `richExpanded` routing) while retaining Settings' offline calculation method and auto-location controls.

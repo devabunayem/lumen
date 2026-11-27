@@ -49,59 +49,6 @@ impl Default for MediaStateSnapshot {
     }
 }
 
-/// Single timestamped lyric line parsed from LRC (`FR-MUS-4`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LyricLine {
-    pub time_ms: u64,
-    pub text: String,
-}
-
-/// Parses `[mm:ss.xx]` or `[mm:ss.xxx]` synced LRC lines in chronological order.
-#[must_use]
-pub fn parse_lrc_lines(lrc: &str) -> Vec<LyricLine> {
-    let mut lines = Vec::new();
-    for raw in lrc.lines() {
-        let trimmed = raw.trim();
-        let Some(rest) = trimmed.strip_prefix('[') else {
-            continue;
-        };
-        let Some((tag, text)) = rest.split_once(']') else {
-            continue;
-        };
-        let Some((mm_str, ss_str)) = tag.split_once(':') else {
-            continue;
-        };
-        let Ok(mins) = mm_str.parse::<u64>() else {
-            continue;
-        };
-        let (sec_str, frac_str) = ss_str.split_once('.').unwrap_or((ss_str, "0"));
-        let Ok(secs) = sec_str.parse::<u64>() else {
-            continue;
-        };
-        let frac_ms = match frac_str.len() {
-            0 => 0,
-            1 => frac_str.parse::<u64>().unwrap_or(0) * 100,
-            2 => frac_str.parse::<u64>().unwrap_or(0) * 10,
-            _ => frac_str[..3].parse::<u64>().unwrap_or(0),
-        };
-        let line_text = text.trim();
-        if !line_text.is_empty() {
-            lines.push(LyricLine {
-                time_ms: mins * 60_000 + secs * 1000 + frac_ms,
-                text: line_text.to_string(),
-            });
-        }
-    }
-    lines.sort_by_key(|l| l.time_ms);
-    lines
-}
-
-/// Finds the active lyric index for a playback position (`FR-MUS-4`).
-#[must_use]
-pub fn active_lyric_index(lines: &[LyricLine], position_ms: u64) -> Option<usize> {
-    lines.iter().rposition(|line| line.time_ms <= position_ms)
-}
-
 /// Derives a clean display label from a Windows SMTC `SourceAppUserModelId`.
 #[must_use]
 pub fn friendly_media_app_label(app_id: &str) -> String {
@@ -181,23 +128,6 @@ pub fn interpolate_smtc_position_ms(
         base_pos
     };
     (live_pos, duration_raw.max(live_pos))
-}
-
-fn percent_encode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len() * 2);
-    for b in input.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            b' ' => out.push_str("%20"),
-            other => {
-                use std::fmt::Write;
-                let _ = write!(out, "%{other:02X}");
-            }
-        }
-    }
-    out
 }
 
 /// Playback control verbs (`FR-MUS-2`).
@@ -1119,33 +1049,6 @@ mod platform {
         let _ = TimeSpan { Duration: ticks };
         Ok(())
     }
-
-    /// Fetches synced LRC lyrics from LRCLIB (`FR-MUS-4`).
-    #[must_use]
-    pub fn fetch_lrclib_lrc(artist: &str, title: &str) -> Option<String> {
-        if title.trim().is_empty() {
-            return None;
-        }
-        let url = format!(
-            "https://lrclib.net/api/get?artist_name={}&track_name={}",
-            super::percent_encode(artist.trim()),
-            super::percent_encode(title.trim())
-        );
-        let uri = windows::Foundation::Uri::CreateUri(&windows::core::HSTRING::from(url)).ok()?;
-        let client = windows::Web::Http::HttpClient::new().ok()?;
-        let body = client
-            .GetStringAsync(&uri)
-            .ok()?
-            .join()
-            .ok()?
-            .to_string_lossy()
-            .to_string();
-        let json: serde_json::Value = serde_json::from_str(&body).ok()?;
-        json.get("syncedLyrics")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(ToString::to_string)
-    }
 }
 
 #[cfg(not(windows))]
@@ -1186,11 +1089,6 @@ mod platform {
         Ok(())
     }
 
-    #[must_use]
-    pub fn fetch_lrclib_lrc(_artist: &str, _title: &str) -> Option<String> {
-        None
-    }
-
     /// Cross-platform stub for systems without Windows Core Audio endpoint metering.
     #[derive(Default)]
     pub struct AudioPeakReader;
@@ -1210,8 +1108,8 @@ mod platform {
 }
 
 pub use platform::{
-    AudioPeakReader, fetch_lrclib_lrc, get_mic_muted, get_system_volume, read_media_state,
-    seek_media, send_media_command, set_system_volume, toggle_mic_mute,
+    AudioPeakReader, get_mic_muted, get_system_volume, read_media_state, seek_media,
+    send_media_command, set_system_volume, toggle_mic_mute,
 };
 
 #[cfg(test)]
@@ -1269,17 +1167,6 @@ mod tests {
             extract_dominant_accent_from_rgba(&gray),
             DEFAULT_MEDIA_ACCENT
         );
-    }
-
-    #[test]
-    fn parses_synced_lrc_and_tracks_active_line() {
-        let lrc = "[00:01.50] First line\n[00:10.00] Second line\n[00:25.25] Third line";
-        let lines = parse_lrc_lines(lrc);
-        assert_eq!(lines.len(), 3);
-        assert_eq!(active_lyric_index(&lines, 500), None);
-        assert_eq!(active_lyric_index(&lines, 1500), Some(0));
-        assert_eq!(active_lyric_index(&lines, 12_000), Some(1));
-        assert_eq!(active_lyric_index(&lines, 30_000), Some(2));
     }
 
     #[test]

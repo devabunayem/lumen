@@ -8,7 +8,6 @@
   --hairline: rgba(255, 255, 255, 0.08);
   --hairline-top: rgba(255, 255, 255, 0.14);
   --hairline-strong: rgba(255, 255, 255, 0.22);
-  --island-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 
   --text-primary: #ffffff;
   --text-title-accent: rgba(255, 255, 255, 0.7);
@@ -76,30 +75,12 @@
   --aurora-focus-a: rgba(114, 112, 255, 0.8);
   --aurora-focus-b: rgba(24, 148, 255, 0.74);
 
-  /* Geometry tokens at 100% scale */
-  --island-scale: 1;
-  --pill-collapsed-w: 184px;
-  --pill-collapsed-h: 30px;
-  --pill-minimal-w: 110px;
-  --pill-minimal-h: 26px;
-  --pill-slim-w: 84px;
-  --pill-slim-h: 12px;
-  --island-expanded-w: 560px;
-  --island-expanded-h: 172px;
-  --home-expanded-w: 640px;
-  --home-expanded-h: 312px;
-  --home-bottom-radius: 32px;
-  --hud-w: 240px;
-  --hud-h: 56px;
-
   --island-padding: 14px;
   --island-gap: 6px;
   --card-radius: 18px;
   --home-card-radius: 20px;
   --chip-radius: 99px;
-  --control-radius: 14px;
   --capsule-height: 28px;
-  --pill-float-offset: 8px;
 }
 
 *,
@@ -139,13 +120,6 @@ a:focus-visible,
 }
 
 .tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
-
-.type-display {
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 

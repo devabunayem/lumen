@@ -5,19 +5,13 @@
     "openSettings": "Open settings",
     "collapse": "Collapse island",
     "pin": "Pin island open",
-    "unpin": "Unpin island",
-    "prevPage": "Previous page",
-    "nextPage": "Next page",
-    "shapeNotch": "Notch",
-    "shapePill": "Pill"
+    "unpin": "Unpin island"
   },
   "pages": {
     "homeLead": "Day",
     "homeAccent": "Home",
     "controlLead": "Control",
     "controlAccent": "Center",
-    "musicLead": "Now",
-    "musicAccent": "Playing",
     "calendarLead": "Today",
     "calendarAccent": "Agenda",
     "remindersLead": "Timed",
@@ -26,48 +20,22 @@
     "todoAccent": "List",
     "waterLead": "Water",
     "waterAccent": "Tracker",
-    "prayerLead": "Prayer",
-    "prayerAccent": "Times",
     "pomodoroLead": "Focus",
     "pomodoroAccent": "Timer",
     "shelfLead": "File",
     "shelfAccent": "Shelf",
-    "pluginLead": "Custom",
     "pluginAccent": "Plugin"
   },
   "settings": {
     "title": "Lumen Settings",
-    "subtitle": "All changes apply live to your desktop island.",
     "saved": "Saved & applied live",
     "sections": {
       "general": "General",
-      "display": "Display",
       "pages": "Pages",
       "appearance": "Appearance",
-      "notifications": "Notifications",
       "widgets": "Widgets",
       "plugins": "Plugins",
       "about": "About"
-    },
-    "general": {
-      "startWithWindows": "Start with Windows",
-      "startWithWindowsHint": "Launch Lumen automatically when you sign in.",
-      "language": "Interface Language",
-      "languageHint": "Switch Lumen UI between English and Bangla.",
-      "hotkeyHide": "Global Hotkey: Show / Hide",
-      "hotkeyExpand": "Global Hotkey: Open / Collapse",
-      "hotkeyHint": "Example chords: Ctrl+Alt+L, Ctrl+Alt+Space, Shift+Win+F9"
-    },
-    "display": {
-      "monitorMode": "Monitor Placement",
-      "primary": "Primary Monitor",
-      "active": "Active Cursor Monitor",
-      "index": "Specific Monitor",
-      "selectMonitor": "Choose Monitor",
-      "scale": "Island Scale",
-      "offsetX": "Horizontal Offset",
-      "hideFullscreen": "Auto-hide during fullscreen",
-      "hideFullscreenHint": "Automatically hides Lumen during fullscreen games and videos."
     },
     "pagesTab": {
       "description": "Reorder expanded island pages and toggle visibility.",
@@ -77,46 +45,14 @@
       "hidden": "Hidden"
     },
     "appearance": {
-      "shape": "Island Shape",
-      "notch": "Attached Notch",
-      "pill": "Floating Pill",
-      "minimalNotch": "Minimal Resting Mode",
-      "minimalNotchHint": "Shrinks the idle pill to a compact 120 px capsule.",
-      "hoverToOpen": "Hover to Open & Auto-Collapse",
-      "hoverToOpenHint": "Expands on cursor hover and shrinks to a slim notch on leave.",
       "hoverReturnSeconds": "Slim Notch -> Time Delay",
-      "hoverReturnSecondsHint": "How long the slim notch waits after leave before showing time.",
-      "mascot": "Show Lumi Mascot",
-      "mascotHint": "Calm vector companion that blinks, bobs to music, and celebrates milestones.",
-      "headerClock": "Show Full Date in Expanded Header",
-      "reduceMotion": "Reduce Motion Override",
-      "reduceMotionHint": "Use 120 ms crossfades regardless of Windows animation settings."
-    },
-    "widgetsTab": {
-      "waterGoal": "Daily Water Goal (mL)",
-      "mediaExclusions": "Exclude Media Apps / Titles (comma-separated)",
-      "notifyEnabled": "Notification Pill Popups",
-      "hidePreviews": "Hide Notification Body Previews",
-      "respectFocusAssist": "Respect Windows Focus Assist / DND",
-      "maskedKeywords": "Sensitive Keywords to Mask (comma-separated)",
-      "testNotify": "Send Test Notification"
-    },
-    "pluginsTab": {
-      "empty": "No third-party plugins installed yet.",
-      "folderHint": "Drop plugins into %APPDATA%\\Lumen\\plugins\\<name> with a manifest.json.",
-      "reload": "Reload Plugins"
-    },
-    "aboutTab": {
-      "tagline": "Free, open-source, zero-telemetry Dynamic Island for Windows 10 & 11.",
-      "author": "Created by Abu Nayem · Etarnity Global Innovation",
-      "license": "MIT License · Zero Analytics · Zero Cloud Lock-in"
+      "hoverReturnSecondsHint": "How long the slim notch waits after leave before showing time."
     },
     "homeTab": {
       "soundsEnabled": "Interface & Reminder Sounds",
       "soundVolume": "Sound Master Volume",
       "soundInterface": "Interface Ticks & Toggles",
       "soundReminders": "Chimes & Reminders",
-      "customAdhan": "Custom Adhan Audio Path (optional)",
       "locationOptIn": "Auto-Track Location (Windows)",
       "reduceTransparency": "Reduce Transparency (solid glass fallback)",
       "glowEnabled": "Living Ambient Glow",
@@ -143,20 +79,14 @@
     "arc": {
       "tasbih": "Tasbih",
       "locationUnset": "Manual city",
-      "weatherOffline": "Offline",
       "updatedAgo": "updated {{age}} ago",
-      "rainIn": "rain in {{min}} min",
-      "rainSoon": "rain soon",
       "clear": "clear",
       "cloudy": "cloudy",
       "rain": "rain",
       "storm": "storm",
-      "sehri": "Sehri",
-      "iftar": "Iftar",
       "nothingHere": "Nothing scheduled",
       "zoomDay": "Full day",
       "zoom3h": "Next 3 hours",
-      "nightArc": "Night arc",
       "summary": "Next prayer {{prayer}} at {{time}}, {{countdown}}. {{events}} scheduled events."
     },
     "music": {
@@ -172,8 +102,7 @@
       "volume": "System volume",
       "seek": "Seek track position",
       "switchPlayer": "Switch active media player",
-      "lastPlayed": "Last played",
-      "openPlayer": "Open music player"
+      "lastPlayed": "Last played"
     },
     "next": {
       "label": "Next",
@@ -193,10 +122,7 @@
     "chips": {
       "focus": "Focus",
       "copied": "Copied",
-      "otpMasked": "Copy OTP",
-      "clipboard": "Clipboard",
-      "devUp": "up",
-      "devDown": "down"
+      "clipboard": "Clipboard"
     }
   }
 }

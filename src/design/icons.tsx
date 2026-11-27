@@ -35,22 +35,6 @@ export function SettingsIcon({ size = 14, className }: IconProps) {
   );
 }
 
-export function ChevronLeftIcon({ size = 14, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
-}
-
-export function ChevronRightIcon({ size = 14, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
-
 export function PlayIcon({ size = 14, className }: IconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
@@ -64,24 +48,6 @@ export function PauseIcon({ size = 14, className }: IconProps) {
     <svg {...baseProps(size)} className={className}>
       <rect x="6" y="4" width="4" height="16" rx="1.5" fill="currentColor" stroke="none" />
       <rect x="14" y="4" width="4" height="16" rx="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-export function PrevIcon({ size = 14, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <polygon points="11 19 2 12 11 5 11 19" fill="currentColor" />
-      <polygon points="22 19 13 12 22 5 22 19" fill="currentColor" />
-    </svg>
-  );
-}
-
-export function NextIcon({ size = 14, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <polygon points="13 19 22 12 13 5 13 19" fill="currentColor" />
-      <polygon points="2 19 11 12 2 5 2 19" fill="currentColor" />
     </svg>
   );
 }
@@ -239,14 +205,6 @@ export function SunIcon({
   return (
     <svg {...baseProps(size)} className={className}>
       <SunGlyph warmDusk={warmDusk} animated={animated} />
-    </svg>
-  );
-}
-
-export function MessageSquareIcon({ size = 14, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
@@ -522,37 +480,10 @@ export function CompassIcon({ size = 13, className }: IconProps) {
   );
 }
 
-export function TasbihIcon({ size = 13, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <circle cx="12" cy="4.5" r="1.4" />
-      <circle cx="17.3" cy="6.8" r="1.4" />
-      <circle cx="19.5" cy="12" r="1.4" />
-      <circle cx="17.3" cy="17.2" r="1.4" />
-      <circle cx="12" cy="19.5" r="1.4" />
-      <circle cx="6.7" cy="17.2" r="1.4" />
-      <circle cx="4.5" cy="12" r="1.4" />
-      <circle cx="6.7" cy="6.8" r="1.4" />
-    </svg>
-  );
-}
-
 export function HeadphonesIcon({ size = 13, className }: IconProps) {
   return (
     <svg {...baseProps(size)} className={className}>
       <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
-    </svg>
-  );
-}
-
-export function ShuffleIcon({ size = 14, className }: IconProps) {
-  return (
-    <svg {...baseProps(size)} className={className}>
-      <polyline points="16 3 21 3 21 8" />
-      <line x1="4" y1="20" x2="21" y2="3" />
-      <polyline points="21 16 21 21 16 21" />
-      <line x1="15" y1="15" x2="21" y2="21" />
-      <line x1="4" y1="4" x2="9" y2="9" />
     </svg>
   );
 }

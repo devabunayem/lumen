@@ -6,19 +6,17 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Utc};
 use lumen_core::{
-    IslandEvent, IslandMachine, IslandSnapshot, LumenSettings, PomodoroController, PomodoroPhase,
-    PomodoroSnapshot,
+    IslandMachine, LumenSettings, PomodoroController, PomodoroPhase, PomodoroSnapshot,
 };
 use lumen_media::sounds::{SoundSilenceContext, UiSoundName, try_play_ui_sound};
 use lumen_media::{
-    AudioPeakReader, LyricLine, MediaCommand, MediaGraceStabilizer, MediaStateSnapshot,
-    fetch_lrclib_lrc, get_mic_muted, get_system_volume, parse_lrc_lines, read_media_state,
-    seek_media, send_media_command, set_system_volume, shape_audio_peak, toggle_mic_mute,
+    AudioPeakReader, MediaCommand, MediaGraceStabilizer, MediaStateSnapshot, get_mic_muted,
+    get_system_volume, read_media_state, seek_media, send_media_command, set_system_volume,
+    shape_audio_peak, toggle_mic_mute,
 };
 use lumen_notify::{
     NotificationPopup, NotificationPrivacyConfig, SystemNotificationWatcher,
     filter_captured_notification, filter_notification, is_focus_assist_quiet,
-    listener_access_available,
 };
 use lumen_plugins::{LoadedPlugin, discover_plugins};
 use lumen_prayer::{
@@ -243,30 +241,6 @@ fn recenter_window(
     }
 }
 
-#[tauri::command]
-fn get_island_snapshot(state: State<'_, AppState>) -> Result<IslandSnapshot, String> {
-    let guard = state
-        .machine
-        .lock()
-        .map_err(|_| "island state mutex poisoned".to_string())?;
-    Ok(guard.snapshot())
-}
-
-#[tauri::command]
-fn dispatch_island_event(
-    event_name: String,
-    state: State<'_, AppState>,
-) -> Result<IslandSnapshot, String> {
-    let event = IslandEvent::from_command(&event_name)
-        .ok_or_else(|| format!("unknown island event: {event_name}"))?;
-    let mut guard = state
-        .machine
-        .lock()
-        .map_err(|_| "island state mutex poisoned".to_string())?;
-    guard.apply(event);
-    Ok(guard.snapshot())
-}
-
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 fn sync_pill_bounds(
@@ -451,32 +425,6 @@ async fn media_select_session(
 }
 
 #[tauri::command]
-async fn media_get_lyrics(
-    artist: String,
-    title: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<LyricLine>, String> {
-    let key = format!(
-        "{}::{}",
-        artist.trim().to_lowercase(),
-        title.trim().to_lowercase()
-    );
-    if let Ok(Some(cached)) = state.storage.get_cached_lyrics(&key) {
-        return Ok(parse_lrc_lines(&cached));
-    }
-    let storage = Arc::clone(&state.storage);
-    tokio::task::spawn_blocking(move || {
-        if let Some(lrc) = fetch_lrclib_lrc(&artist, &title) {
-            let _ = storage.save_cached_lyrics(&key, &lrc);
-            return parse_lrc_lines(&lrc);
-        }
-        Vec::new()
-    })
-    .await
-    .map_err(|e| format!("lyrics task error: {e}"))
-}
-
-#[tauri::command]
 fn tasks_list(state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
     state.storage.list_tasks()
 }
@@ -496,31 +444,8 @@ fn tasks_toggle(id: i64, state: State<'_, AppState>) -> Result<Vec<TaskItem>, St
 }
 
 #[tauri::command]
-fn tasks_update(
-    id: i64,
-    title: String,
-    due_at: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<TaskItem>, String> {
-    state.storage.update_task(id, &title, due_at)
-}
-
-#[tauri::command]
 fn tasks_delete(id: i64, state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
     state.storage.delete_task(id)
-}
-
-#[tauri::command]
-fn tasks_export_json(state: State<'_, AppState>) -> Result<String, String> {
-    state.storage.export_tasks_json()
-}
-
-#[tauri::command]
-fn tasks_import_json(
-    raw_json: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<TaskItem>, String> {
-    state.storage.import_tasks_json(&raw_json)
 }
 
 #[tauri::command]
@@ -673,29 +598,6 @@ fn notify_set_config(
         .map_err(|_| "notify config mutex poisoned".to_string())?;
     *guard = config.clone();
     Ok(config)
-}
-
-#[tauri::command]
-fn notify_listener_status() -> bool {
-    listener_access_available() || {
-        #[cfg(windows)]
-        {
-            std::env::var_os("LOCALAPPDATA")
-                .map(|lad| {
-                    PathBuf::from(lad)
-                        .join("Microsoft")
-                        .join("Windows")
-                        .join("Notifications")
-                        .join("wpndatabase.db")
-                        .exists()
-                })
-                .unwrap_or(false)
-        }
-        #[cfg(not(windows))]
-        {
-            false
-        }
-    }
 }
 
 #[tauri::command]
@@ -1255,14 +1157,6 @@ fn ledger_toggle(
     state: State<'_, AppState>,
 ) -> Result<TimeLedgerState, String> {
     state.storage.toggle_ledger(client_name.as_deref())
-}
-
-#[tauri::command]
-fn ledger_reset(
-    client_name: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<TimeLedgerState, String> {
-    state.storage.reset_ledger(client_name.as_deref())
 }
 
 #[tauri::command]
@@ -1889,8 +1783,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_island_snapshot,
-            dispatch_island_event,
             sync_pill_bounds,
             set_island_surface_mode,
             request_keyboard_focus,
@@ -1899,14 +1791,10 @@ pub fn run() {
             media_seek,
             media_set_volume,
             media_select_session,
-            media_get_lyrics,
             tasks_list,
             tasks_add,
             tasks_toggle,
-            tasks_update,
             tasks_delete,
-            tasks_export_json,
-            tasks_import_json,
             water_get_summary,
             water_log,
             water_undo,
@@ -1924,7 +1812,6 @@ pub fn run() {
             shelf_open,
             notify_get_config,
             notify_set_config,
-            notify_listener_status,
             notify_push_test,
             monitors_list,
             settings_get,
@@ -1958,7 +1845,6 @@ pub fn run() {
             tasbih_reset,
             ledger_get,
             ledger_toggle,
-            ledger_reset,
             clipboard_get_latest,
             clipboard_copy_latest,
             home_set_visible,

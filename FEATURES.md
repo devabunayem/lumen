@@ -29,7 +29,7 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 - Compact transparent Win32 window sizing (`260×52` ↔ `660×220`) that never blocks adjacent browser tabs
 - Auto-hide in true fullscreen apps/games (`FR-WIN-4`), single-instance lock, Windows Startup (`HKCU\...\Run`), System Tray controls, and global hotkeys (`Ctrl+Alt+L`, `Ctrl+Alt+Space`)
 
-### Music & Synced Lyrics
+### Media & Audio Sync
 
 - Universal Windows SMTC media controls (play/pause, next/prev, seek, multi-session switcher)
 - Album artwork preview with contrast-guarded dominant accent color extraction (`lumen-media`)

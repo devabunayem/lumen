@@ -34,7 +34,6 @@ export interface LumenSettings {
   soundVolume: number;
   soundInterface: boolean;
   soundReminders: boolean;
-  customAdhanPath: string | null;
   locationOptIn: boolean;
   reduceTransparency: boolean;
   glowEnabled: boolean;
@@ -83,7 +82,6 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   soundVolume: 30,
   soundInterface: true,
   soundReminders: true,
-  customAdhanPath: null,
   locationOptIn: true,
   reduceTransparency: false,
   glowEnabled: true,

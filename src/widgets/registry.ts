@@ -1,5 +1,4 @@
 import type { LoadedPlugin } from "../lib/ipc";
-import type { LumenWidget } from "./types";
 
 export const BUILTIN_WIDGET_IDS = [
   "control",
@@ -43,11 +42,4 @@ export function resolveOrderedWidgetIds(
   }
 
   return ordered.length > 0 ? ordered : [builtinIds[0] ?? "control"];
-}
-
-/**
- * Validates that a dynamic registry entry conforms to the formal LumenWidget contract (FR-PL-1).
- */
-export function registerWidget(widget: LumenWidget): LumenWidget {
-  return widget;
 }
