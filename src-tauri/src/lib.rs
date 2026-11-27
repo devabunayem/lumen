@@ -999,6 +999,11 @@ fn play_ui_sound(name: String, state: State<'_, AppState>) -> Result<bool, Strin
         return Ok(false);
     };
     let settings = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
+    if matches!(sound, UiSoundName::LumiHello | UiSoundName::LumiHappy)
+        && (!settings.mascot_enabled || !settings.lumi_sounds_enabled)
+    {
+        return Ok(false);
+    }
     let is_fs = state.is_fullscreen.load(Ordering::Relaxed);
     let allow_focus = matches!(sound, UiSoundName::ReminderAlarm);
     let ctx = build_sound_ctx(&settings, &state.pomodoro, is_fs, allow_focus);

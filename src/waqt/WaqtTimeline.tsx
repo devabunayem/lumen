@@ -18,6 +18,7 @@ import {
   ShareIcon,
 } from "../design/icons";
 import { MOTION_PRESETS } from "../design/motion";
+import type { LumiAccessory } from "../design/lumi";
 import { playUiSound } from "../design/sounds";
 import { COLOR_TOKENS } from "../design/tokens";
 import { getMessages } from "../i18n";
@@ -77,6 +78,10 @@ export interface WaqtTimelineProps {
   firstRunDismissed?: boolean;
   rhythmAnchors?: WaqtRhythmAnchor[];
   customBlockNames: Record<string, string>;
+  mascotEnabled?: boolean;
+  lumiAccessories?: readonly LumiAccessory[];
+  lumiBeat?: number;
+  lumiSilent?: boolean;
   pagesCount: number;
   activePageIndex: number;
   onSelectPage: (idx: number) => void;
@@ -143,6 +148,10 @@ export function WaqtTimeline({
   firstRunDismissed = true,
   rhythmAnchors = [],
   customBlockNames,
+  mascotEnabled = true,
+  lumiAccessories = [],
+  lumiBeat = 0,
+  lumiSilent = false,
   onOpenSettings,
   onRetry,
   onAssignTask,
@@ -1499,13 +1508,19 @@ export function WaqtTimeline({
           style={{ borderRadius: "var(--waqt-card-radius)" }}
           className={`flex items-center gap-2 overflow-hidden px-2.5 py-1.5 ${glassSurfaceClass}`}
         >
-          <div className="shrink-0">
-            <WaqtBodyDoubleLumi
-              state={lumiMood}
-              isVisible={isVisible}
-              reduceMotion={reduceMotion}
-            />
-          </div>
+          {mascotEnabled && (
+            <div className="shrink-0">
+              <WaqtBodyDoubleLumi
+                state={lumiMood}
+                isVisible={isVisible}
+                reduceMotion={reduceMotion}
+                accessories={lumiAccessories}
+                beat={lumiBeat}
+                silent={lumiSilent}
+                nowDate={nowDate}
+              />
+            </div>
+          )}
           <div className="flex min-w-0 flex-1 flex-col justify-between">
             <div className="truncate text-[12px] font-semibold leading-tight text-white">
               {focusHeadline}

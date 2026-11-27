@@ -519,6 +519,12 @@ pub struct LumenSettings {
     pub waqt_first_run_dismissed: bool,
     #[serde(default = "default_waqt_rhythm_anchors")]
     pub waqt_rhythm_anchors: Vec<WaqtRhythmAnchor>,
+    #[serde(default)]
+    pub lumi_talk_less: bool,
+    #[serde(default)]
+    pub lumi_sounds_enabled: bool,
+    #[serde(default)]
+    pub lumi_accessories: Vec<String>,
 }
 
 /// Recurring user-configured anchor shown as a subtle ghost chip inside its preferred Waqt block.
@@ -652,6 +658,9 @@ impl Default for LumenSettings {
             waqt_quiet_mode: false,
             waqt_first_run_dismissed: false,
             waqt_rhythm_anchors: default_waqt_rhythm_anchors(),
+            lumi_talk_less: false,
+            lumi_sounds_enabled: false,
+            lumi_accessories: Vec::new(),
         }
     }
 }

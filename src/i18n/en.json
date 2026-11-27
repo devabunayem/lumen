@@ -182,5 +182,22 @@
       "quick_tasks": "Quick tasks",
       "short_break": "Short break"
     }
+  },
+  "lumi": {
+    "lines": {
+      "startup": ["Hi, hello!", "Ready when you are!", "Nice to see you!"],
+      "music": ["Good vibes!", "Enjoy the beat!", "Nice track choice!"],
+      "water": ["Glup! Refreshing sip.", "Glup! Stay hydrated.", "Fresh water break!"],
+      "taskDone": ["Nicely done!", "One more checked off!", "Great progress today!"],
+      "streakMilestone": [
+        "Awesome streak! Proud of you!",
+        "Look at that consistency!",
+        "You kept it glowing!"
+      ],
+      "missedStreak": ["See you tomorrow!", "Fresh start tomorrow!"],
+      "lowBattery": ["Plug me in soon?", "Running low on juice."],
+      "error": ["Oops, slight hiccup!", "Let us try again."],
+      "tip": ["Drag tasks between Waqt blocks.", "Hold hover for a quiet purr."]
+    }
   }
 }

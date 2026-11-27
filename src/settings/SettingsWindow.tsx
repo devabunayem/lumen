@@ -781,17 +781,83 @@ export function SettingsWindow({
                   </div>
 
                   <AppleRow
-                    label={isBn ? "অ্যাকশন ম্যাসকট (Lumi)" : "Lumi Action Mascot"}
+                    label={isBn ? "অ্যাকশন ম্যাসকট (Lumi)" : "Lumi Mascot"}
                     hint={
                       isBn
-                        ? "অ্যাকশন বা অভ্যর্থনার সময় নচে Lumi-র চোখ ও হাত নাড়ানো অ্যানিমেশন দেখাবে"
-                        : "Show expressive Lumi eyes & waving hand during actions and greetings"
+                        ? "লুমি ও তার মুড প্রতিক্রিয়া চালু/বন্ধ করুন"
+                        : "Show living Lumi mascot & expressive mood reactions"
                     }
                   >
                     <AppleToggle
                       checked={settings.mascotEnabled}
                       onChange={(v) => void commit({ ...settings, mascotEnabled: v })}
                     />
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "লুমি কম কথা বলবে" : "Lumi: Talk Less"}
+                    hint={
+                      isBn
+                        ? "অতিরিক্ত টিপস ও কথার বাবল কমায়"
+                        : "Keeps casual speech bubbles and tips minimal"
+                    }
+                  >
+                    <AppleToggle
+                      checked={settings.lumiTalkLess}
+                      onChange={(v) => void commit({ ...settings, lumiTalkLess: v })}
+                    />
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "লুমি চার্প সাউন্ড" : "Lumi Chirp Sounds"}
+                    hint={
+                      isBn
+                        ? "হ্যালো ও আনন্দের মৃদু সাউন্ড (সর্বোচ্চ ৩০%, ডিফল্ট বন্ধ)"
+                        : "Gentle synthesized hello/happy chirps (max 30%, off by default)"
+                    }
+                  >
+                    <AppleToggle
+                      checked={settings.lumiSoundsEnabled}
+                      onChange={(v) => void commit({ ...settings, lumiSoundsEnabled: v })}
+                    />
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "লুমি সিজনাল অ্যাক্সেসরিজ" : "Lumi Seasonal Layers"}
+                    hint={
+                      isBn
+                        ? "ঐচ্ছিক প্রসাধনী লেয়ার (ডিফল্ট বন্ধ)"
+                        : "Optional festive decorative accents (off by default)"
+                    }
+                  >
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ["ramadanLantern", isBn ? "রমজান লণ্ঠন" : "Ramadan lantern"],
+                          ["eidSparkle", isBn ? "ঈদ স্পার্কল" : "Eid sparkle"],
+                          ["boishakhHat", isBn ? "বৈশাখী টুপি" : "Boishakh hat"],
+                        ] as const
+                      ).map(([id, label]) => {
+                        const active = settings.lumiAccessories.includes(id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => {
+                              const next = active
+                                ? settings.lumiAccessories.filter((x) => x !== id)
+                                : [...settings.lumiAccessories, id];
+                              void commit({ ...settings, lumiAccessories: next });
+                            }}
+                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition-colors ${
+                              active ? "bg-[#0a84ff] text-white" : "bg-[#2c2c2e] text-white/75"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </AppleRow>
 
                   <AppleRow

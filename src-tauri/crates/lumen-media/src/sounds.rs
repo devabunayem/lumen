@@ -20,6 +20,8 @@ pub enum UiSoundName {
     ReminderAlarm,
     MailArrival,
     Error,
+    LumiHello,
+    LumiHappy,
 }
 
 impl UiSoundName {
@@ -36,6 +38,8 @@ impl UiSoundName {
             "reminder_alarm" | "reminderalarm" => Some(Self::ReminderAlarm),
             "mail_arrival" | "mailarrival" => Some(Self::MailArrival),
             "error" => Some(Self::Error),
+            "lumi_hello" | "lumihello" => Some(Self::LumiHello),
+            "lumi_happy" | "lumihappy" => Some(Self::LumiHappy),
             _ => None,
         }
     }
@@ -159,8 +163,12 @@ pub fn synthesize_ui_sound_pcm16(
     sample_rate: u32,
     master_volume_pct: u8,
 ) -> Vec<i16> {
+    let effective_pct = match name {
+        UiSoundName::LumiHello | UiSoundName::LumiHappy => master_volume_pct.min(30),
+        _ => master_volume_pct.clamp(0, 100),
+    };
     // Keep UI sounds gentle: master 30% corresponds to ~ -24 dB under full scale.
-    let vol = (master_volume_pct.clamp(0, 100) as f32 / 100.0) * 0.22;
+    let vol = (effective_pct as f32 / 100.0) * 0.22;
     let mut fbuf = Vec::new();
     match name {
         UiSoundName::Open => push_glide(&mut fbuf, sample_rate, 520.0, 780.0, 70.0, 0.12, false),
@@ -180,9 +188,13 @@ pub fn synthesize_ui_sound_pcm16(
                 *sample += noise * 0.03;
             }
         }
-        UiSoundName::TaskDone => {
+        UiSoundName::TaskDone | UiSoundName::LumiHappy => {
             push_glide(&mut fbuf, sample_rate, 988.0, 988.0, 45.0, 0.12, false);
             push_glide(&mut fbuf, sample_rate, 1318.0, 1318.0, 45.0, 0.12, false);
+        }
+        UiSoundName::LumiHello => {
+            push_glide(&mut fbuf, sample_rate, 784.0, 784.0, 45.0, 0.12, false);
+            push_glide(&mut fbuf, sample_rate, 988.0, 988.0, 45.0, 0.12, false);
         }
         UiSoundName::ArcScrubTick => {
             push_glide(&mut fbuf, sample_rate, 1500.0, 1500.0, 10.0, 0.10, false)
@@ -500,6 +512,8 @@ mod tests {
             UiSoundName::ReminderAlarm,
             UiSoundName::MailArrival,
             UiSoundName::Error,
+            UiSoundName::LumiHello,
+            UiSoundName::LumiHappy,
         ] {
             let samples = synthesize_ui_sound_pcm16(preset, 44_100, 30);
             assert!(!samples.is_empty(), "{preset:?} must produce samples");
@@ -509,5 +523,12 @@ mod tests {
                 "{preset:?} peak={peak} out of gentle range"
             );
         }
+
+        // Lumi chirps strictly cap amplitude to max 30% volume even if master volume is 100%
+        let lumi_at_30 = synthesize_ui_sound_pcm16(UiSoundName::LumiHappy, 44_100, 30);
+        let lumi_at_100 = synthesize_ui_sound_pcm16(UiSoundName::LumiHappy, 44_100, 100);
+        assert_eq!(lumi_at_30, lumi_at_100);
+        // Two 45ms notes = 90ms (~3969 samples @ 44.1kHz)
+        assert!(lumi_at_30.len() >= 3900 && lumi_at_30.len() <= 4050);
     }
 }

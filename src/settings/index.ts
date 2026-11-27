@@ -1,3 +1,4 @@
+import type { LumiAccessory } from "../design/lumi/types";
 import {
   resolveAutoScaleFactor,
   resolveScaleFactor,
@@ -141,6 +142,9 @@ export interface LumenSettings {
   waqtQuietMode: boolean;
   waqtFirstRunDismissed: boolean;
   waqtRhythmAnchors: WaqtRhythmAnchor[];
+  lumiTalkLess: boolean;
+  lumiSoundsEnabled: boolean;
+  lumiAccessories: LumiAccessory[];
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -198,6 +202,9 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   waqtQuietMode: false,
   waqtFirstRunDismissed: false,
   waqtRhythmAnchors: DEFAULT_WAQT_RHYTHM_ANCHORS,
+  lumiTalkLess: false,
+  lumiSoundsEnabled: false,
+  lumiAccessories: [],
 };
 
 export function resolveSettingsScaleFactor(

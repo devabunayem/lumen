@@ -14,7 +14,17 @@ import {
   TimerIcon,
 } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
-import { playUiSound } from "../design/sounds";
+import {
+  evaluateLumiSilence,
+  INITIAL_LUMI_SPEECH_STATE,
+  Lumi,
+  type LumiAccessory,
+  type LumiEventKind,
+  type LumiMood as NativeLumiMood,
+  pickLumiSpeechLine,
+  resolveLumiEventMood,
+} from "../design/lumi";
+import { playUiSound, type UiSoundName } from "../design/sounds";
 import { BASE_GEOMETRY, measureNotificationDimensions, type ShapeStyle } from "../design/tokens";
 import { HomePage } from "../home/HomePage";
 import { type AppLanguage, getMessages } from "../i18n";
@@ -167,6 +177,9 @@ export interface IslandShellProps {
   hoverToOpen?: boolean;
   hoverReturnSeconds?: number;
   mascotEnabled?: boolean;
+  lumiTalkLess?: boolean;
+  lumiSoundsEnabled?: boolean;
+  lumiAccessories?: LumiAccessory[];
   actionGlowMode?: ActionGlowMode;
   showHeaderClockSetting?: boolean;
   language?: AppLanguage;
@@ -219,6 +232,18 @@ function formatClockParts(now: Date): { dateText: string; timeText: string } {
   return { dateText, timeText };
 }
 
+function isWithinBedtimeQuietHours(now: Date, bedtimeHHMM: string): boolean {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(bedtimeHHMM.trim());
+  const bedtimeMin = match
+    ? Math.min(23, Number(match[1])) * 60 + Math.min(59, Number(match[2]))
+    : 23 * 60;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (bedtimeMin >= 12 * 60) {
+    return nowMin >= bedtimeMin || nowMin < 5 * 60;
+  }
+  return nowMin >= bedtimeMin && nowMin < 5 * 60;
+}
+
 function isTypingInContainer(container: HTMLElement | null): boolean {
   const active = document.activeElement as HTMLElement | null;
   if (!active || (container && !container.contains(active))) {
@@ -249,6 +274,9 @@ export function IslandShell({
   hoverToOpen = true,
   hoverReturnSeconds = 5,
   mascotEnabled = true,
+  lumiTalkLess = DEFAULT_SETTINGS.lumiTalkLess,
+  lumiSoundsEnabled = DEFAULT_SETTINGS.lumiSoundsEnabled,
+  lumiAccessories = DEFAULT_SETTINGS.lumiAccessories,
   actionGlowMode = "action",
   showHeaderClockSetting = true,
   language = "en",
@@ -348,9 +376,16 @@ export function IslandShell({
   const [activeLumiAction, setActiveLumiAction] = useState<{
     id: number;
     mood: LumiMood;
+    nativeMood: NativeLumiMood;
+    bubbleText: string | null;
     accentHex?: string;
   } | null>(null);
+  const [lumiBeat, setLumiBeat] = useState(0);
   const lumiTimerRef = useRef<number | null>(null);
+  const lumiSpeechRef = useRef(INITIAL_LUMI_SPEECH_STATE);
+  const lastBeatAtRef = useRef(0);
+  const isPlayingRef = useRef(false);
+  const lowBatteryAlertedRef = useRef(false);
   const prevChargingRef = useRef<boolean | null>(null);
   const prevChimeTickRef = useRef<number | null>(null);
   const [isPinned, setIsPinned] = useState(false);
@@ -366,12 +401,143 @@ export function IslandShell({
   });
   const notifyDurationRef = useRef(notificationDurationSeconds);
 
-  const triggerLumiReaction = useCallback(
-    (mood: LumiMood, durationMs = 2400, accentHex?: string) => {
+  const lumiSilenceContext = useMemo(
+    () => ({
+      mascotEnabled,
+      talkLess: lumiTalkLess,
+      soundsEnabled: lumiSoundsEnabled,
+      inCallOrMic: privacyDevices[1],
+      isFullscreen: state === "hidden",
+      focusActive: Boolean(focusOn || (pomodoro?.running && pomodoro.phase === "focus")),
+      isPrayerWindow: Boolean(
+        prayerSchedule &&
+        !prayerSchedule.next_is_tomorrow &&
+        typeof prayerSchedule.next_diff_min === "number" &&
+        prayerSchedule.next_diff_min >= 0 &&
+        prayerSchedule.next_diff_min <= 2,
+      ),
+      isQuietHours: Boolean(
+        waqtQuietMode ||
+        prayerSchedule?.is_night_mode ||
+        isWithinBedtimeQuietHours(nowDate, waqtBedtimeHHMM),
+      ),
+    }),
+    [
+      mascotEnabled,
+      lumiTalkLess,
+      lumiSoundsEnabled,
+      privacyDevices,
+      state,
+      focusOn,
+      pomodoro,
+      prayerSchedule,
+      waqtQuietMode,
+      nowDate,
+      waqtBedtimeHHMM,
+    ],
+  );
+  const lumiSilenceDecision = useMemo(
+    () => evaluateLumiSilence(lumiSilenceContext),
+    [lumiSilenceContext],
+  );
+  const lumiSilenceContextRef = useRef(lumiSilenceContext);
+  useEffect(() => {
+    lumiSilenceContextRef.current = lumiSilenceContext;
+  }, [lumiSilenceContext]);
+
+  const triggerLumiEvent = useCallback(
+    (
+      eventKind: LumiEventKind,
+      options?: {
+        legacyMood?: LumiMood;
+        nativeMood?: NativeLumiMood;
+        durationMs?: number;
+        accentHex?: string;
+        playChirp?: Extract<UiSoundName, "lumi_hello" | "lumi_happy">;
+      },
+    ) => {
+      const ctx = lumiSilenceContextRef.current;
+      const silence = evaluateLumiSilence(ctx);
+      if (!ctx.mascotEnabled) {
+        return;
+      }
+      const durationMs = options?.durationMs ?? 2500;
+      const resolvedNativeMood =
+        silence.forceMood ?? options?.nativeMood ?? resolveLumiEventMood(eventKind);
+      const legacyMood: LumiMood =
+        options?.legacyMood ??
+        (eventKind === "startup"
+          ? "wave"
+          : eventKind === "taskDone" || eventKind === "streakMilestone"
+            ? "celebrate"
+            : eventKind === "water"
+              ? "confirm"
+              : eventKind === "music"
+                ? "music"
+                : "idle");
+      const picked = pickLumiSpeechLine(
+        eventKind,
+        language,
+        lumiSpeechRef.current,
+        Date.now(),
+        ctx,
+      );
+      lumiSpeechRef.current = picked.nextState;
+      if (silence.allowSounds && options?.playChirp) {
+        void playUiSound(options.playChirp);
+      }
       if (lumiTimerRef.current !== null) {
         window.clearTimeout(lumiTimerRef.current);
       }
-      setActiveLumiAction({ id: Date.now(), mood, accentHex });
+      setActiveLumiAction({
+        id: Date.now(),
+        mood: legacyMood,
+        nativeMood: resolvedNativeMood,
+        bubbleText: picked.line,
+        accentHex: options?.accentHex,
+      });
+      lumiTimerRef.current = window.setTimeout(() => {
+        lumiTimerRef.current = null;
+        setActiveLumiAction(null);
+      }, durationMs);
+    },
+    [language],
+  );
+  const triggerLumiEventRef = useRef(triggerLumiEvent);
+  useEffect(() => {
+    triggerLumiEventRef.current = triggerLumiEvent;
+  }, [triggerLumiEvent]);
+
+  const triggerLumiReaction = useCallback(
+    (mood: LumiMood, durationMs = 2400, accentHex?: string) => {
+      const ctx = lumiSilenceContextRef.current;
+      const silence = evaluateLumiSilence(ctx);
+      if (!ctx.mascotEnabled) {
+        return;
+      }
+      const mappedNative: NativeLumiMood =
+        silence.forceMood ??
+        (mood === "wave"
+          ? "hello"
+          : mood === "celebrate"
+            ? "celebrate"
+            : mood === "confirm" || mood === "music"
+              ? "happy"
+              : mood === "sleep"
+                ? "sleepy"
+                : mood === "peek"
+                  ? "curious"
+                  : "idle");
+      if (lumiTimerRef.current !== null) {
+        window.clearTimeout(lumiTimerRef.current);
+      }
+      setActiveLumiAction({
+        id: Date.now(),
+        mood,
+        nativeMood: mappedNative,
+        bubbleText: null,
+        accentHex,
+      });
       lumiTimerRef.current = window.setTimeout(() => {
         lumiTimerRef.current = null;
         setActiveLumiAction(null);
@@ -388,37 +554,76 @@ export function IslandShell({
     };
   }, []);
 
-  // Greet once smoothly after real desktop launch with wave + flowing aurora
+  // Greet once smoothly after real desktop launch with wave + optional chirp
   useEffect(() => {
     if (!isTauriRuntime()) {
       return;
     }
     const timer = window.setTimeout(() => {
-      triggerLumiReaction("wave", 2600);
+      triggerLumiEvent("startup", {
+        legacyMood: "wave",
+        durationMs: 2600,
+        playChirp: "lumi_hello",
+      });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [triggerLumiReaction]);
+  }, [triggerLumiEvent]);
 
-  // React to charger plug-in and Pomodoro completion milestones
+  // React to charger plug-in, low battery alerts, and Pomodoro completion milestones
   useEffect(() => {
     const charging = batteryState ? batteryState[1] : null;
+    const pct = batteryState ? batteryState[0] : null;
+    let t: number | null = null;
     if (charging !== null) {
       if (prevChargingRef.current === false && charging) {
-        triggerLumiReaction("celebrate", 2500);
+        lowBatteryAlertedRef.current = false;
+        t = window.setTimeout(() => {
+          triggerLumiEvent("streakMilestone", {
+            legacyMood: "celebrate",
+            nativeMood: "celebrate",
+            durationMs: 2500,
+            playChirp: "lumi_happy",
+          });
+        }, 0);
+      } else if (!charging && pct !== null && pct <= 20 && !lowBatteryAlertedRef.current) {
+        lowBatteryAlertedRef.current = true;
+        t = window.setTimeout(() => {
+          triggerLumiEvent("lowBattery", {
+            legacyMood: "idle",
+            nativeMood: "worried",
+            durationMs: 2800,
+          });
+        }, 0);
+      } else if (pct !== null && pct > 25) {
+        lowBatteryAlertedRef.current = false;
       }
       prevChargingRef.current = charging;
     }
-  }, [batteryState, triggerLumiReaction]);
+    return () => {
+      if (t !== null) window.clearTimeout(t);
+    };
+  }, [batteryState, triggerLumiEvent]);
 
   useEffect(() => {
     const chimeTick = pomodoro?.chime_tick ?? null;
+    let t: number | null = null;
     if (chimeTick !== null) {
       if (prevChimeTickRef.current !== null && chimeTick > prevChimeTickRef.current) {
-        triggerLumiReaction("celebrate", 2800);
+        t = window.setTimeout(() => {
+          triggerLumiEvent("taskDone", {
+            legacyMood: "celebrate",
+            nativeMood: "celebrate",
+            durationMs: 2800,
+            playChirp: "lumi_happy",
+          });
+        }, 0);
       }
       prevChimeTickRef.current = chimeTick;
     }
-  }, [pomodoro?.chime_tick, triggerLumiReaction]);
+    return () => {
+      if (t !== null) window.clearTimeout(t);
+    };
+  }, [pomodoro?.chime_tick, triggerLumiEvent]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -664,6 +869,11 @@ export function IslandShell({
       .catch((err) => {
         setWaqtLoading(false);
         setWaqtError(String(err));
+        triggerLumiEventRef.current("error", {
+          legacyMood: "idle",
+          nativeMood: "oops",
+          durationMs: 2600,
+        });
       });
     void clipboardGetLatest().then((c) => c && setClipboard(c));
     void systemBatteryStatus().then((b) => b && setBatteryState(b));
@@ -755,6 +965,7 @@ export function IslandShell({
         );
       });
       const isPlaying = Boolean(snapshot.active?.is_playing) && !excluded;
+      isPlayingRef.current = isPlaying;
       const trackKey =
         isPlaying && snapshot.active?.title
           ? `${snapshot.active.app_id}::${snapshot.active.title}::${snapshot.active.artist}`
@@ -808,6 +1019,13 @@ export function IslandShell({
     });
     void subscribeAudioPeak((peak) => {
       setAudioPeak(peak);
+      if (isPlayingRef.current && peak > 0.35) {
+        const now = Date.now();
+        if (now - lastBeatAtRef.current >= 340) {
+          lastBeatAtRef.current = now;
+          setLumiBeat((b) => b + 1);
+        }
+      }
     }).then((fn) => {
       unlistenPeak = fn;
     });
@@ -1587,16 +1805,52 @@ export function IslandShell({
                       enabled
                       size="hero"
                       mood={activeLumiAction.mood}
+                      nativeMood={lumiSilenceDecision.forceMood ?? activeLumiAction.nativeMood}
+                      bubbleText={
+                        lumiSilenceDecision.allowBubbles ? activeLumiAction.bubbleText : null
+                      }
+                      beat={liveTrack?.is_playing ? lumiBeat : 0}
+                      active={!isHidden && !isSlimQuiet && !isExpanded}
+                      canLook={!isHidden && !isSlimQuiet}
+                      reducedMotion={prefersReducedMotion}
+                      nowDate={nowDate}
+                      accessories={lumiAccessories}
                       accentColor={activeLumiAction.accentHex ?? mediaAccent}
                     />
                   </div>
                 ) : (
                   <>
-                    {/* Left status dots: Camera (green), Mic (orange), Charging/Low Battery ring, Focus */}
+                    {/* Left status dots: Lumi (18px resting), Camera (green), Mic (orange), Charging/Low Battery ring, Focus */}
                     <div
                       data-testid="resting-left-indicators"
                       className="flex min-w-0 items-center justify-start gap-1.5"
                     >
+                      {mascotEnabled && (
+                        <Lumi
+                          size={18}
+                          mood={
+                            lumiSilenceDecision.forceMood ??
+                            (focusOn || (pomodoro?.running && pomodoro.phase === "focus")
+                              ? "focus"
+                              : liveTrack?.is_playing
+                                ? "happy"
+                                : "idle")
+                          }
+                          glowHue={
+                            lumiSilenceDecision.forceMood === "calm"
+                              ? "prayer"
+                              : focusOn || pomodoro?.running
+                                ? "focus"
+                                : undefined
+                          }
+                          beat={liveTrack?.is_playing ? lumiBeat : 0}
+                          active={!isHidden && !isSlimQuiet && !isExpanded && !activeLumiAction}
+                          canLook={!isHidden && !isSlimQuiet}
+                          reducedMotion={prefersReducedMotion}
+                          nowDate={nowDate}
+                          accessories={lumiAccessories}
+                        />
+                      )}
                       {restingShowSensorDots && privacyDevices[0] && (
                         <span
                           title={isBn ? "ক্যামেরা চালু" : "Camera active"}
@@ -1892,7 +2146,11 @@ export function IslandShell({
                     void selectMediaSession(appId).then((n) => n && setMedia(n))
                   }
                   onLogWater={(ml) => {
-                    triggerLumiReaction("celebrate", 2200);
+                    triggerLumiEvent("water", {
+                      legacyMood: "celebrate",
+                      durationMs: 2200,
+                      playChirp: "lumi_happy",
+                    });
                     void waterLog(ml, waterGoalMl, 4).then((w) => {
                       if (w) {
                         setWaterSummary(w);
@@ -1989,6 +2247,10 @@ export function IslandShell({
                   firstRunDismissed={waqtFirstRunDismissed}
                   rhythmAnchors={waqtRhythmAnchors}
                   customBlockNames={{ ...waqtBlockNames, ...localWaqtNames }}
+                  mascotEnabled={mascotEnabled}
+                  lumiAccessories={lumiAccessories}
+                  lumiBeat={liveTrack?.is_playing ? lumiBeat : 0}
+                  lumiSilent={lumiSilenceDecision.silent}
                   pagesCount={pages.length}
                   activePageIndex={safePageIndex}
                   onSelectPage={(idx) => {
@@ -2014,6 +2276,11 @@ export function IslandShell({
                       .catch((err) => {
                         setWaqtLoading(false);
                         setWaqtError(String(err));
+                        triggerLumiEvent("error", {
+                          legacyMood: "idle",
+                          nativeMood: "oops",
+                          durationMs: 2600,
+                        });
                       });
                   }}
                   onAssignTask={(taskId, blockId, sortOrder) => {
@@ -2042,6 +2309,14 @@ export function IslandShell({
                     });
                   }}
                   onToggleTask={(taskId) => {
+                    const targetTask = tasks.find((t) => t.id === taskId);
+                    if (targetTask && !targetTask.done) {
+                      triggerLumiEvent("taskDone", {
+                        legacyMood: "celebrate",
+                        durationMs: 2200,
+                        playChirp: "lumi_happy",
+                      });
+                    }
                     const nowIso = new Date().toISOString();
                     setTasks((cur) =>
                       cur.map((t) =>
@@ -2429,7 +2704,14 @@ export function IslandShell({
                             });
                           }}
                           onToggle={(id) => {
-                            triggerLumiReaction("celebrate", 2200);
+                            const targetTask = tasks.find((t) => t.id === id);
+                            if (targetTask && !targetTask.done) {
+                              triggerLumiEvent("taskDone", {
+                                legacyMood: "celebrate",
+                                durationMs: 2200,
+                                playChirp: "lumi_happy",
+                              });
+                            }
                             void tasksToggle(id).then((updated) => {
                               if (isTauriRuntime()) {
                                 setTasks(updated);
@@ -2459,7 +2741,11 @@ export function IslandShell({
                             servingMl={250}
                             remindersEnabled={waterReminders}
                             onDrink={(ml) => {
-                              triggerLumiReaction("celebrate", 2200);
+                              triggerLumiEvent("water", {
+                                legacyMood: "celebrate",
+                                durationMs: 2200,
+                                playChirp: "lumi_happy",
+                              });
                               void waterLog(ml, waterGoalMl, 4).then((w) => {
                                 if (w) {
                                   setWaterSummary(w);
@@ -2735,6 +3021,24 @@ export function IslandShell({
               </motion.div>
             )}
           </AnimatePresence>
+          {isExpanded &&
+            activeLumiAction?.bubbleText &&
+            mascotEnabled &&
+            lumiSilenceDecision.allowBubbles && (
+              <div
+                role="status"
+                aria-live="polite"
+                data-testid="lumi-speech-bubble"
+                className="pointer-events-none absolute right-3 bottom-2 z-40 max-w-[180px] truncate rounded-full px-2.5 py-0.5 text-[10.5px] font-medium"
+                style={{
+                  backgroundColor: "var(--surface-raised)",
+                  border: "1px solid var(--hairline)",
+                  color: "var(--text-primary)",
+                }}
+              >
+                {activeLumiAction.bubbleText}
+              </div>
+            )}
         </div>
       </motion.div>
     </div>

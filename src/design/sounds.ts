@@ -11,7 +11,9 @@ export type UiSoundName =
   | "reminder_chime"
   | "reminder_alarm"
   | "mail_arrival"
-  | "error";
+  | "error"
+  | "lumi_hello"
+  | "lumi_happy";
 
 export type SoundCategory = "interface" | "reminders";
 
@@ -136,6 +138,24 @@ export const SOUND_PRESETS: Record<UiSoundName, SoundPresetSpec> = {
     category: "interface",
     waveform: "sine",
     frequenciesHz: [180],
+    durationMs: 90,
+    gain: 0.12,
+    attackMs: 3,
+  },
+  lumi_hello: {
+    name: "lumi_hello",
+    category: "interface",
+    waveform: "sine",
+    frequenciesHz: [784, 988],
+    durationMs: 90,
+    gain: 0.12,
+    attackMs: 3,
+  },
+  lumi_happy: {
+    name: "lumi_happy",
+    category: "interface",
+    waveform: "sine",
+    frequenciesHz: [988, 1318],
     durationMs: 90,
     gain: 0.12,
     attackMs: 3,

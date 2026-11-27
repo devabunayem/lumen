@@ -87,6 +87,25 @@
   --waqt-ghost-border: rgba(255, 255, 255, 0.28);
   --waqt-card-radius: 16px;
 
+  --lumi-body-top: #fff8cf;
+  --lumi-body-mid: #ffe083;
+  --lumi-body-bot: #ffa93a;
+  --lumi-belly: #fffbe6;
+  --lumi-eye: #1c1530;
+  --lumi-blush: #ff8fa3;
+  --lumi-mouth-fill: #d95d57;
+  --lumi-spark-outer: #ffd45e;
+  --lumi-spark-inner: #fff4b8;
+  --lumi-arm: #ffc757;
+  --lumi-shadow: #ffb020;
+  --lumi-sweat: #78d5ff;
+  --lumi-headphone-band: #7a78ff;
+  --lumi-headphone-cup: #5e5ce6;
+  --lumi-glow-dusk: #ffc247;
+  --lumi-glow-focus: #7a78ff;
+  --lumi-glow-prayer: #2fd6b8;
+  --lumi-glow-night: #4aa3ff;
+
   --island-padding: 14px;
   --island-gap: 6px;
   --card-radius: 18px;

@@ -1,6 +1,12 @@
 import { motion, useReducedMotion } from "motion/react";
-import { useId } from "react";
 import { MOTION_PRESETS } from "../design/motion";
+import {
+  Lumi,
+  type LumiAccessory,
+  type LumiGlowHue,
+  type LumiLookPoint,
+  type LumiMood as NativeLumiMood,
+} from "../design/lumi";
 import { COLOR_TOKENS } from "../design/tokens";
 import type { LumiMood } from "./ActionGlowLayer";
 
@@ -9,24 +15,67 @@ export interface LumenMascotProps {
   musicPlaying?: boolean;
   celebrating?: boolean;
   mood?: LumiMood;
+  nativeMood?: NativeLumiMood;
   size?: "compact" | "hero";
+  pixelSize?: number;
   accentColor?: string;
+  glowHue?: LumiGlowHue;
+  talking?: boolean;
+  beat?: number;
+  active?: boolean;
+  canLook?: boolean;
+  lookAt?: LumiLookPoint;
+  reducedMotion?: boolean;
+  nowDate?: Date;
+  accessories?: readonly LumiAccessory[];
+  bubbleText?: string | null;
+}
+
+function mapLegacyMoodToNative(mood: LumiMood): NativeLumiMood {
+  switch (mood) {
+    case "wave":
+      return "hello";
+    case "celebrate":
+      return "celebrate";
+    case "confirm":
+      return "happy";
+    case "music":
+      return "happy";
+    case "sleep":
+      return "sleepy";
+    case "peek":
+      return "curious";
+    case "idle":
+    default:
+      return "idle";
+  }
 }
 
 /**
- * Expressive original vector companion ("Lumi") with luminous mood eyes and a waving hand
- * during actions, greetings, and celebrations (zero copied assets).
+ * Expressive original vector companion ("Lumi") backed by the unified `<Lumi />` rig
+ * and Main state machine, keeping decorative graphics `aria-hidden="true"` while exposing
+ * optional speech bubbles via `role="status"`.
  */
 export function LumenMascot({
   enabled = true,
   musicPlaying = false,
   celebrating = false,
   mood,
+  nativeMood,
   size = "compact",
-  accentColor = COLOR_TOKENS.accentCyan,
+  pixelSize,
+  glowHue,
+  talking = false,
+  beat = 0,
+  active = true,
+  canLook = false,
+  lookAt,
+  reducedMotion = false,
+  nowDate,
+  accessories = [],
+  bubbleText = null,
 }: LumenMascotProps) {
-  const prefersReduced = useReducedMotion() ?? false;
-  const glowFilterId = useId();
+  const prefersReduced = (useReducedMotion() ?? false) || reducedMotion;
 
   if (!enabled) {
     return null;
@@ -34,201 +83,54 @@ export function LumenMascot({
 
   const resolvedMood: LumiMood =
     mood ?? (celebrating ? "celebrate" : musicPlaying ? "music" : "idle");
-
-  if (size === "hero") {
-    const happyEyes =
-      resolvedMood === "wave" ||
-      resolvedMood === "celebrate" ||
-      resolvedMood === "confirm" ||
-      resolvedMood === "music";
-    const showHand = resolvedMood === "wave" || resolvedMood === "celebrate";
-    const isSleep = resolvedMood === "sleep";
-
-    return (
-      <motion.div
-        data-testid="lumen-mascot"
-        data-mood={resolvedMood}
-        data-size="hero"
-        aria-hidden="true"
-        initial={prefersReduced ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.9 }}
-        animate={
-          prefersReduced
-            ? { opacity: 1 }
-            : {
-                opacity: 1,
-                y: resolvedMood === "celebrate" || resolvedMood === "music" ? [0, -1.5, 0] : 0,
-                scale: 1,
-              }
-        }
-        exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.92 }}
-        transition={
-          resolvedMood === "celebrate" || resolvedMood === "music"
-            ? { duration: 0.75, repeat: Infinity, ease: "easeInOut" }
-            : prefersReduced
-              ? MOTION_PRESETS.reducedMotionFade
-              : MOTION_PRESETS.lumiEnter
-        }
-        className="relative z-10 flex items-center justify-center"
-      >
-        <svg width="64" height="24" viewBox="0 0 64 24" fill="none">
-          <defs>
-            <filter id={glowFilterId} x="-40%" y="-40%" width="180%" height="180%">
-              <feDropShadow
-                dx="0"
-                dy="0"
-                stdDeviation="1.6"
-                floodColor={accentColor}
-                floodOpacity="0.8"
-              />
-            </filter>
-          </defs>
-
-          {/* Expressive luminous eyes */}
-          <g filter={`url(#${glowFilterId})`}>
-            {happyEyes ? (
-              <>
-                <path
-                  d="M17.5 14.8 Q21 9.4 24.5 14.8"
-                  stroke={COLOR_TOKENS.textPrimary}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  d="M31.5 14.8 Q35 9.4 38.5 14.8"
-                  stroke={COLOR_TOKENS.textPrimary}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </>
-            ) : isSleep ? (
-              <>
-                <path
-                  d="M17.5 12.2 Q21 15.2 24.5 12.2"
-                  stroke={COLOR_TOKENS.textSecondary}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  d="M31.5 12.2 Q35 15.2 38.5 12.2"
-                  stroke={COLOR_TOKENS.textSecondary}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </>
-            ) : (
-              <motion.g
-                style={{ transformOrigin: "28px 12px" }}
-                animate={prefersReduced ? undefined : { scaleY: [1, 1, 1, 0.14, 1, 1] }}
-                transition={{
-                  duration: 3.4,
-                  repeat: Infinity,
-                  times: [0, 0.82, 0.88, 0.92, 0.96, 1],
-                }}
-              >
-                <rect
-                  x="18.5"
-                  y="9"
-                  width="4.4"
-                  height="6.8"
-                  rx="2.2"
-                  fill={COLOR_TOKENS.textPrimary}
-                />
-                <rect
-                  x="33.1"
-                  y="9"
-                  width="4.4"
-                  height="6.8"
-                  rx="2.2"
-                  fill={COLOR_TOKENS.textPrimary}
-                />
-              </motion.g>
-            )}
-          </g>
-
-          {/* Animated waving hand beside right eye */}
-          {showHand && (
-            <motion.g
-              style={{ transformOrigin: "47px 19px" }}
-              animate={prefersReduced ? undefined : { rotate: [-14, 20, -10, 16, -6, 0] }}
-              transition={{
-                duration: 1.15,
-                repeat: Infinity,
-                repeatDelay: 0.25,
-                ease: "easeInOut",
-              }}
-            >
-              {/* Minimalist friendly open hand silhouette */}
-              <path
-                d="M44.6 18.4c-.6-.7-.8-1.8-.3-2.5.4-.5 1-.3 1.4.4l.6 1V13.2c0-.5.4-.9.9-.9s.9.4.9.9v2.9h.5V12c0-.5.4-.9.9-.9s.9.4.9.9v4.1h.5v-3.5c0-.5.4-.9.9-.9s.9.4.9.9v3.9h.5v-2.4c0-.5.4-.8.8-.8s.8.3.8.8v4c0 1.8-1.3 3-3 3h-1.8c-1.1 0-2-.5-2.6-1.3l-1-1.4z"
-                fill={COLOR_TOKENS.textPrimary}
-              />
-            </motion.g>
-          )}
-        </svg>
-      </motion.div>
-    );
-  }
+  const targetNativeMood: NativeLumiMood = nativeMood ?? mapLegacyMoodToNative(resolvedMood);
+  const resolvedPixelSize = pixelSize ?? (size === "hero" ? 28 : 22);
+  const resolvedGlowHue: LumiGlowHue | undefined =
+    glowHue ??
+    (targetNativeMood === "focus"
+      ? "focus"
+      : targetNativeMood === "calm"
+        ? "prayer"
+        : targetNativeMood === "sleepy"
+          ? "night"
+          : undefined);
 
   return (
-    <motion.div
-      data-testid="lumen-mascot"
-      data-mood={resolvedMood}
-      aria-hidden="true"
-      className="flex h-5 w-5 shrink-0 items-center justify-center"
-      animate={
-        prefersReduced || (!musicPlaying && !celebrating)
-          ? undefined
-          : celebrating
-            ? { y: [0, -2, 0] }
-            : { y: [0, -1.5, 0] }
-      }
-      transition={{
-        duration: celebrating ? 0.8 : 0.7,
-        repeat: musicPlaying || celebrating ? Infinity : 0,
-        ease: "easeInOut",
-      }}
-    >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M12 2.5C15.8 6.8 18.5 9.8 18.5 14A6.5 6.5 0 1 1 5.5 14C5.5 9.8 8.2 6.8 12 2.5Z"
-          fill="#1C1C1E"
-          stroke={accentColor}
-          strokeWidth="1.6"
+    <span className="relative z-10 inline-flex items-center gap-1.5">
+      <span
+        data-testid="lumen-mascot"
+        data-mood={resolvedMood}
+        data-native-mood={targetNativeMood}
+        data-size={size === "hero" ? "hero" : undefined}
+        aria-hidden="true"
+        className="relative inline-flex shrink-0 items-center justify-center"
+      >
+        <Lumi
+          size={resolvedPixelSize}
+          mood={targetNativeMood}
+          glowHue={resolvedGlowHue}
+          talking={Boolean(talking || bubbleText)}
+          beat={beat}
+          active={active}
+          canLook={canLook}
+          lookAt={lookAt}
+          reducedMotion={prefersReduced}
+          nowDate={nowDate}
+          accessories={accessories}
         />
-        <circle
-          cx="9.6"
-          cy="14.2"
-          r="1.15"
-          fill={celebrating ? COLOR_TOKENS.accentGreen : COLOR_TOKENS.textPrimary}
-        />
-        <circle
-          cx="14.4"
-          cy="14.2"
-          r="1.15"
-          fill={celebrating ? COLOR_TOKENS.accentGreen : COLOR_TOKENS.textPrimary}
-        />
-        <path
-          d={
-            celebrating
-              ? "M9.8 17.1C10.9 18.2 13.1 18.2 14.2 17.1"
-              : "M10.4 17.2C11.3 17.7 12.7 17.7 13.6 17.2"
-          }
-          stroke={accentColor}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        {celebrating && (
-          <>
-            <circle cx="4.5" cy="6.5" r="1.1" fill={COLOR_TOKENS.accentOrange} />
-            <circle cx="19.5" cy="6.5" r="1.1" fill={COLOR_TOKENS.accentGreen} />
-          </>
-        )}
-      </svg>
-    </motion.div>
+      </span>
+      {bubbleText && (
+        <span
+          role="status"
+          aria-live="polite"
+          data-testid="lumi-speech-bubble"
+          className="max-w-[144px] truncate rounded-full border border-white/15 px-2 py-0.5 text-[10.5px] font-medium leading-tight text-white"
+          style={{ backgroundColor: "rgba(255, 255, 255, 0.08)" }}
+        >
+          {bubbleText}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -238,24 +140,56 @@ export interface WaqtBodyDoubleLumiProps {
   state: WaqtBodyDoubleState;
   isVisible: boolean;
   reduceMotion?: boolean;
+  accessories?: readonly LumiAccessory[];
+  beat?: number;
+  silent?: boolean;
+  canLook?: boolean;
+  nowDate?: Date;
+}
+
+function mapWaqtStateToLumiMood(state: WaqtBodyDoubleState, silent: boolean): NativeLumiMood {
+  if (silent) {
+    return "calm";
+  }
+  switch (state) {
+    case "focus":
+      return "focus";
+    case "celebrate":
+      return "celebrate";
+    case "break":
+      return "happy";
+    case "looks_up":
+      return "curious";
+    case "idle_working":
+    default:
+      return "idle";
+  }
 }
 
 /**
- * Original circular Lumi body-double companion for Waqt Focus Flow:
- * animates gently only when visible and reduceMotion is disabled.
+ * Unified Lumi body-double companion for Waqt Focus Flow:
+ * renders the full-detail `<Lumi />` rig (with Focus headphones in `focus` mood)
+ * and animates gently only when visible and `reduceMotion` is disabled.
  */
 export function WaqtBodyDoubleLumi({
   state,
   isVisible,
   reduceMotion = false,
+  accessories = [],
+  beat = 0,
+  silent = false,
+  canLook = true,
+  nowDate,
 }: WaqtBodyDoubleLumiProps) {
   const prefersReduced = (useReducedMotion() ?? false) || reduceMotion;
   const shouldAnimate = isVisible && !prefersReduced;
+  const nativeMood = mapWaqtStateToLumiMood(state, silent);
 
   return (
     <motion.div
       data-testid="waqt-lumi-body-double"
       data-body-state={state}
+      aria-hidden="true"
       className="relative flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full"
       style={{
         background: `radial-gradient(circle, ${COLOR_TOKENS.waqtGlowIndigo} 0%, rgba(94, 92, 230, 0.14) 70%, transparent 100%)`,
@@ -263,94 +197,31 @@ export function WaqtBodyDoubleLumi({
       animate={
         shouldAnimate
           ? state === "celebrate"
-            ? { y: [0, -3, 0], scale: [1, 1.07, 1] }
-            : state === "focus"
-              ? { scale: [1, 1.03, 1] }
-              : state === "break"
-                ? { rotate: [-3, 3, -3] }
-                : { y: [0, -1, 0] }
+            ? { y: [0, -2, 0] }
+            : state === "break"
+              ? { rotate: [-2, 2, -2] }
+              : { y: [0, -1, 0] }
           : undefined
       }
       transition={
         shouldAnimate
           ? state === "celebrate"
-            ? { ...MOTION_PRESETS.bouncy, repeat: 2 }
-            : { duration: 2.6, repeat: Infinity, ease: "easeInOut" }
+            ? { ...MOTION_PRESETS.bouncy, repeat: 1 }
+            : { duration: 2.8, repeat: Infinity, ease: "easeInOut" }
           : undefined
       }
     >
-      <svg width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-        {/* Headphones band */}
-        <path
-          d="M9 19a11 11 0 0 1 22 0"
-          stroke={COLOR_TOKENS.waqtTask}
-          strokeWidth="2.8"
-          strokeLinecap="round"
-        />
-        <rect x="6.5" y="17.5" width="3.5" height="7" rx="1.7" fill={COLOR_TOKENS.waqtTask} />
-        <rect x="30" y="17.5" width="3.5" height="7" rx="1.7" fill={COLOR_TOKENS.waqtTask} />
-
-        {/* Luminous warm circular face */}
-        <circle cx="20" cy="21" r="10.2" fill={COLOR_TOKENS.sunDisc} />
-
-        {state === "focus" ? (
-          <>
-            <path
-              d="M14.8 19.8c.9 1.2 2.3 1.2 3.2 0"
-              stroke={COLOR_TOKENS.surfaceRaised}
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-            <path
-              d="M22 19.8c.9 1.2 2.3 1.2 3.2 0"
-              stroke={COLOR_TOKENS.surfaceRaised}
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </>
-        ) : state === "looks_up" ? (
-          <>
-            <circle cx="16.4" cy="18.2" r="1.4" fill={COLOR_TOKENS.surfaceRaised} />
-            <circle cx="23.6" cy="18.2" r="1.4" fill={COLOR_TOKENS.surfaceRaised} />
-          </>
-        ) : state === "celebrate" || state === "break" ? (
-          <>
-            <path
-              d="M14.8 20.4c.9-1.4 2.3-1.4 3.2 0"
-              stroke={COLOR_TOKENS.surfaceRaised}
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-            <path
-              d="M22 20.4c.9-1.4 2.3-1.4 3.2 0"
-              stroke={COLOR_TOKENS.surfaceRaised}
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </>
-        ) : (
-          <motion.g
-            style={{ transformOrigin: "20px 19.5px" }}
-            animate={shouldAnimate ? { scaleY: [1, 1, 0.15, 1] } : undefined}
-            transition={{ duration: 3.4, repeat: Infinity, times: [0, 0.85, 0.92, 1] }}
-          >
-            <circle cx="16.4" cy="19.5" r="1.35" fill={COLOR_TOKENS.surfaceRaised} />
-            <circle cx="23.6" cy="19.5" r="1.35" fill={COLOR_TOKENS.surfaceRaised} />
-          </motion.g>
-        )}
-
-        {/* Calm mouth */}
-        <path
-          d={
-            state === "celebrate" || state === "break"
-              ? "M17.2 23.6c1.5 1.5 4.1 1.5 5.6 0"
-              : "M17.8 23.8c1.2.9 3.2.9 4.4 0"
-          }
-          stroke={COLOR_TOKENS.surfaceRaised}
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-      </svg>
+      <Lumi
+        size={42}
+        mood={nativeMood}
+        glowHue={nativeMood === "focus" ? "focus" : nativeMood === "calm" ? "prayer" : "dusk"}
+        beat={beat}
+        active={isVisible}
+        canLook={canLook && isVisible}
+        reducedMotion={prefersReduced}
+        nowDate={nowDate}
+        accessories={accessories}
+      />
     </motion.div>
   );
 }

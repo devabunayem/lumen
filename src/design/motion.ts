@@ -111,6 +111,22 @@ export const MOTION_PRESETS = {
     delay: 0.06,
     ease: [0.22, 1, 0.36, 1],
   },
+  lumiTransition: {
+    duration: 0.22,
+    ease: [0.22, 1, 0.36, 1],
+  },
+  lumiLook: {
+    duration: 0.18,
+    ease: [0.22, 1, 0.36, 1],
+  },
+  lumiHeadphones: {
+    duration: 0.2,
+    ease: "easeOut",
+  },
+  lumiBeatNod: {
+    duration: 0.12,
+    ease: [0.22, 1, 0.36, 1],
+  },
 } as const satisfies Record<string, Transition>;
 
 export const CONTENT_STAGGER = {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { IslandShell } from "./app/IslandShell";
 import type { ShapeStyle } from "./design/tokens";
+import { DevLumiPage } from "./dev/DevLumiPage";
 import { DevStatesPage } from "./dev/DevStatesPage";
 import {
   isTauriRuntime,
@@ -52,14 +53,26 @@ function detectIsDevStatesRoute(): boolean {
   );
 }
 
+function detectIsDevLumiRoute(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return (
+    window.location.pathname.startsWith("/dev/lumi") ||
+    window.location.hash.includes("/dev/lumi") ||
+    new URLSearchParams(window.location.search).get("route") === "dev-lumi"
+  );
+}
+
 export function App() {
   const [settings, setSettings] = useState<LumenSettings>(DEFAULT_SETTINGS);
   const [autoMonitorScale, setAutoMonitorScale] = useState<number | null>(null);
   const isSettingsWindow = detectIsSettingsWindow();
   const isDevStatesRoute = detectIsDevStatesRoute();
+  const isDevLumiRoute = detectIsDevLumiRoute();
 
   useEffect(() => {
-    if (isDevStatesRoute) {
+    if (isDevStatesRoute || isDevLumiRoute) {
       return;
     }
     let unlisten: (() => void) | undefined;
@@ -78,7 +91,11 @@ export function App() {
     return () => {
       unlisten?.();
     };
-  }, [isDevStatesRoute]);
+  }, [isDevStatesRoute, isDevLumiRoute]);
+
+  if (isDevLumiRoute) {
+    return <DevLumiPage />;
+  }
 
   if (isDevStatesRoute) {
     return <DevStatesPage />;
@@ -147,6 +164,9 @@ export function App() {
       waqtQuietMode={settings.waqtQuietMode}
       waqtFirstRunDismissed={settings.waqtFirstRunDismissed}
       waqtRhythmAnchors={settings.waqtRhythmAnchors}
+      lumiTalkLess={settings.lumiTalkLess}
+      lumiSoundsEnabled={settings.lumiSoundsEnabled}
+      lumiAccessories={settings.lumiAccessories}
       onShapeChange={handleShapeChange}
     />
   );
