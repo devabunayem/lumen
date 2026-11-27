@@ -144,6 +144,9 @@ export function App() {
       waqtRamadanTaraweeh={settings.waqtRamadanTaraweeh}
       waqtHintDismissed={settings.waqtHintDismissed}
       waqtBlockNames={settings.waqtBlockNames}
+      waqtQuietMode={settings.waqtQuietMode}
+      waqtFirstRunDismissed={settings.waqtFirstRunDismissed}
+      waqtRhythmAnchors={settings.waqtRhythmAnchors}
       onShapeChange={handleShapeChange}
     />
   );

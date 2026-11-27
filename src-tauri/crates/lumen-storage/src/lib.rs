@@ -482,6 +482,53 @@ impl StorageRepo {
         self.list_tasks()
     }
 
+    pub fn assign_tasks_batch(
+        &self,
+        assignments: &[(i64, Option<String>)],
+    ) -> Result<Vec<TaskItem>, String> {
+        {
+            let mut conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            let tx = conn
+                .transaction()
+                .map_err(|e| format!("begin assign_tasks_batch tx failed: {e}"))?;
+            for (task_id, block_id) in assignments {
+                tx.execute(
+                    "UPDATE tasks SET block_id = ?1 WHERE id = ?2",
+                    params![block_id, task_id],
+                )
+                .map_err(|e| format!("batch assign task failed: {e}"))?;
+            }
+            tx.commit()
+                .map_err(|e| format!("commit assign_tasks_batch tx failed: {e}"))?;
+        }
+        self.list_tasks()
+    }
+
+    pub fn get_kv(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare("SELECT value FROM kv_state WHERE key = ?1")
+            .map_err(|e| format!("prepare get_kv failed: {e}"))?;
+        let res = stmt.query_row(params![key], |row| row.get::<_, String>(0));
+        match res {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("query get_kv failed: {e}")),
+        }
+    }
+
+    pub fn set_kv(&self, key: &str, value: &str) -> Result<(), String> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.execute(
+            "INSERT INTO kv_state (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            params![key, value, now],
+        )
+        .map_err(|e| format!("set_kv failed: {e}"))?;
+        Ok(())
+    }
+
     pub fn rollover_yesterday_tasks(&self, accept: bool) -> Result<Vec<TaskItem>, String> {
         let now = Utc::now().to_rfc3339();
         {

@@ -77,6 +77,7 @@ export const COLOR_TOKENS = {
   waqtGlowIndigo: "var(--waqt-glow-indigo)",
   waqtGlowGreen: "var(--waqt-glow-green)",
   waqtGlowAmber: "var(--waqt-glow-amber)",
+  waqtGhostBorder: "var(--waqt-ghost-border)",
 } as const;
 
 export const BASE_GEOMETRY = {

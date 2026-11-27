@@ -84,6 +84,7 @@
   --waqt-glow-indigo: rgba(94, 92, 230, 0.48);
   --waqt-glow-green: rgba(48, 209, 88, 0.24);
   --waqt-glow-amber: rgba(255, 176, 32, 0.2);
+  --waqt-ghost-border: rgba(255, 255, 255, 0.28);
   --waqt-card-radius: 16px;
 
   --island-padding: 14px;

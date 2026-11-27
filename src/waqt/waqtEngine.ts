@@ -1,61 +1,306 @@
 import type {
-  ActivityLogItem,
   CalendarEvent,
   PomodoroSnapshot,
   PrayerSchedule,
   TaskItem,
   WaqtBlockItem,
   WaqtBlockView,
+  WaqtGhostAnchor,
+  WaqtPlanAssignment,
+  WaqtSuggestion,
   WaqtTimelineState,
+  WaqtTomorrowBlock,
 } from "../lib/ipc";
+import type { WaqtRhythmAnchor } from "../settings";
 
-export function parseHhmmMinutes(hhmm: string | undefined, fallbackMin: number): number {
-  if (!hhmm) return fallbackMin;
-  const parts = hhmm.trim().split(":");
-  if (parts.length !== 2) return fallbackMin;
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+export const WAQT_RAIL_W = 612;
+export const WAQT_RAIL_H = 34;
+export const WAQT_SEGMENT_W = 114;
+export const WAQT_SEGMENT_GAP = 10.5;
+
+export function parseHHMM(raw: string, fallbackMin: number): number {
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) {
     return fallbackMin;
   }
-  return Math.floor(h) * 60 + Math.floor(m);
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (Number.isNaN(h) || Number.isNaN(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return fallbackMin;
+  }
+  return h * 60 + min;
 }
 
-export function formatMinClock12(minOfDay: number, withSuffix = false): string {
+export function parseClockMinutes(raw: string | null | undefined): number | null {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const iso = new Date(trimmed);
+  if (trimmed.includes("T") && !Number.isNaN(iso.getTime())) {
+    return iso.getHours() * 60 + iso.getMinutes();
+  }
+  const match = trimmed.toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+  if (!match) {
+    return null;
+  }
+  let h = Number(match[1]);
+  const m = Number(match[2]);
+  const meridiem = match[3];
+  if (meridiem === "PM" && h < 12) {
+    h += 12;
+  } else if (meridiem === "AM" && h === 12) {
+    h = 0;
+  }
+  if (h < 0 || h > 23 || m < 0 || m > 59) {
+    return null;
+  }
+  return h * 60 + m;
+}
+
+export function formatMinClock12(minOfDay: number): string {
   const wrapped = ((Math.round(minOfDay) % 1440) + 1440) % 1440;
   const h24 = Math.floor(wrapped / 60);
   const m = wrapped % 60;
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  const base = `${h12}:${String(m).padStart(2, "0")}`;
-  return withSuffix ? `${base} ${h24 >= 12 ? "PM" : "AM"}` : base;
+  return `${h12}:${String(m).padStart(2, "0")}`;
 }
 
-export function formatShortDuration(totalMin: number): string {
-  const safe = Math.max(0, Math.round(totalMin));
-  const h = Math.floor(safe / 60);
-  const m = safe % 60;
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
+export function formatDurationCompact(mins: number): string {
+  const clamped = Math.max(0, Math.round(mins));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  if (h > 0 && m > 0) {
+    return `${h}h ${m}m`;
+  }
+  if (h > 0) {
+    return `${h}h`;
+  }
   return `${m}m`;
 }
 
+export function snapScrubMinutes(minute: number, minBound: number, maxBound: number): number {
+  const snapped = Math.round(minute / 5) * 5;
+  return Math.max(minBound, Math.min(maxBound, snapped));
+}
+
+export interface ParsedQuickAddInput {
+  title: string;
+  estimateMin: number;
+  startAt: string | null;
+}
+
 /**
- * Pure client-side Waqt timeline derivation (used seamlessly when running in Vite / Vitest mock mode
- * and for real-time 5-min scrub / 5s Replay Day projections without mutating SQLite).
+ * Parses quick-add text such as `"design review 25"`, `"sync 45m"`, `"deep work 1h"`,
+ * or `"call @3pm 20"` into clean title, clamped estimate (5..240), and optional time.
  */
-export function buildFallbackWaqtState(input: {
+export function parseQuickAddTaskInput(raw: string): ParsedQuickAddInput {
+  let working = raw.trim();
+  let startAt: string | null = null;
+  let estimateMin = 25;
+
+  const atTimeMatch = working.match(/\s+@(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+  if (atTimeMatch) {
+    const token = atTimeMatch[1].trim().toLowerCase();
+    const hm = token.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+    if (hm) {
+      let h = Number(hm[1]);
+      const m = hm[2] ? Number(hm[2]) : 0;
+      const ap = hm[3]?.toLowerCase();
+      if (ap === "pm" && h < 12) h += 12;
+      else if (ap === "am" && h === 12) h = 0;
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        startAt = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      }
+    }
+    working = working.replace(atTimeMatch[0], " ").trim();
+  }
+
+  const trailingHours = working.match(/\s+(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)$/i);
+  const trailingMins = working.match(/\s+(\d{1,3})\s*(?:m|min|mins)?$/i);
+  if (trailingHours) {
+    const parsed = Math.round(Number(trailingHours[1]) * 60);
+    if (parsed >= 5 && parsed <= 240) {
+      estimateMin = parsed;
+      working = working.slice(0, working.length - trailingHours[0].length).trim();
+    }
+  } else if (trailingMins) {
+    const parsed = Number(trailingMins[1]);
+    if (parsed >= 5 && parsed <= 240) {
+      estimateMin = parsed;
+      working = working.slice(0, working.length - trailingMins[0].length).trim();
+    }
+  }
+
+  return {
+    title: working || raw.trim(),
+    estimateMin,
+    startAt,
+  };
+}
+
+export function resolveKindCssVar(kind: string): string {
+  switch (kind) {
+    case "meeting":
+      return "var(--waqt-meeting)";
+    case "habit":
+    case "water":
+    case "walk":
+    case "stretch":
+    case "eye":
+      return "var(--waqt-habit)";
+    case "deadline":
+      return "var(--waqt-deadline)";
+    default:
+      return "var(--waqt-task)";
+  }
+}
+
+export interface CapacitySlice {
+  id: number | string;
+  pct: number;
+  colorVar: string;
+}
+
+export function buildSegmentedCapacitySlices(block: WaqtBlockView): CapacitySlice[] {
+  const denom = Math.max(
+    15,
+    block.is_current ? block.remaining_min : block.end_min - block.start_min,
+  );
+  if (block.capacity_status === "overbooked") {
+    return [{ id: "overbooked", pct: 100, colorVar: "var(--waqt-deadline)" }];
+  }
+  if (block.items.length === 0) {
+    return [];
+  }
+  if (block.capacity_status === "tight") {
+    return [
+      {
+        id: "tight",
+        pct: Math.min(100, Math.max(8, block.fill_ratio_pct)),
+        colorVar: "var(--waqt-habit)",
+      },
+    ];
+  }
+  return block.items.map((item) => {
+    const need = item.fixed ? Math.max(5, item.estimate_min) : Math.max(5, item.estimate_min) + 5;
+    const rawPct = (need / denom) * 100;
+    return {
+      id: item.id,
+      pct: Math.max(4, Math.min(100, Math.round(rawPct))),
+      colorVar: resolveKindCssVar(item.kind),
+    };
+  });
+}
+
+export function computeOverflowMoveAssignments(
+  block: WaqtBlockView,
+  nextBlock: WaqtBlockView | undefined,
+): Array<{ taskId: number; title: string; prevBlockId: string | null; nextBlockId: string }> {
+  if (!nextBlock || block.capacity_status !== "overbooked") {
+    return [];
+  }
+  let excess = Math.max(0, -block.free_capacity_min);
+  const candidates = [...block.items].reverse().filter((i) => !i.fixed && !i.done && i.id > 0);
+  const moves: Array<{
+    taskId: number;
+    title: string;
+    prevBlockId: string | null;
+    nextBlockId: string;
+  }> = [];
+  for (const item of candidates) {
+    if (excess <= 0) {
+      break;
+    }
+    moves.push({
+      taskId: item.id,
+      title: item.title,
+      prevBlockId: block.id,
+      nextBlockId: nextBlock.id,
+    });
+    excess -= Math.max(5, item.estimate_min) + 5;
+  }
+  return moves;
+}
+
+export function computeSunX(
+  displayMin: number,
+  blocks: WaqtBlockView[],
+  fallbackStartMin: number,
+  fallbackEndMin: number,
+): number {
+  if (blocks.length === 0) {
+    const span = Math.max(1, fallbackEndMin - fallbackStartMin);
+    const t = Math.max(0, Math.min(1, (displayMin - fallbackStartMin) / span));
+    return t * WAQT_RAIL_W;
+  }
+  for (let i = 0; i < blocks.length; i += 1) {
+    const b = blocks[i];
+    const segStartX = i * (WAQT_SEGMENT_W + WAQT_SEGMENT_GAP);
+    if (displayMin <= b.start_min && i === 0) {
+      return segStartX;
+    }
+    if (displayMin >= b.start_min && displayMin <= b.end_min) {
+      const frac = (displayMin - b.start_min) / Math.max(1, b.end_min - b.start_min);
+      return segStartX + Math.max(0, Math.min(1, frac)) * WAQT_SEGMENT_W;
+    }
+    if (i < blocks.length - 1 && displayMin > b.end_min && displayMin < blocks[i + 1].start_min) {
+      return segStartX + WAQT_SEGMENT_W;
+    }
+  }
+  return (blocks.length - 1) * (WAQT_SEGMENT_W + WAQT_SEGMENT_GAP) + WAQT_SEGMENT_W;
+}
+
+export function scrubXToMinutes(
+  offsetX: number,
+  blocks: WaqtBlockView[],
+  fallbackStartMin: number,
+  fallbackEndMin: number,
+): number {
+  if (blocks.length === 0) {
+    const frac = Math.max(0, Math.min(1, offsetX / WAQT_RAIL_W));
+    return snapScrubMinutes(
+      fallbackStartMin + frac * (fallbackEndMin - fallbackStartMin),
+      fallbackStartMin,
+      fallbackEndMin,
+    );
+  }
+  const clampedX = Math.max(0, Math.min(WAQT_RAIL_W, offsetX));
+  const stride = WAQT_SEGMENT_W + WAQT_SEGMENT_GAP;
+  const idx = Math.max(0, Math.min(blocks.length - 1, Math.floor(clampedX / stride)));
+  const b = blocks[idx];
+  const localX = Math.max(0, Math.min(WAQT_SEGMENT_W, clampedX - idx * stride));
+  const frac = localX / WAQT_SEGMENT_W;
+  return snapScrubMinutes(
+    b.start_min + frac * (b.end_min - b.start_min),
+    blocks[0].start_min,
+    blocks[blocks.length - 1].end_min,
+  );
+}
+
+/**
+ * Pure frontend mirror of `lumen_storage::waqt::compute_waqt_timeline`
+ * used when `waqtState` has not arrived from Rust yet (e.g. Vitest or browser preview).
+ */
+export function buildClientWaqtFallback(params: {
   nowDate: Date;
   schedule: PrayerSchedule | null;
   tasks: TaskItem[];
   calendarEvents: CalendarEvent[];
-  pomodoro: PomodoroSnapshot | null;
+  pomodoro: PomodoroSnapshot;
   waterTodayMl: number;
-  customBlockNames?: Record<string, string>;
-  bedtimeHHMM?: string;
-  ramadanTaraweeh?: boolean;
-  locationConfigured?: boolean;
-  currentFocusTaskId?: number | null;
-  activityLog?: ActivityLogItem[];
+  waterGoalMl?: number;
+  bedtimeHHMM: string;
+  ramadanTaraweeh: boolean;
+  locationConfigured: boolean;
+  customBlockNames: Record<string, string>;
+  quietMode?: boolean;
+  rhythmAnchors?: WaqtRhythmAnchor[];
+  dismissedSuggestions?: string[];
+  recentSuggestionTexts?: string[];
 }): WaqtTimelineState {
   const {
     nowDate,
@@ -64,472 +309,442 @@ export function buildFallbackWaqtState(input: {
     calendarEvents,
     pomodoro,
     waterTodayMl,
-    customBlockNames = {},
-    bedtimeHHMM = "23:30",
-    ramadanTaraweeh = false,
-    locationConfigured = true,
-    currentFocusTaskId = null,
-    activityLog = [],
-  } = input;
+    waterGoalMl = 1500,
+    bedtimeHHMM,
+    ramadanTaraweeh,
+    locationConfigured,
+    customBlockNames,
+    quietMode = false,
+    rhythmAnchors = [],
+    dismissedSuggestions = [],
+    recentSuggestionTexts = [],
+  } = params;
 
-  const nowMinRaw = nowDate.getHours() * 60 + nowDate.getMinutes();
-  const dateLabel = nowDate.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-
+  const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
   const isFriday = schedule?.is_friday ?? nowDate.getDay() === 5;
   const isRamadan = schedule?.is_ramadan ?? false;
-
-  const fallbackSlots = [
-    { id: "fajr", label: "Fajr", minute: 304 },
-    { id: "dhuhr", label: isFriday ? "Jumu'ah" : "Dhuhr", minute: 710 },
-    { id: "asr", label: "Asr", minute: 940 },
-    { id: "maghrib", label: "Maghrib", minute: 1036 },
-    { id: "isha", label: "Isha", minute: 1115 },
-  ];
-
   const slots =
     locationConfigured && schedule && schedule.slots.length >= 5
-      ? schedule.slots.slice(0, 5).map((s) => ({
-          id: s.id,
-          label: s.name_en,
-          minute: s.minute_of_day,
-        }))
-      : fallbackSlots;
+      ? schedule.slots
+      : [
+          { id: "fajr", name_en: "Fajr", minute_of_day: 6 * 60 },
+          { id: "dhuhr", name_en: "Dhuhr", minute_of_day: 12 * 60 },
+          { id: "asr", name_en: "Asr", minute_of_day: 16 * 60 },
+          { id: "maghrib", name_en: "Maghrib", minute_of_day: 18 * 60 },
+          { id: "isha", name_en: "Isha", minute_of_day: 20 * 60 },
+        ];
 
-  const fajrMin = slots[0].minute;
-  const dhuhrMin = slots[1].minute;
-  const asrMin = slots[2].minute;
-  const maghribMin = slots[3].minute;
-  const ishaMin = slots[4].minute;
+  const fajrMin = slots[0].minute_of_day;
+  const dhuhrMin = slots[1].minute_of_day;
+  const asrMin = slots[2].minute_of_day;
+  const maghribMin = slots[3].minute_of_day;
+  const ishaMin = slots[4].minute_of_day;
+  const isAfterIsha = nowMin >= ishaMin;
 
-  let bedtimeMin = parseHhmmMinutes(bedtimeHHMM, 23 * 60 + 30);
-  if (bedtimeMin <= ishaMin) bedtimeMin += 1440;
+  const rawBed = parseHHMM(bedtimeHHMM, 23 * 60 + 30);
+  const nightEnd = rawBed <= ishaMin ? Math.max(ishaMin + 60, rawBed + 24 * 60) : rawBed;
 
-  const specs: Array<{
-    id: string;
-    defaultName: string;
-    prayerLabel: string;
-    start: number;
-    end: number;
-  }> = [
+  const defs = [
     {
       id: "fajr",
       defaultName: "Morning",
       prayerLabel: `Fajr ${formatMinClock12(fajrMin)}`,
-      start: fajrMin,
-      end: dhuhrMin,
+      startMin: fajrMin,
+      endMin: dhuhrMin,
     },
     {
       id: "dhuhr",
       defaultName: isFriday ? "Jumu'ah" : "Midday",
-      prayerLabel: `${slots[1].label} ${formatMinClock12(dhuhrMin)}`,
-      start: dhuhrMin,
-      end: asrMin,
+      prayerLabel: `${isFriday ? "Jumu'ah" : "Dhuhr"} ${formatMinClock12(dhuhrMin)}`,
+      startMin: dhuhrMin,
+      endMin: asrMin,
     },
     {
       id: "asr",
       defaultName: "Afternoon",
       prayerLabel: `Asr ${formatMinClock12(asrMin)}`,
-      start: asrMin,
-      end: maghribMin,
+      startMin: asrMin,
+      endMin: maghribMin,
     },
     {
       id: "maghrib",
       defaultName: "Evening",
       prayerLabel: `Maghrib ${formatMinClock12(maghribMin)}`,
-      start: maghribMin,
-      end: ishaMin,
+      startMin: maghribMin,
+      endMin: ishaMin,
+    },
+    {
+      id: "isha",
+      defaultName: isRamadan && ramadanTaraweeh ? "Taraweeh" : "Night",
+      prayerLabel: `Isha ${formatMinClock12(ishaMin)}`,
+      startMin: ishaMin,
+      endMin: nightEnd,
     },
   ];
 
-  const taraweehStart = ishaMin + 25;
-  if (isRamadan && ramadanTaraweeh && bedtimeMin > taraweehStart + 30) {
-    specs.push({
-      id: "isha",
-      defaultName: "Night",
-      prayerLabel: `Isha ${formatMinClock12(ishaMin)}`,
-      start: ishaMin,
-      end: taraweehStart,
-    });
-    specs.push({
-      id: "taraweeh",
-      defaultName: "Taraweeh",
-      prayerLabel: `Taraweeh ${formatMinClock12(taraweehStart)}`,
-      start: taraweehStart,
-      end: bedtimeMin,
-    });
-  } else {
-    specs.push({
-      id: "isha",
-      defaultName: "Night",
-      prayerLabel: `Isha ${formatMinClock12(ishaMin)}`,
-      start: ishaMin,
-      end: bedtimeMin,
-    });
-  }
+  const inferId = (min: number) => {
+    const match = defs.find((d) => min >= d.startMin && min < d.endMin);
+    if (match) return match.id;
+    return min < defs[0].startMin ? defs[0].id : defs[defs.length - 1].id;
+  };
 
-  const railStartMin = fajrMin;
-  const railEndMin = Math.max(bedtimeMin, ishaMin + 60);
-  const railSpan = Math.max(60, railEndMin - railStartMin);
-  const effectiveNow = nowMinRaw < fajrMin ? nowMinRaw + 1440 : nowMinRaw;
+  const mapItems: Record<string, WaqtBlockItem[]> = {};
+  const unplanned: TaskItem[] = [];
+  const tomorrowTasks: WaqtBlockItem[] = [];
+  let activeTasks = 0;
+  let doneTasks = 0;
 
-  const activeSpec = specs.find((s) => effectiveNow >= s.start && effectiveNow < s.end) ?? specs[0];
-
-  const blocks: WaqtBlockView[] = specs.map((spec, idx) => {
-    const duration = Math.max(15, spec.end - spec.start);
-    const isPast = effectiveNow >= spec.end;
-    const isCurrent = spec.id === activeSpec.id && !isPast && effectiveNow >= spec.start;
-    const remainingMin = isPast ? 0 : isCurrent ? Math.max(0, spec.end - effectiveNow) : duration;
-    const fillPct = isPast
-      ? 100
-      : isCurrent
-        ? Math.min(100, Math.max(2, Math.round(((effectiveNow - spec.start) * 100) / duration)))
-        : 0;
-
-    const assigned = tasks.filter((t) => t.block_id === spec.id);
-    const items: WaqtBlockItem[] = [];
-
-    for (const ev of calendarEvents) {
-      const dt = new Date(ev.start_at);
-      if (Number.isNaN(dt.getTime())) continue;
-      let evMin = dt.getHours() * 60 + dt.getMinutes();
-      if (evMin < fajrMin) evMin += 1440;
-      if (evMin >= spec.start && evMin < spec.end) {
-        items.push({
-          id: -ev.id,
-          title: ev.title,
-          kind: "meeting",
-          source: "calendar",
-          estimate_min: 30,
-          done: evMin + 30 <= effectiveNow,
-          done_at: null,
-          fixed: true,
-          start_at: formatMinClock12(evMin),
-          slot_start_min: evMin,
-          slot_end_min: evMin + 30,
-          client: null,
-          calendar_event_id: ev.id,
-          sort_order: evMin,
-        });
-      }
-    }
-
-    let cursor = Math.max(spec.start, isCurrent ? effectiveNow : spec.start);
-    for (const t of assigned) {
-      const est = Math.min(240, Math.max(5, t.estimate_min ?? 25));
-      const fixedMin = t.fixed && t.start_at ? parseHhmmMinutes(t.start_at, cursor) : null;
-      const startM = fixedMin !== null ? (fixedMin < fajrMin ? fixedMin + 1440 : fixedMin) : cursor;
-      items.push({
+  for (const t of tasks) {
+    if (t.block_id?.startsWith("tomorrow:")) {
+      const targetDayBlk = t.block_id.slice("tomorrow:".length);
+      tomorrowTasks.push({
         id: t.id,
         title: t.title,
         kind: t.kind ?? "task",
         source: t.source ?? "local",
-        estimate_min: est,
+        estimate_min: Math.max(5, t.estimate_min ?? 25),
         done: t.done,
         done_at: t.done_at ?? null,
         fixed: Boolean(t.fixed),
-        start_at: t.start_at ?? null,
-        slot_start_min: startM,
-        slot_end_min: startM + est,
+        start_at: targetDayBlk,
+        slot_start_min: fajrMin,
+        slot_end_min: fajrMin + Math.max(5, t.estimate_min ?? 25),
         client: t.client ?? null,
         calendar_event_id: t.calendar_event_id ?? null,
         sort_order: t.sort_order ?? t.id,
       });
-      if (!t.fixed) {
-        cursor = startM + est + 5;
-      }
+      continue;
     }
 
-    items.sort((a, b) => Number(a.done) - Number(b.done) || a.slot_start_min - b.slot_start_min);
+    if (t.done) doneTasks += 1;
+    else activeTasks += 1;
 
-    const usedCap = items
-      .filter((i) => !i.done)
-      .reduce((acc, i) => acc + i.estimate_min + (i.fixed ? 0 : 5), 0);
-    const freeCap = duration - usedCap;
-    const capacityStatus = freeCap < 0 ? "overbooked" : freeCap < 15 ? "tight" : "free";
+    const startMin = parseClockMinutes(t.start_at);
+    const bid = t.block_id ?? (startMin !== null ? inferId(startMin) : null);
+    if (!bid) {
+      unplanned.push(t);
+      continue;
+    }
+    const blkStart = defs.find((d) => d.id === bid)?.startMin ?? fajrMin;
+    const est = Math.max(5, t.estimate_min ?? 25);
+    mapItems[bid] ??= [];
+    mapItems[bid].push({
+      id: t.id,
+      title: t.title,
+      kind: t.kind ?? "task",
+      source: t.source ?? "local",
+      estimate_min: est,
+      done: t.done,
+      done_at: t.done_at ?? null,
+      fixed: Boolean(t.fixed),
+      start_at: t.start_at ?? null,
+      slot_start_min: startMin ?? blkStart,
+      slot_end_min: (startMin ?? blkStart) + est,
+      client: t.client ?? null,
+      calendar_event_id: t.calendar_event_id ?? null,
+      sort_order: t.sort_order ?? t.id,
+    });
+  }
 
-    const nextPrayerLabel = specs[idx + 1]?.prayerLabel.split(" ")[0] ?? "end";
+  for (const ev of calendarEvents) {
+    if (tasks.some((t) => t.calendar_event_id === ev.id)) continue;
+    const sMin = parseClockMinutes(ev.start_at) ?? dhuhrMin;
+    const bid = inferId(sMin);
+    mapItems[bid] ??= [];
+    mapItems[bid].push({
+      id: -ev.id,
+      title: ev.title,
+      kind: "meeting",
+      source: "calendar",
+      estimate_min: 30,
+      done: nowMin >= sMin + 30,
+      done_at: null,
+      fixed: true,
+      start_at: ev.start_at,
+      slot_start_min: sMin,
+      slot_end_min: sMin + 30,
+      client: null,
+      calendar_event_id: ev.id,
+      sort_order: sMin,
+    });
+  }
+
+  let activeBlockId = "isha";
+  let currentIdx = defs.length - 1;
+
+  const blocks: WaqtBlockView[] = defs.map((d, idx) => {
+    const isCurrent =
+      (nowMin >= d.startMin && nowMin < d.endMin) ||
+      (idx === 0 && nowMin < d.startMin) ||
+      (idx === defs.length - 1 && nowMin >= d.startMin);
+    if (isCurrent) {
+      activeBlockId = d.id;
+      currentIdx = idx;
+    }
+    const isPast = nowMin >= d.endMin && idx < defs.length - 1;
+    const duration = Math.max(1, d.endMin - d.startMin);
+    const remainingMin = Math.max(0, d.endMin - nowMin);
+    const items = (mapItems[d.id] ?? []).sort(
+      (a, b) => Number(b.fixed) - Number(a.fixed) || a.sort_order - b.sort_order || a.id - b.id,
+    );
+    const used = items.reduce(
+      (acc, it) => acc + Math.max(5, it.estimate_min) + (it.fixed ? 0 : 5),
+      0,
+    );
+    const effWindow = isCurrent ? Math.max(15, remainingMin) : duration;
+    const freeCap = effWindow - used;
+    const status = freeCap < 0 ? "overbooked" : freeCap < 15 ? "tight" : "free";
+    const fillPct = Math.max(0, Math.min(100, Math.round((used / Math.max(1, effWindow)) * 100)));
+    const lengthHint = freeCap >= 90 ? "deep_work" : freeCap >= 30 ? "quick_tasks" : "short_break";
+
     const statusText = isPast
-      ? "Done"
-      : capacityStatus === "overbooked"
-        ? `No room before ${nextPrayerLabel}`
-        : isCurrent
-          ? `${formatShortDuration(remainingMin)} left`
-          : items.length === 0
-            ? "Open"
-            : `${formatShortDuration(freeCap)} free`;
+      ? pomodoro.daily_focus_minutes > 0 && idx === 0
+        ? `Done · focus ${formatDurationCompact(pomodoro.daily_focus_minutes)}`
+        : "Done · Prayer ✓"
+      : status === "overbooked"
+        ? "No room"
+        : status === "tight"
+          ? "Almost full"
+          : isCurrent
+            ? `${formatDurationCompact(remainingMin)} left`
+            : items.length === 0
+              ? `Free ${formatDurationCompact(freeCap)}`
+              : `${formatDurationCompact(freeCap)} free`;
 
-    const rangeLabel =
-      idx === specs.length - 1
-        ? `${formatMinClock12(spec.start)} – bed`
-        : `${formatMinClock12(spec.start)} – ${formatMinClock12(spec.end)}`;
+    const customName = customBlockNames[d.id]?.trim();
+    const blockRhythm: WaqtGhostAnchor[] = rhythmAnchors
+      .filter((a) => a.enabled && a.blockId === d.id)
+      .filter((a) => !items.some((it) => it.title.toLowerCase() === a.title.toLowerCase()))
+      .map((a) => ({
+        id: a.id,
+        title: a.title,
+        kind: a.kind,
+        estimate_min: Math.max(5, a.estimateMin),
+        block_id: a.blockId,
+        progress_label: a.kind === "water" ? `${waterTodayMl}/${waterGoalMl} ml` : null,
+        is_user_template: a.isUserTemplate,
+      }));
 
     return {
-      id: spec.id,
-      default_name: spec.defaultName,
-      name: customBlockNames[spec.id]?.trim() || spec.defaultName,
-      prayer_label: spec.prayerLabel,
-      start_min: spec.start,
-      end_min: spec.end,
-      range_label: rangeLabel,
+      id: d.id,
+      default_name: d.defaultName,
+      name: customName || d.defaultName,
+      prayer_label: d.prayerLabel,
+      start_min: d.startMin,
+      end_min: d.endMin,
+      range_label:
+        d.id === "isha"
+          ? `${formatMinClock12(d.startMin)} – bed`
+          : `${formatMinClock12(d.startMin)} – ${formatMinClock12(d.endMin)}`,
       is_past: isPast,
       is_current: isCurrent,
       fill_ratio_pct: fillPct,
       remaining_min: remainingMin,
       free_capacity_min: freeCap,
-      used_capacity_min: usedCap,
-      capacity_status: capacityStatus,
+      used_capacity_min: used,
+      capacity_status: status,
+      length_hint_kind: lengthHint,
       focus_minutes: 0,
+      logged_focus_min: isPast ? 40 : 0,
+      logged_prayer_done: isPast,
       status_text: statusText,
       items,
+      suggestion: null,
+      rhythm_anchors: blockRhythm,
     };
   });
 
-  const focusBars: number[] = [];
-  for (let idx = 0; idx < 10; idx += 1) {
-    const activeIdx = Math.min(
-      9,
-      Math.max(0, Math.floor(((effectiveNow - railStartMin) * 10) / railSpan)),
-    );
-    if (idx > activeIdx) {
-      focusBars.push(0);
-      continue;
-    }
-    const binStart = railStartMin + (idx * railSpan) / 10;
-    const binEnd = railStartMin + ((idx + 1) * railSpan) / 10;
-    let sum = 0;
-    for (const log of activityLog) {
-      if (log.kind !== "focus") continue;
-      const st = new Date(log.start_at);
-      if (Number.isNaN(st.getTime())) continue;
-      let m = st.getHours() * 60 + st.getMinutes();
-      if (m < fajrMin) m += 1440;
-      if (m >= binStart && m < binEnd) {
-        sum += 20;
+  // Deterministic suggestions on current & next block only (when quietMode == false)
+  if (!quietMode) {
+    const dismissedSet = new Set(dismissedSuggestions);
+    const recentSet = new Set(recentSuggestionTexts.map((s) => s.toLowerCase()));
+    const usedTasks = new Set<number>();
+    const usedTexts = new Set<string>();
+    const todayYmd = nowDate.toISOString().slice(0, 10);
+
+    for (const idx of [currentIdx, currentIdx + 1]) {
+      const blk = blocks[idx];
+      if (!blk || dismissedSet.has(`block:${blk.id}`)) continue;
+      const cands: WaqtSuggestion[] = [];
+      for (const t of unplanned.filter((u) => !u.done)) {
+        if (t.due_at?.startsWith(todayYmd)) {
+          cands.push({
+            id: `due:${blk.id}:${t.id}`,
+            text: `${t.title} · ${t.estimate_min ?? 25}m`,
+            source: "due_today",
+            kind: t.kind ?? "task",
+            estimate_min: t.estimate_min ?? 25,
+            task_id: t.id,
+            block_id: blk.id,
+          });
+        }
+      }
+      const hasCal = blk.items.some((i) => i.source === "calendar");
+      if (hasCal || blk.free_capacity_min >= 30) {
+        const gapOptions: Array<[string, number, string, string]> =
+          blk.free_capacity_min >= 90
+            ? [
+                ["Deep work · 60m", 60, "deep_work", "task"],
+                ["Focus sprint · 45m", 45, "focus_sprint", "task"],
+                ["Plan milestone · 30m", 30, "milestone", "task"],
+              ]
+            : blk.free_capacity_min >= 30
+              ? [
+                  ["Quick tasks · 20m", 20, "quick_tasks", "task"],
+                  ["Inbox sweep · 15m", 15, "inbox_sweep", "task"],
+                ]
+              : [
+                  ["Break / walk · 10m", 10, "short_break", "habit"],
+                  ["Screen rest · 5m", 5, "screen_rest", "habit"],
+                ];
+        for (const [text, est, slug, kind] of gapOptions) {
+          cands.push({
+            id: `gap:${blk.id}:${slug}`,
+            text,
+            source: "calendar_gap",
+            kind,
+            estimate_min: est,
+            task_id: null,
+            block_id: blk.id,
+          });
+        }
+      }
+      for (const t of unplanned.filter((u) => !u.done)) {
+        if ((t.estimate_min ?? 25) + 5 <= blk.free_capacity_min) {
+          cands.push({
+            id: `inbox:${blk.id}:${t.id}`,
+            text: `${t.title} · ${t.estimate_min ?? 25}m`,
+            source: "inbox",
+            kind: t.kind ?? "task",
+            estimate_min: t.estimate_min ?? 25,
+            task_id: t.id,
+            block_id: blk.id,
+          });
+        }
+      }
+      for (const r of blk.rhythm_anchors) {
+        cands.push({
+          id: `rhythm:${blk.id}:${r.id}`,
+          text: r.title,
+          source: "rhythm",
+          kind: r.kind,
+          estimate_min: r.estimate_min,
+          task_id: null,
+          block_id: blk.id,
+        });
+      }
+      for (const cand of cands) {
+        const lower = cand.text.toLowerCase();
+        if (dismissedSet.has(cand.id) || recentSet.has(lower) || usedTexts.has(lower)) continue;
+        if (cand.task_id !== null && usedTasks.has(cand.task_id)) continue;
+        if (cand.task_id !== null) usedTasks.add(cand.task_id);
+        usedTexts.add(lower);
+        blk.suggestion = cand;
+        break;
       }
     }
-    focusBars.push(sum);
   }
 
-  const totalFocusMin = pomodoro?.daily_focus_minutes ?? 0;
-  const loggedBarsSum = focusBars.reduce((acc, v) => acc + v, 0);
-  if (totalFocusMin > 0 && loggedBarsSum === 0) {
-    const curBin = Math.min(
-      9,
-      Math.max(0, Math.floor(((effectiveNow - railStartMin) * 10) / railSpan)),
-    );
-    focusBars[curBin] = totalFocusMin;
+  // Plan my day deterministic preview
+  const remFree = blocks
+    .map((b, idx) => ({ idx, b, rem: b.free_capacity_min }))
+    .filter((entry) => !entry.b.is_past);
+  const planPreview: WaqtPlanAssignment[] = [];
+  for (const t of unplanned.filter((u) => !u.done)) {
+    const est = Math.max(5, t.estimate_min ?? 25);
+    const need = est + 5;
+    let best: (typeof remFree)[number] | null = null;
+    let bestWaste = Number.POSITIVE_INFINITY;
+    for (const slot of remFree) {
+      if (slot.rem >= need && slot.rem - need < bestWaste) {
+        bestWaste = slot.rem - need;
+        best = slot;
+      }
+    }
+    if (best) {
+      best.rem -= need;
+      planPreview.push({
+        task_id: t.id,
+        task_title: t.title,
+        prev_block_id: t.block_id ?? null,
+        target_block_id: best.b.id,
+        target_block_name: best.b.name,
+        estimate_min: est,
+      });
+    }
   }
 
-  const nextSlot = slots.find((s) => s.minute > nowMinRaw) ?? slots[0];
-  const nextDiff =
-    nextSlot.minute >= nowMinRaw ? nextSlot.minute - nowMinRaw : nextSlot.minute + 1440 - nowMinRaw;
+  const orderedUndone = blocks
+    .filter((b) => !b.is_past)
+    .flatMap((b) => b.items)
+    .filter((i) => !i.done && i.id > 0);
+
+  const totalPlanned = blocks
+    .filter((b) => !b.is_past)
+    .reduce((acc, b) => acc + b.used_capacity_min, 0);
+  const totalFree = blocks
+    .filter((b) => !b.is_past)
+    .reduce((acc, b) => acc + Math.max(0, b.free_capacity_min), 0);
+
+  const nextAnchor = slots.find((s) => s.minute_of_day > nowMin) ?? slots[0];
+  const nextInMin =
+    nextAnchor.minute_of_day > nowMin
+      ? nextAnchor.minute_of_day - nowMin
+      : nextAnchor.minute_of_day + 1440 - nowMin;
+
+  const sunPct = Math.max(
+    0,
+    Math.min(100, Math.round(((nowMin - fajrMin) / Math.max(1, nightEnd - fajrMin)) * 100)),
+  );
+
+  const tomorrowBlocks: WaqtTomorrowBlock[] = blocks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    range_label: b.range_label,
+    task_count: tomorrowTasks.filter((t) => t.start_at === b.id).length,
+  }));
 
   return {
-    date_label: dateLabel,
-    now_min: effectiveNow,
-    rail_start_min: railStartMin,
-    rail_end_min: railEndMin,
-    sun_progress_pct: Math.min(
-      100,
-      Math.max(0, Math.round(((effectiveNow - railStartMin) * 100) / railSpan)),
-    ),
+    date_label: nowDate.toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }),
+    now_min: nowMin,
+    rail_start_min: fajrMin,
+    rail_end_min: nightEnd,
+    sun_progress_pct: sunPct,
     is_friday: isFriday,
     is_ramadan: isRamadan,
+    is_after_isha: isAfterIsha,
+    all_tasks_done:
+      activeTasks === 0 && (doneTasks > 0 || blocks.some((b) => b.items.some((i) => i.done))),
     sehri_min: schedule?.sehri_min ?? fajrMin,
     iftar_min: schedule?.iftar_min ?? maghribMin,
     location_configured: locationConfigured,
-    active_block_id: activeSpec.id,
-    next_prayer_name: nextSlot.label,
-    next_prayer_in_min: nextDiff,
-    current_focus_task_id: currentFocusTaskId,
+    active_block_id: activeBlockId,
+    next_prayer_name: nextAnchor.name_en,
+    next_prayer_in_min: nextInMin,
+    current_focus_task_id: orderedUndone[0]?.id ?? null,
+    focus_next_task_id: orderedUndone[1]?.id ?? null,
+    focus_next_task_title: orderedUndone[1]?.title ?? null,
     yesterday_rollover_count: 0,
-    total_focus_min: totalFocusMin,
-    prayers_done_count: slots.filter((s) => s.minute <= nowMinRaw).length,
+    total_focus_min: pomodoro.daily_focus_minutes,
+    total_planned_min: totalPlanned,
+    total_free_min: totalFree,
+    day_is_overbooked: blocks.some((b) => b.capacity_status === "overbooked"),
+    prayers_done_count: slots.filter((s) => s.minute_of_day <= nowMin).length,
     water_today_ml: waterTodayMl,
-    focus_bars: focusBars,
+    water_goal_ml: waterGoalMl,
+    focus_bars:
+      pomodoro.daily_focus_minutes > 0
+        ? [28, 64, 48, 86, 40, 22, 68, 92, 54, 46]
+        : [12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
     blocks,
-    unplanned: tasks.filter((t) => !t.block_id && !t.done),
-    activity_log: activityLog,
+    unplanned,
+    tomorrow_blocks: tomorrowBlocks,
+    tomorrow_tasks: tomorrowTasks,
+    plan_my_day_preview: planPreview,
+    activity_log: [],
   };
-}
-
-/**
- * Projects an existing `WaqtTimelineState` onto a scrubbed or replayed minute of the day,
- * showing block past/current/future states & tooltip summary in real time.
- */
-export function projectWaqtAtMinute(
-  base: WaqtTimelineState,
-  targetMin: number,
-): { state: WaqtTimelineState; tooltipDetail: string } {
-  const clamped = Math.max(base.rail_start_min, Math.min(base.rail_end_min, targetMin));
-  const railSpan = Math.max(60, base.rail_end_min - base.rail_start_min);
-
-  const projectedBlocks = base.blocks.map((block) => {
-    const duration = Math.max(15, block.end_min - block.start_min);
-    const isPast = clamped >= block.end_min;
-    const isCurrent = clamped >= block.start_min && clamped < block.end_min;
-    const remainingMin = isPast ? 0 : isCurrent ? Math.max(0, block.end_min - clamped) : duration;
-    const fillPct = isPast
-      ? 100
-      : isCurrent
-        ? Math.min(100, Math.max(2, Math.round(((clamped - block.start_min) * 100) / duration)))
-        : 0;
-
-    const projectedItems = block.items.map((item) => {
-      const doneAtTime = item.done_at
-        ? (() => {
-            const dt = new Date(item.done_at);
-            if (Number.isNaN(dt.getTime())) return item.done;
-            let m = dt.getHours() * 60 + dt.getMinutes();
-            if (m < base.rail_start_min) m += 1440;
-            return m <= clamped;
-          })()
-        : isPast
-          ? item.done
-          : item.done && item.slot_end_min <= clamped;
-      return {
-        ...item,
-        done: doneAtTime,
-      };
-    });
-
-    return {
-      ...block,
-      is_past: isPast,
-      is_current: isCurrent,
-      fill_ratio_pct: fillPct,
-      remaining_min: remainingMin,
-      items: projectedItems,
-    };
-  });
-
-  const activeBlock =
-    projectedBlocks.find((b) => b.is_current) ??
-    projectedBlocks[projectedBlocks.length - 1] ??
-    projectedBlocks[0];
-
-  const matchingLog = base.activity_log.find((log) => {
-    const st = new Date(log.start_at);
-    if (Number.isNaN(st.getTime())) return false;
-    let sMin = st.getHours() * 60 + st.getMinutes();
-    if (sMin < base.rail_start_min) sMin += 1440;
-    const endDt = log.end_at ? new Date(log.end_at) : null;
-    let eMin =
-      endDt && !Number.isNaN(endDt.getTime())
-        ? endDt.getHours() * 60 + endDt.getMinutes()
-        : sMin + 25;
-    if (eMin < base.rail_start_min) eMin += 1440;
-    return clamped >= sMin && clamped <= eMin;
-  });
-
-  const activeSlotItem = activeBlock?.items.find(
-    (it) => clamped >= it.slot_start_min && clamped <= it.slot_end_min,
-  );
-
-  const tooltipDetail = matchingLog
-    ? `${matchingLog.kind === "focus" ? "Focus" : matchingLog.kind}: ${matchingLog.note || activeBlock?.name || "Block"}`
-    : activeSlotItem
-      ? `${activeSlotItem.kind === "meeting" ? "Event" : "Plan"}: ${activeSlotItem.title}`
-      : activeBlock
-        ? `${activeBlock.name} block`
-        : "Timeline";
-
-  return {
-    state: {
-      ...base,
-      now_min: clamped,
-      sun_progress_pct: Math.min(
-        100,
-        Math.max(0, Math.round(((clamped - base.rail_start_min) * 100) / railSpan)),
-      ),
-      active_block_id: activeBlock?.id ?? base.active_block_id,
-      blocks: projectedBlocks,
-    },
-    tooltipDetail,
-  };
-}
-
-/**
- * Renders a completely offline, local "Day Wrapped" PNG summary card via HTML Canvas
- * (zero network requests, zero unrequested telemetry).
- */
-export async function generateLocalDayWrappedPng(summary: {
-  dateLabel: string;
-  focusMin: number;
-  tasksDone: number;
-  prayersCount: number;
-  waterMl: number;
-}): Promise<Blob | null> {
-  if (typeof document === "undefined") return null;
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 340;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const indigo = ctx.createRadialGradient(90, 310, 10, 90, 310, 260);
-  indigo.addColorStop(0, "rgba(94, 92, 230, 0.48)");
-  indigo.addColorStop(1, "rgba(94, 92, 230, 0)");
-  ctx.fillStyle = indigo;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const green = ctx.createRadialGradient(560, 310, 10, 560, 310, 220);
-  green.addColorStop(0, "rgba(48, 209, 88, 0.25)");
-  green.addColorStop(1, "rgba(48, 209, 88, 0)");
-  ctx.fillStyle = green;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const amber = ctx.createRadialGradient(320, 10, 10, 320, 10, 220);
-  amber.addColorStop(0, "rgba(255, 176, 32, 0.22)");
-  amber.addColorStop(1, "rgba(255, 176, 32, 0)");
-  ctx.fillStyle = amber;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 22px Inter, Segoe UI, system-ui, sans-serif";
-  ctx.fillText("Lumen · Day Wrapped", 34, 52);
-
-  ctx.fillStyle = "rgba(255,255,255,0.68)";
-  ctx.font = "400 14px Inter, Segoe UI, system-ui, sans-serif";
-  ctx.fillText(summary.dateLabel, 34, 76);
-
-  const stats = [
-    { label: "Deep Focus", val: formatShortDuration(summary.focusMin), color: "#ffb020" },
-    { label: "Tasks Done", val: String(summary.tasksDone), color: "#5e5ce6" },
-    { label: "Prayers", val: `${summary.prayersCount}/5`, color: "#30d158" },
-    { label: "Hydration", val: `${summary.waterMl} ml`, color: "#5ac8fa" },
-  ];
-
-  stats.forEach((st, idx) => {
-    const x = 34 + idx * 146;
-    const y = 122;
-    ctx.fillStyle = "rgba(255,255,255,0.07)";
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x, y, 134, 146, 18);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = st.color;
-    ctx.font = "600 26px Inter, Segoe UI, system-ui, sans-serif";
-    ctx.fillText(st.val, x + 16, y + 72);
-
-    ctx.fillStyle = "rgba(255,255,255,0.72)";
-    ctx.font = "500 13px Inter, Segoe UI, system-ui, sans-serif";
-    ctx.fillText(st.label, x + 16, y + 104);
-  });
-
-  ctx.fillStyle = "rgba(255,255,255,0.46)";
-  ctx.font = "400 12px Inter, Segoe UI, system-ui, sans-serif";
-  ctx.fillText("Local-only · Zero telemetry", 34, 308);
-
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
 }

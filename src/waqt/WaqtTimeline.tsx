@@ -1,46 +1,69 @@
 import { AnimatePresence, motion } from "motion/react";
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type DragEvent,
-  type KeyboardEvent,
-  type PointerEvent,
 } from "react";
-import { WaqtBodyDoubleLumi, type WaqtBodyDoubleState } from "../app/LumenMascot";
-import { CheckIcon, LockIcon, PlayIcon, SettingsIcon, ShareIcon } from "../design/icons";
-import { getMotionTransition, MOTION_PRESETS } from "../design/motion";
+import { WaqtBodyDoubleLumi } from "../app/LumenMascot";
+import {
+  CheckIcon,
+  CloseIcon,
+  PauseIcon,
+  PlayIcon,
+  PlusIcon,
+  SettingsIcon,
+  ShareIcon,
+} from "../design/icons";
+import { MOTION_PRESETS } from "../design/motion";
 import { playUiSound } from "../design/sounds";
 import { COLOR_TOKENS } from "../design/tokens";
-import type { AppLanguage } from "../i18n";
-import { formatDigits } from "../i18n/digits";
+import { getMessages } from "../i18n";
+import { formatDigits, interpolateMsg } from "../i18n/digits";
 import type {
   CalendarEvent,
   PomodoroSnapshot,
   PrayerSchedule,
   TaskItem,
   WaqtBlockItem,
+  WaqtBlockView,
+  WaqtSuggestion,
   WaqtTimelineState,
 } from "../lib/ipc";
-import type { WaqtPrayerPauseMode } from "../settings";
+import type { WaqtPrayerPauseMode, WaqtRhythmAnchor } from "../settings";
 import {
-  buildFallbackWaqtState,
+  buildClientWaqtFallback,
+  buildSegmentedCapacitySlices,
+  computeOverflowMoveAssignments,
+  computeSunX,
+  formatDurationCompact,
   formatMinClock12,
-  formatShortDuration,
-  generateLocalDayWrappedPng,
-  projectWaqtAtMinute,
+  parseQuickAddTaskInput,
+  resolveKindCssVar,
+  scrubXToMinutes,
+  WAQT_RAIL_H,
+  WAQT_RAIL_W,
+  WAQT_SEGMENT_GAP,
+  WAQT_SEGMENT_W,
 } from "./waqtEngine";
+
+let celebratedAllDoneInSession = false;
+let autoCelebrationShownCount = 0;
 
 export interface WaqtTimelineProps {
   waqtState: WaqtTimelineState | null;
+  loading?: boolean;
+  error?: string | null;
   nowDate: Date;
   schedule: PrayerSchedule | null;
   tasks: TaskItem[];
   calendarEvents: CalendarEvent[];
   pomodoro: PomodoroSnapshot;
   waterTodayMl: number;
-  language?: AppLanguage;
+  waterGoalMl?: number;
+  language?: "en" | "bn";
   banglaDigits: boolean;
   reduceMotion: boolean;
   reduceTransparency: boolean;
@@ -50,54 +73,62 @@ export interface WaqtTimelineProps {
   prayerPauseMode: WaqtPrayerPauseMode;
   ramadanTaraweeh: boolean;
   hintDismissed: boolean;
+  quietMode?: boolean;
+  firstRunDismissed?: boolean;
+  rhythmAnchors?: WaqtRhythmAnchor[];
   customBlockNames: Record<string, string>;
   pagesCount: number;
   activePageIndex: number;
   onSelectPage: (idx: number) => void;
   onOpenSettings: () => void;
+  onRetry?: () => void;
   onAssignTask: (taskId: number, blockId: string | null, sortOrder?: number) => void;
+  onAssignBatch?: (assignments: Array<[number, string | null]>) => void;
   onToggleTask: (taskId: number) => void;
-  onAddTask: (title: string, blockId: string | null, estimateMin?: number) => void;
+  onAddTask: (
+    title: string,
+    blockId: string | null,
+    estimateMin?: number,
+    startAt?: string | null,
+  ) => void;
   onDeleteTask: (taskId: number) => void;
-  onRestoreTask: (task: { title: string; blockId: string | null; estimateMin: number }) => void;
+  onRestoreTask: (input: { title: string; blockId: string | null; estimateMin: number }) => void;
   onChangeEstimate: (taskId: number, estimateMin: number) => void;
-  onMoveOverflow: (fromBlockId: string) => void;
+  onMoveOverflow: (fromBlockId: string, nextBlockId?: string) => void;
   onRenameBlock: (blockId: string, name: string) => void;
   onRolloverYesterday: (accept: boolean) => void;
   onStartFocusFlow: (taskId?: number | null) => void;
   onToggleFocusPause: () => void;
   onResetFocus: () => void;
   onDismissHint: () => void;
+  onDismissFirstRun?: () => void;
+  onAcceptSuggestion?: (suggestion: WaqtSuggestion) => void;
+  onDismissSuggestion?: (suggestion: WaqtSuggestion) => void;
   onLogActivity: (kind: string, refId?: string | null, note?: string | null) => void;
 }
 
-const RAIL_W = 612;
-const RAIL_H = 34;
-const SEG_GAP = 8;
-const ESTIMATE_OPTIONS = [5, 10, 15, 25, 45, 60] as const;
+function getKindDotColor(kind: string): string {
+  return resolveKindCssVar(kind);
+}
 
-function kindDotColor(kind: string, done: boolean): string {
-  if (done) return COLOR_TOKENS.accentGreen;
-  switch (kind) {
-    case "meeting":
-      return COLOR_TOKENS.waqtMeeting;
-    case "habit":
-      return COLOR_TOKENS.waqtHabit;
-    case "deadline":
-      return COLOR_TOKENS.waqtDeadline;
-    default:
-      return COLOR_TOKENS.waqtTask;
-  }
+function formatTimerClock(secs: number): string {
+  const safe = Math.max(0, Math.round(secs));
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export function WaqtTimeline({
   waqtState,
+  loading = false,
+  error = null,
   nowDate,
   schedule,
   tasks,
   calendarEvents,
   pomodoro,
   waterTodayMl,
+  waterGoalMl = 1500,
   language = "en",
   banglaDigits,
   reduceMotion,
@@ -108,12 +139,14 @@ export function WaqtTimeline({
   prayerPauseMode,
   ramadanTaraweeh,
   hintDismissed,
+  quietMode = false,
+  firstRunDismissed = true,
+  rhythmAnchors = [],
   customBlockNames,
-  pagesCount,
-  activePageIndex,
-  onSelectPage,
   onOpenSettings,
+  onRetry,
   onAssignTask,
+  onAssignBatch,
   onToggleTask,
   onAddTask,
   onDeleteTask,
@@ -124,1361 +157,1848 @@ export function WaqtTimeline({
   onRolloverYesterday,
   onStartFocusFlow,
   onToggleFocusPause,
-  onResetFocus,
   onDismissHint,
+  onDismissFirstRun,
+  onAcceptSuggestion,
+  onDismissSuggestion,
   onLogActivity,
 }: WaqtTimelineProps) {
-  const isBn = language === "bn";
-  const railRef = useRef<SVGSVGElement | null>(null);
-  const draggingSunRef = useRef(false);
-  const longPressTimerRef = useRef<number | null>(null);
-  const touchStartXRef = useRef<number | null>(null);
-  const idleTimerRef = useRef<number | null>(null);
+  const msg = getMessages(language);
+  const fmt = useCallback((v: string) => formatDigits(v, banglaDigits), [banglaDigits]);
 
   const [scrubMin, setScrubMin] = useState<number | null>(null);
-  const [scrubPinned, setScrubPinned] = useState(false);
-  const [localHintGone, setLocalHintGone] = useState(hintDismissed);
+  const [draggingScrub, setDraggingScrub] = useState(false);
+  const [dragTaskId, setDragTaskId] = useState<number | null>(null);
   const [hoverBlockId, setHoverBlockId] = useState<string | null>(null);
-  const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [moveMenuTask, setMoveMenuTask] = useState<WaqtBlockItem | null>(null);
-  const [estimateTask, setEstimateTask] = useState<WaqtBlockItem | null>(null);
+  const [localHintDismissed, setLocalHintDismissed] = useState(hintDismissed);
+  const [cityBannerDismissed, setCityBannerDismissed] = useState(false);
+  const [rolloverHandled, setRolloverHandled] = useState(false);
+  const [localFirstRunDismissed, setLocalFirstRunDismissed] = useState(firstRunDismissed);
+
+  const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
+  const [quickAddTarget, setQuickAddTarget] = useState<string | null>(null);
+  const [quickAddValue, setQuickAddValue] = useState("");
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
-  const [editingBlockName, setEditingBlockName] = useState("");
-  const [addingUnplanned, setAddingUnplanned] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [undoItem, setUndoItem] = useState<{
+  const [editingName, setEditingName] = useState("");
+  const [moveMenuItemId, setMoveMenuItemId] = useState<number | null>(null);
+  const [swipeOffsets, setSwipeOffsets] = useState<Record<number, number>>({});
+
+  const [planPreviewOpen, setPlanPreviewOpen] = useState(false);
+  const [batchUndoToast, setBatchUndoToast] = useState<{
+    label: string;
+    undoAssignments: Array<[number, string | null]>;
+  } | null>(null);
+  const [deletedUndo, setDeletedUndo] = useState<{
     title: string;
     blockId: string | null;
     estimateMin: number;
   } | null>(null);
-  const [replaying, setReplaying] = useState(false);
-  const [replayMin, setReplayMin] = useState<number | null>(null);
-  const [replaySummaryOpen, setReplaySummaryOpen] = useState(false);
-  const [shareStatus, setShareStatus] = useState<string | null>(null);
-  const [looksUp, setLooksUp] = useState(false);
-  const [justCelebrated, setJustCelebrated] = useState(false);
-  const [askedPrayerId, setAskedPrayerId] = useState<string | null>(null);
-  const autoPausedPrayerRef = useRef<string | null>(null);
 
-  const fallbackState = useMemo(
-    () =>
-      buildFallbackWaqtState({
-        nowDate,
-        schedule,
-        tasks,
-        calendarEvents,
-        pomodoro,
-        waterTodayMl,
-        customBlockNames,
-        bedtimeHHMM,
-        ramadanTaraweeh,
-        locationConfigured,
-      }),
-    [
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replayStepMin, setReplayStepMin] = useState<number | null>(null);
+  const [exportedUrl, setExportedUrl] = useState<string | null>(null);
+  const [prayerAskOpen, setPrayerAskOpen] = useState(false);
+  const [freeFocusPromptOpen, setFreeFocusPromptOpen] = useState(false);
+  const [localDismissedIds, setLocalDismissedIds] = useState<string[]>([]);
+  const [celebratingNow, setCelebratingNow] = useState(false);
+
+  const railRef = useRef<SVGSVGElement | null>(null);
+  const swipeStartRef = useRef<{ id: number; x: number } | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
+  const quickAddInputRef = useRef<HTMLInputElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const prevPomodoroRunningRef = useRef<boolean>(pomodoro.running);
+  const prevPomodoroChimeRef = useRef<number>(pomodoro.chime_tick);
+  const prevAllDoneRef = useRef<boolean>(false);
+
+  // Sync setting prop into local dismiss states cleanly via microtask when needed
+  useEffect(() => {
+    if (firstRunDismissed && !localFirstRunDismissed) {
+      const t = window.setTimeout(() => setLocalFirstRunDismissed(true), 0);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [firstRunDismissed, localFirstRunDismissed]);
+
+  const effectiveState: WaqtTimelineState = useMemo(() => {
+    if (waqtState) {
+      if (localDismissedIds.length === 0) {
+        return waqtState;
+      }
+      return {
+        ...waqtState,
+        blocks: waqtState.blocks.map((b) =>
+          b.suggestion && localDismissedIds.includes(b.suggestion.id)
+            ? { ...b, suggestion: null }
+            : b,
+        ),
+      };
+    }
+    return buildClientWaqtFallback({
       nowDate,
       schedule,
       tasks,
       calendarEvents,
       pomodoro,
       waterTodayMl,
-      customBlockNames,
+      waterGoalMl,
       bedtimeHHMM,
       ramadanTaraweeh,
       locationConfigured,
-    ],
-  );
-
-  const baseState = waqtState ?? fallbackState;
-  const activeTimeMin = replayMin ?? scrubMin;
-
-  const { state: viewState, tooltipDetail } = useMemo(() => {
-    if (activeTimeMin !== null) {
-      return projectWaqtAtMinute(baseState, activeTimeMin);
-    }
-    return { state: baseState, tooltipDetail: "" };
-  }, [baseState, activeTimeMin]);
-
-  // Body-double idle look-up timer (after 2 min of no interaction while running focus)
-  useEffect(() => {
-    if (!isVisible) return;
-    const resetIdle = () => {
-      setLooksUp(false);
-      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = window.setTimeout(() => {
-        if (pomodoro.running) setLooksUp(true);
-      }, 120_000);
-    };
-    resetIdle();
-    return () => {
-      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
-    };
-  }, [isVisible, pomodoro.running]);
-
-  // 5-second ease-in-out Replay Day animation, skippable with Esc
-  useEffect(() => {
-    if (!replaying) return;
-    const firstLogMin = (() => {
-      const first = baseState.activity_log[0];
-      if (!first) return baseState.rail_start_min;
-      const dt = new Date(first.start_at);
-      if (Number.isNaN(dt.getTime())) return baseState.rail_start_min;
-      let m = dt.getHours() * 60 + dt.getMinutes();
-      if (m < baseState.rail_start_min) m += 1440;
-      return Math.max(baseState.rail_start_min, Math.min(baseState.now_min, m));
-    })();
-    const startMs = performance.now();
-    const durationMs = reduceMotion ? 400 : 5000;
-    let raf = 0;
-
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - startMs) / durationMs);
-      const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      const m = firstLogMin + (baseState.now_min - firstLogMin) * eased;
-      setReplayMin(Math.round(m));
-      if (t < 1) {
-        raf = window.requestAnimationFrame(tick);
-      } else {
-        setReplaying(false);
-        setReplayMin(null);
-        setReplaySummaryOpen(true);
-      }
-    };
-    raf = window.requestAnimationFrame(tick);
-
-    const onEsc = (ev: globalThis.KeyboardEvent) => {
-      if (ev.key === "Escape") {
-        setReplaying(false);
-        setReplayMin(null);
-        setReplaySummaryOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener("keydown", onEsc);
-    };
+      customBlockNames,
+      quietMode,
+      rhythmAnchors,
+      dismissedSuggestions: localDismissedIds,
+    });
   }, [
-    replaying,
-    baseState.now_min,
-    baseState.rail_start_min,
-    baseState.activity_log,
-    reduceMotion,
+    waqtState,
+    nowDate,
+    schedule,
+    tasks,
+    calendarEvents,
+    pomodoro,
+    waterTodayMl,
+    waterGoalMl,
+    bedtimeHHMM,
+    ramadanTaraweeh,
+    locationConfigured,
+    customBlockNames,
+    quietMode,
+    rhythmAnchors,
+    localDismissedIds,
   ]);
 
-  // Auto-pause or Ask prompt when prayer arrives during active Focus session
-  const prayerArrivedBanner = useMemo(() => {
-    if (!pomodoro.running || pomodoro.phase !== "focus") return null;
-    if (viewState.next_prayer_in_min <= 1 && askedPrayerId !== viewState.next_prayer_name) {
-      if (prayerPauseMode === "ask") {
-        return { mode: "ask" as const, prayer: viewState.next_prayer_name };
-      }
-    }
-    return null;
-  }, [
-    pomodoro.running,
-    pomodoro.phase,
-    viewState.next_prayer_in_min,
-    viewState.next_prayer_name,
-    askedPrayerId,
-    prayerPauseMode,
-  ]);
+  const displayMin = replayPlaying
+    ? (replayStepMin ?? effectiveState.now_min)
+    : (scrubMin ?? effectiveState.now_min);
 
+  const currentBlock =
+    effectiveState.blocks.find((b) => b.is_current) ?? effectiveState.blocks[0] ?? null;
+
+  const activeBlockItems = effectiveState.blocks
+    .filter((b) => !b.is_past)
+    .flatMap((b) => b.items)
+    .filter((i) => !i.done && i.id > 0);
+
+  const boundTask: WaqtBlockItem | null =
+    activeBlockItems.find((i) => i.id === effectiveState.current_focus_task_id) ??
+    activeBlockItems[0] ??
+    null;
+
+  const hasAnyItemsToday =
+    effectiveState.blocks.some((b) => b.items.length > 0) || effectiveState.unplanned.length > 0;
+  const hasCalendarOnly = !hasAnyItemsToday
+    ? false
+    : activeBlockItems.length === 0 &&
+      !effectiveState.all_tasks_done &&
+      effectiveState.blocks.some((b) => b.items.some((i) => i.source === "calendar"));
+  const isZeroTasksState =
+    effectiveState.blocks.every((b) => b.items.length === 0) &&
+    effectiveState.unplanned.length === 0;
+  const isSingleTaskState = activeBlockItems.length === 1 && !effectiveState.all_tasks_done;
+
+  // One-time celebration on S8 all_tasks_done (never re-triggers on reopen)
+  useEffect(() => {
+    const isNowDone = effectiveState.all_tasks_done;
+    if (isNowDone && !prevAllDoneRef.current && !celebratedAllDoneInSession) {
+      celebratedAllDoneInSession = true;
+      autoCelebrationShownCount += 1;
+      const t1 = window.setTimeout(() => setCelebratingNow(true), 0);
+      const t2 = window.setTimeout(() => setCelebratingNow(false), 3200);
+      prevAllDoneRef.current = isNowDone;
+      return () => {
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+      };
+    }
+    prevAllDoneRef.current = isNowDone;
+    return undefined;
+  }, [effectiveState.all_tasks_done]);
+
+  // Prayer pause ask mode near prayer arrival
   useEffect(() => {
     if (
       pomodoro.running &&
-      pomodoro.phase === "focus" &&
-      prayerPauseMode === "auto_pause" &&
-      viewState.next_prayer_in_min <= 1 &&
-      autoPausedPrayerRef.current !== viewState.next_prayer_name
+      prayerPauseMode === "ask" &&
+      effectiveState.next_prayer_in_min >= 0 &&
+      effectiveState.next_prayer_in_min <= 1
     ) {
-      autoPausedPrayerRef.current = viewState.next_prayer_name;
-      onToggleFocusPause();
-      onLogActivity("prayer", viewState.next_prayer_name.toLowerCase(), "Auto-paused focus");
+      const t = window.setTimeout(() => setPrayerAskOpen(true), 0);
+      return () => window.clearTimeout(t);
     }
-  }, [
-    pomodoro.running,
-    pomodoro.phase,
-    prayerPauseMode,
-    viewState.next_prayer_in_min,
-    viewState.next_prayer_name,
-    onToggleFocusPause,
-    onLogActivity,
-  ]);
+    return undefined;
+  }, [pomodoro.running, prayerPauseMode, effectiveState.next_prayer_in_min]);
 
-  // Map rail x <-> minute snapped to 5 minutes
-  const minuteToRailX = (minVal: number): number => {
-    const blocks = viewState.blocks;
-    const count = Math.max(1, blocks.length);
-    const segW = (RAIL_W - SEG_GAP * (count - 1)) / count;
-    for (let i = 0; i < count; i++) {
-      const b = blocks[i];
-      const segStart = i * (segW + SEG_GAP);
-      if (minVal <= b.start_min && i === 0) return segStart;
-      if (minVal >= b.start_min && minVal <= b.end_min) {
-        const u = (minVal - b.start_min) / Math.max(1, b.end_min - b.start_min);
-        return segStart + u * segW;
-      }
+  // Free focus completion prompt ("Log this as a task?") when Pomodoro stops on chime without bound task
+  useEffect(() => {
+    const stoppedByFinish =
+      prevPomodoroRunningRef.current &&
+      !pomodoro.running &&
+      pomodoro.chime_tick !== prevPomodoroChimeRef.current &&
+      !boundTask;
+    prevPomodoroRunningRef.current = pomodoro.running;
+    prevPomodoroChimeRef.current = pomodoro.chime_tick;
+    if (stoppedByFinish) {
+      const t = window.setTimeout(() => setFreeFocusPromptOpen(true), 0);
+      return () => window.clearTimeout(t);
     }
-    return RAIL_W;
-  };
+    return undefined;
+  }, [pomodoro.running, pomodoro.chime_tick, boundTask]);
 
-  const clientXToSnappedMin = (clientX: number): number => {
-    const svg = railRef.current;
-    if (!svg) return baseState.now_min;
-    const rect = svg.getBoundingClientRect();
-    const rx = Math.max(
-      0,
-      Math.min(RAIL_W, ((clientX - rect.left) / Math.max(1, rect.width)) * RAIL_W),
-    );
-    const blocks = viewState.blocks;
-    const count = Math.max(1, blocks.length);
-    const segW = (RAIL_W - SEG_GAP * (count - 1)) / count;
-    for (let i = 0; i < count; i++) {
-      const segStart = i * (segW + SEG_GAP);
-      const segEnd = segStart + segW;
-      if (rx <= segEnd || i === count - 1) {
-        const u = Math.max(0, Math.min(1, (rx - segStart) / segW));
-        const rawMin = blocks[i].start_min + u * (blocks[i].end_min - blocks[i].start_min);
-        return Math.round(rawMin / 5) * 5;
-      }
+  const openQuickAdd = useCallback(
+    (targetBlockId: string | null, triggerEl?: HTMLElement | null) => {
+      returnFocusRef.current = triggerEl ?? (document.activeElement as HTMLElement | null) ?? null;
+      setQuickAddTarget(targetBlockId);
+      setQuickAddValue("");
+      window.requestAnimationFrame(() => quickAddInputRef.current?.focus());
+    },
+    [],
+  );
+
+  const closeQuickAdd = useCallback(() => {
+    setQuickAddTarget(null);
+    setQuickAddValue("");
+    window.requestAnimationFrame(() => returnFocusRef.current?.focus());
+  }, []);
+
+  const submitQuickAdd = useCallback(() => {
+    const parsed = parseQuickAddTaskInput(quickAddValue);
+    if (!parsed.title) {
+      closeQuickAdd();
+      return;
     }
-    return baseState.now_min;
-  };
+    playUiSound("toggle_on");
+    onAddTask(parsed.title, quickAddTarget, parsed.estimateMin, parsed.startAt);
+    closeQuickAdd();
+  }, [quickAddValue, quickAddTarget, onAddTask, closeQuickAdd]);
 
-  const dismissHintOnce = () => {
-    if (!localHintGone) {
-      setLocalHintGone(true);
-      onDismissHint();
-    }
-  };
-
-  const handleSunPointerDown = (e: PointerEvent<SVGCircleElement | SVGSVGElement>) => {
-    e.stopPropagation();
-    draggingSunRef.current = true;
-    dismissHintOnce();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    setScrubMin(clientXToSnappedMin(e.clientX));
-  };
-
-  const handleSunPointerMove = (e: PointerEvent<SVGSVGElement>) => {
-    if (!draggingSunRef.current) return;
-    setScrubMin(clientXToSnappedMin(e.clientX));
-  };
-
-  const handleSunPointerUp = (e: PointerEvent<SVGSVGElement>) => {
-    if (!draggingSunRef.current) return;
-    draggingSunRef.current = false;
-    try {
-      (e.target as Element).releasePointerCapture?.(e.pointerId);
-    } catch {
-      // ignore if capture already released
-    }
-    if (!scrubPinned) {
-      setScrubMin(null);
-    }
-  };
-
-  const handleRailKeyDown = (e: KeyboardEvent<SVGSVGElement>) => {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      e.preventDefault();
-      e.stopPropagation();
-      dismissHintOnce();
-      const step = e.key === "ArrowRight" ? 5 : -5;
-      const cur = scrubMin ?? baseState.now_min;
-      setScrubMin(Math.max(baseState.rail_start_min, Math.min(baseState.rail_end_min, cur + step)));
-    } else if (e.key === "Escape") {
-      setScrubPinned(false);
-      setScrubMin(null);
-    }
-  };
-
-  const activeFocusTask = useMemo(() => {
-    if (viewState.current_focus_task_id) {
-      for (const b of viewState.blocks) {
-        const hit = b.items.find((i) => i.id === viewState.current_focus_task_id);
-        if (hit) return hit;
-      }
-    }
-    const activeBlock = viewState.blocks.find((b) => b.is_current);
-    return (
-      activeBlock?.items.find((i) => !i.done && i.id > 0) ??
-      viewState.blocks.flatMap((b) => b.items).find((i) => !i.done && i.id > 0) ??
-      null
-    );
-  }, [viewState]);
-
-  const bodyDoubleState: WaqtBodyDoubleState = useMemo(() => {
-    if (justCelebrated) return "celebrate";
-    if (pomodoro.phase !== "focus" && pomodoro.running) return "break";
-    if (looksUp) return "looks_up";
-    if (pomodoro.running) return "focus";
-    return "idle_working";
-  }, [justCelebrated, pomodoro.phase, pomodoro.running, looksUp]);
-
-  const handleToggleDone = (item: WaqtBlockItem) => {
-    if (item.id <= 0) return;
-    void playUiSound("task_done");
-    if (!item.done) {
-      setJustCelebrated(true);
-      window.setTimeout(() => setJustCelebrated(false), 1800);
-    }
-    onToggleTask(item.id);
-  };
-
-  const triggerSwipeDelete = (item: WaqtBlockItem, blockId: string) => {
-    if (item.id <= 0) return;
-    onDeleteTask(item.id);
-    setUndoItem({ title: item.title, blockId, estimateMin: item.estimate_min });
-    window.setTimeout(() => {
-      setUndoItem((cur) => (cur?.title === item.title ? null : cur));
-    }, 5000);
-  };
-
-  const handleDropOnBlock = (e: DragEvent<HTMLElement>, targetBlockId: string | null) => {
-    e.preventDefault();
-    setHoverBlockId(null);
-    const idRaw = e.dataTransfer.getData("text/lumen-task-id");
-    const taskId = Number(idRaw) || draggedTaskId;
-    setDraggedTaskId(null);
-    if (!taskId || taskId <= 0) return;
-    void playUiSound("toggle_on");
-    onAssignTask(taskId, targetBlockId);
-  };
-
-  const handleShareDayWrapped = async () => {
-    const tasksDone = viewState.blocks.reduce(
-      (acc, b) => acc + b.items.filter((i) => i.done).length,
-      0,
-    );
-    const blob = await generateLocalDayWrappedPng({
-      dateLabel: viewState.date_label,
-      focusMin: viewState.total_focus_min,
-      tasksDone,
-      prayersCount: viewState.prayers_done_count,
-      waterMl: viewState.water_today_ml,
-    });
-    if (!blob) return;
-    try {
-      if (navigator.clipboard && "ClipboardItem" in window) {
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-        setShareStatus(isBn ? "ক্লিপবোর্ডে কপি হয়েছে" : "Copied card to clipboard");
+  // Keyboard shortcuts: Ctrl+N quick add, Escape exits expanded sheet / quick add / replay
+  useEffect(() => {
+    if (!isVisible) return;
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        openQuickAdd(currentBlock?.id ?? "dhuhr", document.activeElement as HTMLElement | null);
         return;
       }
-    } catch {
-      // fall through to local file download
+      if (e.key === "Escape") {
+        if (quickAddTarget !== null) {
+          e.preventDefault();
+          closeQuickAdd();
+        } else if (expandedBlockId !== null) {
+          e.preventDefault();
+          setExpandedBlockId(null);
+          window.requestAnimationFrame(() => returnFocusRef.current?.focus());
+        } else if (planPreviewOpen) {
+          e.preventDefault();
+          setPlanPreviewOpen(false);
+        } else if (moveMenuItemId !== null) {
+          e.preventDefault();
+          setMoveMenuItemId(null);
+        } else if (replayPlaying) {
+          e.preventDefault();
+          setReplayPlaying(false);
+          setReplayStepMin(null);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    isVisible,
+    currentBlock?.id,
+    quickAddTarget,
+    expandedBlockId,
+    planPreviewOpen,
+    moveMenuItemId,
+    replayPlaying,
+    openQuickAdd,
+    closeQuickAdd,
+  ]);
+
+  // 5-second Replay Day loop
+  useEffect(() => {
+    if (!replayPlaying) return;
+    const startMin = effectiveState.rail_start_min;
+    const endMin = Math.max(startMin + 60, effectiveState.now_min);
+    const durationMs = 5000;
+    const t0 = performance.now();
+    let rafId = 0;
+
+    const tick = (now: number) => {
+      const elapsed = now - t0;
+      const frac = Math.min(1, elapsed / durationMs);
+      setReplayStepMin(Math.round(startMin + frac * (endMin - startMin)));
+      if (frac < 1) {
+        rafId = window.requestAnimationFrame(tick);
+      } else {
+        setReplayPlaying(false);
+        setReplayStepMin(null);
+      }
+    };
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [replayPlaying, effectiveState.rail_start_min, effectiveState.now_min]);
+
+  const scheduleUndoClear = useCallback(() => {
+    if (undoTimerRef.current) {
+      window.clearTimeout(undoTimerRef.current);
     }
-    const url = URL.createObjectURL(blob);
+    undoTimerRef.current = window.setTimeout(() => {
+      setDeletedUndo(null);
+      setBatchUndoToast(null);
+    }, 5000);
+  }, []);
+
+  const handleSoftDelete = useCallback(
+    (item: WaqtBlockItem, blockId: string) => {
+      if (item.id <= 0 || item.source === "calendar") return;
+      playUiSound("toggle_on");
+      setDeletedUndo({
+        title: item.title,
+        blockId,
+        estimateMin: item.estimate_min,
+      });
+      onDeleteTask(item.id);
+      scheduleUndoClear();
+    },
+    [onDeleteTask, scheduleUndoClear],
+  );
+
+  const handleAcceptSuggestion = useCallback(
+    (sug: WaqtSuggestion) => {
+      playUiSound("toggle_on");
+      setLocalDismissedIds((prev) => (prev.includes(sug.id) ? prev : [...prev, sug.id]));
+      if (onAcceptSuggestion) {
+        onAcceptSuggestion(sug);
+        return;
+      }
+      if (sug.task_id !== null) {
+        onAssignTask(sug.task_id, sug.block_id);
+      } else {
+        const clean = sug.text.split(" · ")[0]?.trim() || sug.text;
+        onAddTask(clean, sug.block_id, sug.estimate_min, null);
+      }
+    },
+    [onAcceptSuggestion, onAssignTask, onAddTask],
+  );
+
+  const handleDismissSuggestion = useCallback(
+    (sug: WaqtSuggestion) => {
+      playUiSound("arc_scrub_tick");
+      setLocalDismissedIds((prev) => {
+        const next = [...prev];
+        if (!next.includes(sug.id)) next.push(sug.id);
+        const blockMarker = `block:${sug.block_id}`;
+        if (!next.includes(blockMarker)) next.push(blockMarker);
+        return next;
+      });
+      onDismissSuggestion?.(sug);
+    },
+    [onDismissSuggestion],
+  );
+
+  const handleApplyPlanPreview = useCallback(() => {
+    const plan = effectiveState.plan_my_day_preview;
+    if (plan.length === 0) {
+      setPlanPreviewOpen(false);
+      return;
+    }
+    playUiSound("toggle_on");
+    const forward: Array<[number, string | null]> = plan.map((p) => [p.task_id, p.target_block_id]);
+    const reverse: Array<[number, string | null]> = plan.map((p) => [p.task_id, p.prev_block_id]);
+    if (onAssignBatch) {
+      onAssignBatch(forward);
+    } else {
+      for (const [tid, bid] of forward) {
+        onAssignTask(tid, bid);
+      }
+    }
+    setPlanPreviewOpen(false);
+    setBatchUndoToast({
+      label: interpolateMsg(msg.waqt.planPreviewTitle, { count: plan.length }).replace("?", ""),
+      undoAssignments: reverse,
+    });
+    scheduleUndoClear();
+  }, [
+    effectiveState.plan_my_day_preview,
+    onAssignBatch,
+    onAssignTask,
+    msg.waqt.planPreviewTitle,
+    scheduleUndoClear,
+  ]);
+
+  const handleMoveOverflowBlock = useCallback(
+    (block: WaqtBlockView, nextBlock: WaqtBlockView | undefined) => {
+      if (!nextBlock) return;
+      playUiSound("toggle_on");
+      const moves = computeOverflowMoveAssignments(block, nextBlock);
+      if (moves.length > 0 && onAssignBatch) {
+        onAssignBatch(moves.map((m) => [m.taskId, m.nextBlockId]));
+        setBatchUndoToast({
+          label: interpolateMsg(msg.waqt.moveToNext, {
+            count: moves.length,
+            block: nextBlock.name,
+          }),
+          undoAssignments: moves.map((m) => [m.taskId, m.prevBlockId]),
+        });
+        scheduleUndoClear();
+      } else {
+        onMoveOverflow(block.id, nextBlock.id);
+      }
+    },
+    [onAssignBatch, onMoveOverflow, msg.waqt.moveToNext, scheduleUndoClear],
+  );
+
+  const handleUndoBatch = useCallback(() => {
+    if (!batchUndoToast) return;
+    playUiSound("arc_scrub_tick");
+    if (onAssignBatch) {
+      onAssignBatch(batchUndoToast.undoAssignments);
+    } else {
+      for (const [tid, bid] of batchUndoToast.undoAssignments) {
+        onAssignTask(tid, bid);
+      }
+    }
+    setBatchUndoToast(null);
+  }, [batchUndoToast, onAssignBatch, onAssignTask]);
+
+  const handleScrubPointer = useCallback(
+    (clientX: number) => {
+      const svg = railRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const scaleX = WAQT_RAIL_W / Math.max(1, rect.width);
+      const localX = (clientX - rect.left) * scaleX;
+      const nextMin = scrubXToMinutes(
+        localX,
+        effectiveState.blocks,
+        effectiveState.rail_start_min,
+        effectiveState.rail_end_min,
+      );
+      setScrubMin(nextMin);
+      if (!localHintDismissed) {
+        setLocalHintDismissed(true);
+        onDismissHint();
+      }
+    },
+    [
+      effectiveState.blocks,
+      effectiveState.rail_start_min,
+      effectiveState.rail_end_min,
+      localHintDismissed,
+      onDismissHint,
+    ],
+  );
+
+  const handleExportWrapped = useCallback(() => {
+    playUiSound("toggle_on");
+    const canvas = document.createElement("canvas");
+    canvas.width = 760;
+    canvas.height = 376;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const grad = ctx.createRadialGradient(120, 320, 20, 120, 320, 320);
+    grad.addColorStop(0, "rgba(94, 92, 230, 0.45)");
+    grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "600 22px Inter, system-ui, sans-serif";
+    ctx.fillText("Lumen · Waqt Day Replay", 32, 48);
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.font = "400 15px Inter, system-ui, sans-serif";
+    ctx.fillText(
+      `${effectiveState.date_label} · Focus ${formatDurationCompact(effectiveState.total_focus_min)} · Prayers ${effectiveState.prayers_done_count}/5`,
+      32,
+      78,
+    );
+    effectiveState.blocks.forEach((b, idx) => {
+      const x = 32 + idx * 142;
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      ctx.fillRect(x, 112, 130, 180);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "600 14px Inter, system-ui, sans-serif";
+      ctx.fillText(b.name, x + 12, 138);
+      ctx.fillStyle = "#ffb020";
+      ctx.font = "400 12px Inter, system-ui, sans-serif";
+      ctx.fillText(b.status_text, x + 12, 274);
+    });
+    const url = canvas.toDataURL("image/png");
+    setExportedUrl(url);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "lumen-day-wrapped.png";
+    a.download = `lumen-waqt-${effectiveState.date_label.replace(/\s+/g, "-")}.png`;
     a.click();
-    URL.revokeObjectURL(url);
-    setShareStatus(isBn ? "লোকাল PNG সেভ হয়েছে" : "Saved Day Wrapped PNG");
+    window.setTimeout(() => setExportedUrl(null), 3500);
+  }, [effectiveState]);
+
+  const sunX = computeSunX(
+    displayMin,
+    effectiveState.blocks,
+    effectiveState.rail_start_min,
+    effectiveState.rail_end_min,
+  );
+  const sehriX = computeSunX(
+    effectiveState.sehri_min,
+    effectiveState.blocks,
+    effectiveState.rail_start_min,
+    effectiveState.rail_end_min,
+  );
+  const iftarX = computeSunX(
+    effectiveState.iftar_min,
+    effectiveState.blocks,
+    effectiveState.rail_start_min,
+    effectiveState.rail_end_min,
+  );
+
+  // S15 Loading shimmer skeleton (strict 640x312 footprint, no spinner)
+  if (loading && !waqtState && tasks.length === 0) {
+    return (
+      <div
+        data-testid="waqt-loading-skeleton"
+        aria-busy="true"
+        aria-label={msg.waqt.loadingLabel}
+        className="flex h-full w-full flex-col justify-between px-[14px] pt-[8px] pb-[6px]"
+      >
+        <div className="flex h-[24px] items-center justify-between gap-3">
+          <div className="lumen-skeleton-shimmer h-4 w-36 rounded-full bg-white/10" />
+          <div className="lumen-skeleton-shimmer h-3 w-40 rounded-full bg-white/10" />
+          <div className="lumen-skeleton-shimmer h-5 w-24 rounded-full bg-white/10" />
+        </div>
+        <div className="lumen-skeleton-shimmer my-1 h-[22px] w-full rounded-full bg-white/10" />
+        <div className="grid flex-1 grid-cols-5 gap-[10px] py-1">
+          {[0, 1, 2, 3, 4].map((idx) => (
+            <div
+              key={idx}
+              className="lumen-skeleton-shimmer rounded-[var(--waqt-card-radius)] border border-white/10 bg-white/[0.06]"
+            />
+          ))}
+        </div>
+        <div className="grid h-[86px] grid-cols-[1.25fr_1fr_1fr] gap-[10px]">
+          <div className="lumen-skeleton-shimmer rounded-[var(--waqt-card-radius)] border border-white/10 bg-white/[0.06]" />
+          <div className="lumen-skeleton-shimmer rounded-[var(--waqt-card-radius)] border border-white/10 bg-white/[0.06]" />
+          <div className="lumen-skeleton-shimmer rounded-[var(--waqt-card-radius)] border border-white/10 bg-white/[0.06]" />
+        </div>
+      </div>
+    );
+  }
+
+  // S16 Error state when data failed and no snapshot is present
+  if (error && !waqtState && tasks.length === 0) {
+    return (
+      <div
+        data-testid="waqt-error-state"
+        role="alert"
+        className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center"
+      >
+        <span className="text-[13px] font-semibold text-white">{msg.waqt.errorTitle}</span>
+        <span className="max-w-[380px] truncate text-[11px] text-white/65">{error}</span>
+        {onRetry && (
+          <button
+            type="button"
+            data-testid="waqt-retry-button"
+            onClick={onRetry}
+            className="mt-1 rounded-full bg-white px-3.5 py-1 text-[11px] font-semibold text-black hover:bg-white/90"
+          >
+            {msg.waqt.retry}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const glassSurfaceClass = reduceTransparency
+    ? "bg-[#121216] border border-white/15"
+    : "bg-white/[0.07] border border-white/[0.11] backdrop-blur-[14px]";
+
+  // Header contextual micro-hint (priority sorted cleanly)
+  const renderCenterBanner = () => {
+    if (error) {
+      return (
+        <div
+          data-testid="waqt-inline-error"
+          className="flex items-center gap-1.5 rounded-full border border-[var(--waqt-deadline)]/40 bg-[var(--waqt-deadline)]/15 px-2 py-0.5 text-[10px] text-white"
+        >
+          <span className="truncate">{error}</span>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-full bg-white/20 px-1.5 font-semibold"
+            >
+              {msg.waqt.retry}
+            </button>
+          )}
+        </div>
+      );
+    }
+    if (effectiveState.day_is_overbooked) {
+      return (
+        <div
+          data-testid="waqt-day-full-banner"
+          className="flex items-center gap-1.5 rounded-full border border-[var(--waqt-deadline)]/45 bg-[var(--waqt-deadline)]/15 px-2 py-0.5 text-[10px] font-medium text-white"
+        >
+          <span>
+            {fmt(
+              interpolateMsg(msg.waqt.dayFullBanner, {
+                planned: formatDurationCompact(effectiveState.total_planned_min),
+                free: formatDurationCompact(effectiveState.total_free_min),
+              }),
+            )}
+          </span>
+        </div>
+      );
+    }
+    if (!effectiveState.location_configured && !cityBannerDismissed) {
+      return (
+        <div
+          data-testid="waqt-city-banner"
+          className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] text-white/85"
+        >
+          <span>{msg.waqt.cityBanner}</span>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="rounded-full bg-[var(--waqt-habit)]/25 px-1.5 font-semibold text-[var(--waqt-habit)]"
+          >
+            {msg.waqt.cityAction}
+          </button>
+          <button
+            type="button"
+            aria-label={msg.waqt.dismiss}
+            onClick={() => setCityBannerDismissed(true)}
+            className="text-white/50 hover:text-white"
+          >
+            ×
+          </button>
+        </div>
+      );
+    }
+    if (effectiveState.yesterday_rollover_count > 0 && !rolloverHandled) {
+      return (
+        <div
+          data-testid="waqt-rollover-prompt"
+          className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] text-white/90"
+        >
+          <span>
+            {fmt(
+              interpolateMsg(msg.waqt.rolloverPrompt, {
+                count: effectiveState.yesterday_rollover_count,
+              }),
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setRolloverHandled(true);
+              onRolloverYesterday(true);
+            }}
+            className="rounded-full bg-white px-1.5 font-semibold text-black"
+          >
+            {msg.waqt.move}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRolloverHandled(true);
+              onRolloverYesterday(false);
+            }}
+            className="text-white/60 hover:text-white"
+          >
+            {msg.waqt.leave}
+          </button>
+        </div>
+      );
+    }
+    if (scrubMin !== null) {
+      return (
+        <button
+          type="button"
+          data-testid="waqt-scrub-tooltip"
+          onClick={() => setScrubMin(null)}
+          className="rounded-full bg-[var(--accent-orange)]/15 px-2 py-0.5 text-[10px] font-medium tabular-nums text-[var(--accent-orange)] hover:bg-[var(--accent-orange)]/25"
+        >
+          {fmt(`Viewing ${formatMinClock12(scrubMin)} · Reset`)}
+        </button>
+      );
+    }
+    if (isZeroTasksState && currentBlock) {
+      return (
+        <span data-testid="waqt-empty-hint" className="truncate text-[10.5px] text-white/60">
+          {interpolateMsg(msg.waqt.pickOneFor, { block: currentBlock.name })}
+        </span>
+      );
+    }
+    if (!localHintDismissed) {
+      return (
+        <span data-testid="waqt-scrub-hint" className="truncate text-[10px] text-white/55">
+          {msg.waqt.hint}
+        </span>
+      );
+    }
+    return null;
   };
 
-  const sunX = minuteToRailX(viewState.now_min);
-  const currentBlock = viewState.blocks.find((b) => b.is_current);
-  const blockWrapUpSoon =
-    pomodoro.running &&
-    currentBlock &&
-    currentBlock.remaining_min > 0 &&
-    currentBlock.remaining_min <= 10;
+  // Derive Focus card strings & Lumi mood
+  const focusHeadline = effectiveState.all_tasks_done
+    ? msg.waqt.allDoneFocus
+    : boundTask
+      ? boundTask.title
+      : hasCalendarOnly
+        ? interpolateMsg(msg.waqt.useGapBefore, { prayer: effectiveState.next_prayer_name })
+        : msg.waqt.freeFocusTitle;
 
-  const focusTimerLabel = `${String(Math.floor(pomodoro.remaining_secs / 60)).padStart(2, "0")}:${String(
-    pomodoro.remaining_secs % 60,
-  ).padStart(2, "0")}`;
+  const focusSubline = (() => {
+    if (quietMode) {
+      return pomodoro.running
+        ? formatTimerClock(pomodoro.remaining_secs)
+        : boundTask
+          ? `Lumi · ${boundTask.estimate_min}m`
+          : msg.waqt.freeFocusSubtitle;
+    }
+    if (effectiveState.all_tasks_done) {
+      return msg.waqt.allDoneLumi;
+    }
+    if (isSingleTaskState) {
+      return msg.waqt.oneThingLumi;
+    }
+    if (effectiveState.focus_next_task_title) {
+      return interpolateMsg(msg.waqt.thenNext, { title: effectiveState.focus_next_task_title });
+    }
+    if (pomodoro.running) {
+      return `Focus · ${formatTimerClock(pomodoro.remaining_secs)}`;
+    }
+    return boundTask ? `Lumi focuses with you · blocked: social` : msg.waqt.freeFocusSubtitle;
+  })();
 
-  const maxSpark = Math.max(15, ...viewState.focus_bars);
-  const pageDotIndices = Array.from({ length: Math.max(1, pagesCount) }, (_, idx) => idx);
+  const lumiMood = celebratingNow
+    ? "celebrate"
+    : pomodoro.running
+      ? "focus"
+      : prayerAskOpen
+        ? "looks_up"
+        : "idle_working";
+
+  const focusBarsEmpty = effectiveState.total_focus_min === 0;
 
   return (
     <motion.div
       data-testid="waqt-timeline-page"
-      data-reduce-motion={reduceMotion ? "true" : "false"}
-      data-reduce-transparency={reduceTransparency ? "true" : "false"}
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, filter: "blur(8px)", scale: 0.96 }}
-      animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
-      transition={getMotionTransition("waqtBlurEnter", reduceMotion)}
-      className="relative flex h-full w-full flex-col justify-between overflow-hidden px-[14px] pt-[10px] pb-[6px] select-none"
+      data-celebration-count={autoCelebrationShownCount}
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={reduceMotion ? { duration: 0.01 } : MOTION_PRESETS.waqtBlurEnter}
+      className="relative flex h-full w-full flex-col justify-between overflow-hidden px-[14px] pt-[8px] pb-[6px] select-none"
     >
-      {/* Ambient edge glows matching visual reference */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          className="absolute -bottom-16 -left-16 h-[190px] w-[240px] rounded-full blur-2xl"
-          style={{ background: COLOR_TOKENS.waqtGlowIndigo }}
-        />
-        <div
-          className="absolute -right-12 -bottom-16 h-[170px] w-[210px] rounded-full blur-2xl"
-          style={{ background: COLOR_TOKENS.waqtGlowGreen }}
-        />
-        <div
-          className="absolute -top-16 left-1/3 h-[120px] w-[260px] rounded-full blur-2xl"
-          style={{ background: COLOR_TOKENS.waqtGlowAmber }}
-        />
-      </div>
+      {/* Subtle corner ambient glow matching Waqt palette tokens */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-12 left-1/2 h-24 w-64 -translate-x-1/2 rounded-full blur-2xl"
+        style={{ background: COLOR_TOKENS.waqtGlowAmber }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-48 rounded-full blur-2xl"
+        style={{ background: COLOR_TOKENS.waqtGlowIndigo }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-10 -bottom-10 h-28 w-44 rounded-full blur-2xl"
+        style={{ background: COLOR_TOKENS.waqtGlowGreen }}
+      />
 
-      {/* 1. Header (24px) */}
-      <header className="relative z-20 flex h-[24px] items-center justify-between gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <h2 className="m-0 text-[13px] font-semibold tracking-tight text-white">
-            {isBn ? "ওয়াক্ত টাইমলাইন" : "Waqt Timeline"}
-          </h2>
+      {/* 1. HEADER */}
+      <header className="relative z-10 flex h-[24px] shrink-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <h1 className="text-[13px] font-semibold tracking-tight text-white">{msg.waqt.title}</h1>
           <span
-            className="text-[11px] font-medium tabular-nums"
-            style={{ color: COLOR_TOKENS.arcTimeMuted }}
+            data-testid="waqt-date-label"
+            className="text-[10.5px] font-medium tabular-nums"
+            style={{ color: COLOR_TOKENS.textSecondary }}
           >
-            {formatDigits(viewState.date_label, banglaDigits)}
+            {fmt(effectiveState.date_label)}
           </span>
+          {effectiveState.is_ramadan && (
+            <span
+              data-testid="waqt-ramadan-badge"
+              className="rounded-full bg-[var(--waqt-habit)]/20 px-1.5 py-[1px] text-[9px] font-semibold text-[var(--waqt-habit)]"
+            >
+              {fmt(
+                `Sehri ${formatMinClock12(effectiveState.sehri_min)} · Iftar ${formatMinClock12(effectiveState.iftar_min)}`,
+              )}
+            </span>
+          )}
         </div>
 
-        {/* Center contextual banner or dismissible scrub hint */}
-        <div className="flex min-w-0 flex-1 items-center justify-center">
-          {undoItem ? (
-            <button
-              type="button"
-              data-testid="waqt-undo-delete"
-              onClick={() => {
-                onRestoreTask(undoItem);
-                setUndoItem(null);
-              }}
-              className="home-glass-chip text-[10.5px] font-medium text-white px-2.5 py-0.5"
-            >
-              {isBn ? "মুছে ফেলা হয়েছে · ফিরিয়ে আনুন" : `Deleted "${undoItem.title}" · Undo`}
-            </button>
-          ) : prayerArrivedBanner?.mode === "ask" ? (
-            <div
-              data-testid="waqt-prayer-pause-prompt"
-              className="home-glass-chip flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] text-white"
-            >
-              <span>
-                {isBn
-                  ? `${prayerArrivedBanner.prayer}-এর জন্য ফোকাস থামাবেন?`
-                  : `Pause focus for ${prayerArrivedBanner.prayer}?`}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setAskedPrayerId(prayerArrivedBanner.prayer);
-                  onToggleFocusPause();
-                  onLogActivity(
-                    "prayer",
-                    prayerArrivedBanner.prayer.toLowerCase(),
-                    "Paused for prayer",
-                  );
-                }}
-                className="font-semibold"
-                style={{ color: COLOR_TOKENS.arcProgress }}
-              >
-                {isBn ? "হ্যাঁ" : "Pause"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAskedPrayerId(prayerArrivedBanner.prayer)}
-                style={{ color: COLOR_TOKENS.textSecondary }}
-              >
-                {isBn ? "না" : "Skip"}
-              </button>
-            </div>
-          ) : blockWrapUpSoon ? (
-            <span
-              className="home-glass-chip px-2.5 py-0.5 text-[10.5px] font-medium"
-              style={{ color: COLOR_TOKENS.arcProgress }}
-            >
-              {viewState.next_prayer_name} in{" "}
-              {formatDigits(currentBlock.remaining_min, banglaDigits)}m: wrap up
-            </span>
-          ) : viewState.yesterday_rollover_count > 0 ? (
-            <div
-              data-testid="waqt-rollover-prompt"
-              className="home-glass-chip flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] text-white"
-            >
-              <span>
-                {isBn
-                  ? `গতকালের ${viewState.yesterday_rollover_count}টি কাজ আজকে আনবেন?`
-                  : `Move ${viewState.yesterday_rollover_count} tasks to today?`}
-              </span>
-              <button
-                type="button"
-                onClick={() => onRolloverYesterday(true)}
-                className="font-semibold"
-                style={{ color: COLOR_TOKENS.accentGreen }}
-              >
-                {isBn ? "হ্যাঁ" : "Move"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRolloverYesterday(false)}
-                style={{ color: COLOR_TOKENS.textSecondary }}
-              >
-                ×
-              </button>
-            </div>
-          ) : !viewState.location_configured ? (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="home-glass-chip px-2.5 py-0.5 text-[10.5px]"
-              style={{ color: COLOR_TOKENS.arcProgress }}
-            >
-              {isBn ? "নামাজের ব্লকের জন্য শহর সেট করুন" : "Set your city for prayer blocks"}
-            </button>
-          ) : !localHintGone ? (
-            <span
-              data-testid="waqt-scrub-hint"
-              className="truncate text-[10.5px]"
-              style={{ color: COLOR_TOKENS.textSecondary }}
-            >
-              {isBn
-                ? "সূর্য টেনে সময় দেখুন · কাজ ব্লকে টেনে নিন"
-                : "Drag the sun to scrub · tasks snap into blocks"}
-            </span>
-          ) : null}
+        <div className="flex min-w-0 flex-1 items-center justify-center px-1">
+          {renderCenterBanner()}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {scrubMin !== null && (
+        <div className="flex shrink-0 items-center gap-1">
+          {effectiveState.plan_my_day_preview.length > 0 && !planPreviewOpen && (
             <button
               type="button"
-              data-testid="waqt-pin-scrub"
-              aria-label={scrubPinned ? "Unpin scrubbed time" : "Pin scrubbed time"}
+              data-testid="waqt-plan-my-day-btn"
               onClick={() => {
-                if (scrubPinned) {
-                  setScrubPinned(false);
-                  setScrubMin(null);
-                } else {
-                  setScrubPinned(true);
-                }
+                playUiSound("arc_scrub_tick");
+                setPlanPreviewOpen(true);
               }}
-              className="flex h-[22px] w-[22px] items-center justify-center rounded-full"
-              style={{
-                background: scrubPinned ? COLOR_TOKENS.arcProgress : COLOR_TOKENS.chipGlassBg,
-                color: scrubPinned ? "#000000" : COLOR_TOKENS.textPrimary,
-              }}
+              className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
             >
-              <LockIcon size={10} />
+              {msg.waqt.planMyDay}
+            </button>
+          )}
+          {prayerAskOpen && (
+            <button
+              type="button"
+              onClick={() => {
+                onToggleFocusPause();
+                onLogActivity("prayer", effectiveState.next_prayer_name, "Paused for prayer");
+                setPrayerAskOpen(false);
+              }}
+              className="rounded-full bg-[var(--waqt-habit)] px-2 py-0.5 text-[10px] font-semibold text-black"
+            >
+              {fmt(`Pause for ${effectiveState.next_prayer_name}`)}
             </button>
           )}
           <button
             type="button"
-            data-testid="waqt-replay-btn"
-            onClick={() => {
-              if (replaying) {
-                setReplaying(false);
-                setReplayMin(null);
-              } else {
-                setReplaySummaryOpen(false);
-                setShareStatus(null);
-                setReplaying(true);
-              }
-            }}
-            className="inline-flex h-[22px] items-center gap-1 rounded-full bg-white px-2.5 text-[10.5px] font-semibold text-black transition-transform active:scale-95"
+            data-testid="waqt-quick-add-header-btn"
+            aria-label="Quick add task (Ctrl+N)"
+            onClick={(e) => openQuickAdd(currentBlock?.id ?? "dhuhr", e.currentTarget)}
+            className="flex h-[20px] w-[20px] items-center justify-center rounded-full bg-white/10 text-white/85 hover:bg-white/20"
+            title="Ctrl+N"
           >
-            <PlayIcon size={9} />
-            <span>{replaying ? (isBn ? "থামান" : "Skip") : isBn ? "রিপ্লে" : "Replay day"}</span>
+            <PlusIcon size={11} />
           </button>
           <button
             type="button"
-            aria-label={isBn ? "সেটিংস খুলুন" : "Open settings"}
-            onClick={onOpenSettings}
-            className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
+            data-testid="waqt-replay-button"
+            onClick={() => {
+              playUiSound("toggle_on");
+              setScrubMin(null);
+              setReplayPlaying((p) => !p);
+            }}
+            className="flex h-[20px] items-center gap-1 rounded-full bg-white px-2 text-[10px] font-semibold text-black hover:bg-white/90"
           >
-            <SettingsIcon size={13} />
+            <PlayIcon size={9} />
+            <span>{replayPlaying ? "Stop" : msg.waqt.replayDay}</span>
+          </button>
+          <button
+            type="button"
+            aria-label={msg.home.toggles.settings}
+            onClick={onOpenSettings}
+            className="flex h-[20px] w-[20px] items-center justify-center rounded-full text-white/75 hover:bg-white/10 hover:text-white"
+          >
+            <SettingsIcon size={12} />
           </button>
         </div>
       </header>
 
-      {/* 2. 5-Segment Waqt Progress Rail + Draggable Sun */}
-      <div className="relative z-20 h-[34px] w-full">
-        {activeTimeMin !== null && (
-          <div
-            data-testid="waqt-scrub-tooltip"
-            className="pointer-events-none absolute -top-5 z-30 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium text-white shadow-md tabular-nums"
-            style={{
-              left: `${Math.max(14, Math.min(86, (sunX / RAIL_W) * 100))}%`,
-              background: COLOR_TOKENS.arcTooltipBg,
-              border: `1px solid ${COLOR_TOKENS.chipGlassBorder}`,
-            }}
-          >
-            {formatDigits(formatMinClock12(activeTimeMin, true), banglaDigits)} · {tooltipDetail}
-          </div>
-        )}
-
+      {/* 2. PRAYER RAIL & DRAGGABLE SUN */}
+      <div className="relative z-10 shrink-0">
         <svg
           ref={railRef}
-          viewBox={`0 0 ${RAIL_W} ${RAIL_H}`}
-          tabIndex={0}
-          role="slider"
-          aria-label="Waqt timeline scrub"
-          aria-valuemin={viewState.rail_start_min}
-          aria-valuemax={viewState.rail_end_min}
-          aria-valuenow={viewState.now_min}
           data-testid="waqt-rail"
-          onPointerDown={handleSunPointerDown}
-          onPointerMove={handleSunPointerMove}
-          onPointerUp={handleSunPointerUp}
-          onKeyDown={handleRailKeyDown}
-          className="h-[34px] w-full cursor-pointer overflow-visible outline-none"
+          role="slider"
+          tabIndex={0}
+          aria-label="Scrub day timeline"
+          aria-valuemin={effectiveState.rail_start_min}
+          aria-valuemax={effectiveState.rail_end_min}
+          aria-valuenow={displayMin}
+          viewBox={`0 0 ${WAQT_RAIL_W} ${WAQT_RAIL_H}`}
+          className="h-[31px] w-full cursor-ew-resize overflow-visible outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+          onPointerDown={(e) => {
+            setDraggingScrub(true);
+            handleScrubPointer(e.clientX);
+          }}
+          onPointerMove={(e) => {
+            if (draggingScrub) handleScrubPointer(e.clientX);
+          }}
+          onPointerUp={() => setDraggingScrub(false)}
+          onPointerLeave={() => setDraggingScrub(false)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              setScrubMin(Math.min(effectiveState.rail_end_min, displayMin + 5));
+              if (!localHintDismissed) {
+                setLocalHintDismissed(true);
+                onDismissHint();
+              }
+            } else if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              setScrubMin(Math.max(effectiveState.rail_start_min, displayMin - 5));
+              if (!localHintDismissed) {
+                setLocalHintDismissed(true);
+                onDismissHint();
+              }
+            }
+          }}
         >
-          {viewState.blocks.map((block, idx) => {
-            const count = viewState.blocks.length;
-            const segW = (RAIL_W - SEG_GAP * (count - 1)) / count;
-            const x = idx * (segW + SEG_GAP);
-            const activeW = block.is_past
-              ? segW
-              : block.is_current
-                ? Math.max(4, (segW * block.fill_ratio_pct) / 100)
+          {effectiveState.blocks.map((blk, idx) => {
+            const x = idx * (WAQT_SEGMENT_W + WAQT_SEGMENT_GAP);
+            const segPast = displayMin >= blk.end_min && idx < effectiveState.blocks.length - 1;
+            const segCurrent = displayMin >= blk.start_min && displayMin < blk.end_min;
+            const segFrac = segCurrent
+              ? Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    (displayMin - blk.start_min) / Math.max(1, blk.end_min - blk.start_min),
+                  ),
+                )
+              : segPast
+                ? 1
                 : 0;
+            const isNextHighlight = blk.prayer_label
+              .toLowerCase()
+              .startsWith(effectiveState.next_prayer_name.toLowerCase());
+
             return (
-              <g key={block.id}>
+              <g key={blk.id}>
                 <rect
                   x={x}
-                  y={9}
-                  width={segW}
-                  height={5}
-                  rx={2.5}
-                  fill="rgba(255, 255, 255, 0.2)"
+                  y={6}
+                  width={WAQT_SEGMENT_W}
+                  height={4}
+                  rx={2}
+                  fill="rgba(255,255,255,0.2)"
                 />
-                {activeW > 0 && (
-                  <motion.rect
+                {segFrac > 0 && (
+                  <rect
                     x={x}
-                    y={9}
-                    height={5}
-                    rx={2.5}
-                    fill={COLOR_TOKENS.arcProgress}
-                    initial={reduceMotion ? false : { width: 0 }}
-                    animate={{ width: activeW }}
-                    transition={getMotionTransition("waqtRailDraw", reduceMotion)}
+                    y={6}
+                    width={WAQT_SEGMENT_W * segFrac}
+                    height={4}
+                    rx={2}
+                    fill="#ffb020"
                   />
                 )}
                 <text
                   x={x}
-                  y={28}
-                  fontSize={10.5}
-                  fontWeight={block.is_current ? 600 : 400}
-                  fill={block.is_current ? COLOR_TOKENS.arcProgress : COLOR_TOKENS.arcTimeMuted}
-                  className="cursor-pointer tabular-nums"
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    dismissHintOnce();
-                    setScrubMin(block.start_min);
-                    setScrubPinned(true);
-                  }}
+                  y={25}
+                  fontSize={9.5}
+                  fontWeight={isNextHighlight ? 600 : 400}
+                  fill={isNextHighlight ? "#ffb020" : "rgba(255,255,255,0.68)"}
+                  style={{ fontVariantNumeric: "tabular-nums" }}
                 >
-                  {formatDigits(block.prayer_label, banglaDigits)}
+                  {fmt(blk.prayer_label)}
                 </text>
               </g>
             );
           })}
 
-          {/* Ramadan Sehri & Iftar rail markers */}
-          {viewState.is_ramadan && (
-            <>
-              <circle
-                cx={minuteToRailX(viewState.sehri_min)}
-                cy={11.5}
-                r={2.5}
-                fill={COLOR_TOKENS.arcSun}
-              />
-              <circle
-                cx={minuteToRailX(viewState.iftar_min)}
-                cy={11.5}
-                r={2.5}
-                fill={COLOR_TOKENS.arcSun}
-              />
-            </>
+          {effectiveState.is_ramadan && (
+            <g data-testid="waqt-ramadan-markers">
+              <circle cx={sehriX} cy={8} r={3} fill="var(--accent-blue)" />
+              <circle cx={iftarX} cy={8} r={3} fill="var(--waqt-habit)" />
+            </g>
           )}
 
-          {/* Draggable Sun Head */}
-          <motion.g
-            data-testid="waqt-rail-sun"
-            initial={reduceMotion ? false : { scale: 0.7, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={MOTION_PRESETS.bouncy}
-          >
-            <circle cx={sunX} cy={11.5} r={11.5} fill={COLOR_TOKENS.arcSunHalo} />
-            <circle
-              cx={sunX}
-              cy={11.5}
-              r={5.5}
-              fill={COLOR_TOKENS.arcSun}
-              onPointerDown={handleSunPointerDown}
-              className="cursor-grab active:cursor-grabbing"
-            />
-          </motion.g>
+          {/* Sun halo + core */}
+          <g>
+            <circle cx={sunX} cy={8} r={10} fill="rgba(255, 176, 32, 0.28)" />
+            <circle cx={sunX} cy={8} r={5} fill="#ffd060" />
+          </g>
         </svg>
       </div>
 
-      {/* 3. Five Waqt Block Cards (grid-cols-5, compact fits 3 tasks + bar + status) */}
-      <div
-        className="relative z-20 grid h-[116px] gap-[8px]"
-        style={{ gridTemplateColumns: `repeat(${viewState.blocks.length}, minmax(0, 1fr))` }}
-      >
-        {viewState.blocks.map((block) => {
-          const isHovered = hoverBlockId === block.id;
-          const visibleItems = block.items.slice(0, 3);
-          const overflowCount = Math.max(0, block.items.length - 3);
-          const taskRatio =
-            block.end_min - block.start_min > 0
-              ? Math.min(
-                  100,
-                  Math.max(
-                    block.items.length > 0 ? 12 : 0,
-                    Math.round(
-                      (block.used_capacity_min * 100) /
-                        Math.max(30, block.end_min - block.start_min),
-                    ),
-                  ),
-                )
-              : 0;
+      {/* 3. FIVE WAQT BLOCKS GRID (never blank even with 0 tasks!) */}
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-5 gap-[10px] py-[2px]">
+        {effectiveState.blocks.map((blk, idx) => {
+          const nextBlock = effectiveState.blocks[idx + 1];
+          const isDropTarget = hoverBlockId === blk.id;
+          const isOverbooked = blk.capacity_status === "overbooked";
+          const visibleItems = blk.items.slice(0, 3);
+          const extraCount = Math.max(0, blk.items.length - 3);
+          const slices = buildSegmentedCapacitySlices(blk);
+          const hasBlockWork = blk.items.length > 0;
 
           return (
-            <section
-              key={block.id}
-              data-testid={`waqt-block-${block.id}`}
-              data-current={block.is_current ? "true" : "false"}
-              data-past={block.is_past ? "true" : "false"}
+            <motion.section
+              key={blk.id}
+              data-testid={`waqt-block-${blk.id}`}
+              data-current={blk.is_current ? "true" : undefined}
+              role="region"
+              aria-label={`${blk.name}, ${blk.range_label}, ${blk.items.length} items, ${blk.status_text}`}
+              layoutId={reduceMotion ? undefined : `waqt-block-card-${blk.id}`}
               onDragOver={(e) => {
                 e.preventDefault();
-                if (hoverBlockId !== block.id) setHoverBlockId(block.id);
+                setHoverBlockId(blk.id);
               }}
-              onDragLeave={() => {
-                if (hoverBlockId === block.id) setHoverBlockId(null);
+              onDragLeave={() => setHoverBlockId((cur) => (cur === blk.id ? null : cur))}
+              onDrop={(e) => {
+                e.preventDefault();
+                setHoverBlockId(null);
+                if (dragTaskId !== null) {
+                  playUiSound("toggle_on");
+                  onAssignTask(dragTaskId, blk.id);
+                  setDragTaskId(null);
+                }
               }}
-              onDrop={(e) => handleDropOnBlock(e, block.id)}
-              className={`home-glass-card relative flex flex-col justify-between overflow-hidden px-[8px] py-[7px] transition-all duration-150 ${
-                block.is_past && !block.is_current ? "opacity-[0.68]" : "opacity-100"
-              }`}
               style={{
                 borderRadius: "var(--waqt-card-radius)",
-                borderColor: isHovered
-                  ? COLOR_TOKENS.arcProgress
-                  : block.is_current
-                    ? COLOR_TOKENS.waqtAmberBorder
+                opacity: blk.is_past && !isDropTarget ? 0.68 : 1,
+                borderColor: blk.is_current
+                  ? COLOR_TOKENS.waqtAmberBorder
+                  : isDropTarget
+                    ? "var(--accent-blue)"
                     : undefined,
-                boxShadow: block.is_current
-                  ? `0 0 22px ${COLOR_TOKENS.waqtAmberGlow}`
-                  : isHovered
-                    ? `0 0 14px ${COLOR_TOKENS.arcSunHalo}`
-                    : undefined,
+                boxShadow: blk.is_current ? `0 0 18px ${COLOR_TOKENS.waqtAmberGlow}` : undefined,
               }}
+              className={`group relative flex min-h-0 flex-col justify-between overflow-hidden px-[8px] py-[6px] ${glassSurfaceClass}`}
             >
-              {/* Block Card Header */}
-              <div>
-                <div className="flex items-center justify-between gap-1">
-                  {editingBlockId === block.id ? (
+              {/* Block header */}
+              <div className="flex items-start justify-between gap-1">
+                <div className="min-w-0 flex-1">
+                  {editingBlockId === blk.id ? (
                     <input
                       autoFocus
-                      value={editingBlockName}
-                      onChange={(e) => setEditingBlockName(e.target.value)}
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
                       onBlur={() => {
-                        onRenameBlock(block.id, editingBlockName);
+                        onRenameBlock(blk.id, editingName);
                         setEditingBlockId(null);
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                          onRenameBlock(block.id, editingBlockName);
+                          onRenameBlock(blk.id, editingName);
                           setEditingBlockId(null);
                         } else if (e.key === "Escape") {
                           setEditingBlockId(null);
                         }
                       }}
-                      className="w-full rounded bg-white/10 px-1 text-[11px] font-semibold text-white outline-none"
+                      className="w-full rounded bg-black/50 px-1 text-[11px] font-semibold text-white outline-none ring-1 ring-white/30"
                     />
                   ) : (
                     <button
                       type="button"
-                      title={isBn ? "নাম বদলাতে ক্লিক করুন" : "Click to rename block"}
                       onClick={() => {
-                        setEditingBlockId(block.id);
-                        setEditingBlockName(block.name);
+                        setEditingBlockId(blk.id);
+                        setEditingName(blk.name);
                       }}
-                      className="truncate text-left text-[11.5px] font-semibold leading-tight text-white hover:underline"
+                      className="block w-full truncate text-left text-[11px] font-semibold leading-tight text-white hover:underline"
+                      title="Click to rename block"
                     >
-                      {block.name}
+                      {blk.name}
                     </button>
                   )}
+                  <div className="text-[9.5px] leading-tight tabular-nums text-white/55">
+                    {fmt(blk.range_label)}
+                  </div>
+                </div>
 
-                  {block.is_current && (
-                    <span
-                      className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-semibold"
-                      style={{
-                        border: `1px solid ${COLOR_TOKENS.waqtAmberBorder}`,
-                        color: COLOR_TOKENS.arcProgress,
-                      }}
-                    >
-                      {isBn ? "এখন" : "now"}
+                <div className="flex shrink-0 items-center gap-0.5">
+                  {blk.is_current && (
+                    <span className="rounded-full border border-[var(--waqt-amber-border)] bg-[var(--waqt-amber-glow)] px-1.5 py-[0.5px] text-[8.5px] font-semibold text-[#ffb020]">
+                      now
                     </span>
                   )}
-                </div>
-                <div
-                  className="mt-[1px] text-[9.5px] leading-tight tabular-nums"
-                  style={{ color: COLOR_TOKENS.arcTimeMuted }}
-                >
-                  {formatDigits(block.range_label, banglaDigits)}
+                  {!blk.is_past && (
+                    <button
+                      type="button"
+                      data-testid={`waqt-block-add-${blk.id}`}
+                      aria-label={`Add task to ${blk.name}`}
+                      onClick={(e) => openQuickAdd(blk.id, e.currentTarget)}
+                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white/10 text-white/75 opacity-80 hover:bg-white/25 group-hover:opacity-100"
+                    >
+                      <PlusIcon size={8} />
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Up to 3 Task Rows */}
-              <div className="my-auto flex flex-col gap-[3px] py-[2px]">
+              {/* Block body: tasks / past log / rhythm anchors / deterministic suggestion / + Add one thing */}
+              <div className="my-[2px] flex min-h-0 flex-1 flex-col justify-start gap-[2px] overflow-hidden">
                 {visibleItems.map((item) => {
-                  const isSelected = selectedTaskId === item.id;
-                  const timeLabel = item.start_at
-                    ? item.start_at
-                    : item.fixed
-                      ? formatMinClock12(item.slot_start_min)
-                      : `${item.estimate_min}m`;
+                  const isCal = item.source === "calendar" || item.id < 0;
+                  const swiped = swipeOffsets[item.id] ?? 0;
                   return (
                     <div
-                      key={`${item.source}-${item.id}`}
-                      draggable={item.id > 0}
-                      tabIndex={item.id > 0 ? 0 : -1}
-                      data-testid={`waqt-task-${item.id}`}
-                      onDragStart={(e) => {
-                        setDraggedTaskId(item.id);
-                        e.dataTransfer.setData("text/lumen-task-id", String(item.id));
+                      key={item.id}
+                      draggable={!isCal}
+                      onDragStart={() => setDragTaskId(item.id)}
+                      onDragEnd={() => {
+                        setDragTaskId(null);
+                        setHoverBlockId(null);
                       }}
-                      onDragEnd={() => setDraggedTaskId(null)}
+                      onWheel={(e) => {
+                        if (isCal) return;
+                        e.stopPropagation();
+                        const delta = e.deltaY < 0 ? 5 : -5;
+                        const nextEst = Math.max(5, Math.min(240, item.estimate_min + delta));
+                        onChangeEstimate(item.id, nextEst);
+                      }}
                       onPointerDown={(e) => {
-                        setSelectedTaskId(item.id);
-                        touchStartXRef.current = e.clientX;
-                        if (item.id > 0) {
-                          longPressTimerRef.current = window.setTimeout(() => {
-                            setEstimateTask(item);
-                          }, 480);
+                        swipeStartRef.current = { id: item.id, x: e.clientX };
+                      }}
+                      onPointerMove={(e) => {
+                        if (swipeStartRef.current?.id !== item.id) return;
+                        const dx = Math.min(0, Math.max(-44, e.clientX - swipeStartRef.current.x));
+                        setSwipeOffsets((cur) => ({ ...cur, [item.id]: dx }));
+                      }}
+                      onPointerUp={() => {
+                        if (swipeStartRef.current?.id === item.id) {
+                          if ((swipeOffsets[item.id] ?? 0) <= -30) {
+                            handleSoftDelete(item, blk.id);
+                          }
+                          setSwipeOffsets((cur) => ({ ...cur, [item.id]: 0 }));
+                          swipeStartRef.current = null;
                         }
                       }}
-                      onPointerUp={(e) => {
-                        if (longPressTimerRef.current !== null) {
-                          window.clearTimeout(longPressTimerRef.current);
-                          longPressTimerRef.current = null;
-                        }
-                        if (
-                          touchStartXRef.current !== null &&
-                          e.clientX - touchStartXRef.current < -52
-                        ) {
-                          triggerSwipeDelete(item, block.id);
-                        }
-                        touchStartXRef.current = null;
-                      }}
-                      onContextMenu={(e) => {
-                        if (item.id <= 0) return;
-                        e.preventDefault();
-                        setEstimateTask(item);
-                      }}
-                      onKeyDown={(e) => {
-                        if (item.id <= 0) return;
-                        if (e.key.toLowerCase() === "m") {
+                      onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
+                        if (e.key.toLowerCase() === "m" && !isCal) {
                           e.preventDefault();
-                          setMoveMenuTask(item);
-                        } else if (e.key === "Delete" || e.key === "Backspace") {
-                          e.preventDefault();
-                          triggerSwipeDelete(item, block.id);
+                          setMoveMenuItemId((cur) => (cur === item.id ? null : item.id));
                         }
                       }}
-                      className={`group flex cursor-grab items-center justify-between gap-1 rounded px-0.5 py-[1px] text-[10px] outline-none ${
-                        isSelected ? "bg-white/10" : "hover:bg-white/[0.06]"
-                      }`}
+                      tabIndex={0}
+                      style={{ transform: swiped ? `translateX(${swiped}px)` : undefined }}
+                      className="relative flex items-center justify-between gap-1 rounded px-0.5 text-[10px] leading-tight text-white/90 hover:bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-white/30"
                     >
-                      <div className="flex min-w-0 items-center gap-1">
-                        <button
-                          type="button"
-                          aria-label={`Toggle ${item.title}`}
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            handleToggleDone(item);
-                          }}
-                          className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full"
-                        >
-                          {item.done ? (
-                            <span style={{ color: COLOR_TOKENS.accentGreen }}>
-                              <CheckIcon size={9} />
-                            </span>
-                          ) : (
-                            <span
-                              className="h-[5px] w-[5px] rounded-full"
-                              style={{ backgroundColor: kindDotColor(item.kind, false) }}
-                            />
-                          )}
-                        </button>
+                      <button
+                        type="button"
+                        disabled={isCal}
+                        aria-label={`Toggle ${item.title}`}
+                        onClick={() => {
+                          if (!isCal) {
+                            playUiSound("toggle_on");
+                            onToggleTask(item.id);
+                          }
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-1 text-left"
+                      >
+                        {item.done || blk.is_past ? (
+                          <CheckIcon size={9} className="shrink-0 text-[var(--waqt-meeting)]" />
+                        ) : (
+                          <span
+                            className="inline-block h-[5px] w-[5px] shrink-0 rounded-full"
+                            style={{ backgroundColor: getKindDotColor(item.kind) }}
+                          />
+                        )}
                         <span
-                          className={`truncate ${item.done ? "line-through opacity-65" : "text-white"}`}
+                          className={`truncate ${item.done ? "text-white/45 line-through" : ""}`}
                         >
                           {item.title}
                         </span>
-                      </div>
-                      <span
-                        className="shrink-0 text-[9.5px] tabular-nums"
-                        style={{ color: COLOR_TOKENS.textSecondary }}
-                      >
-                        {formatDigits(timeLabel, banglaDigits)}
+                      </button>
+                      <span className="shrink-0 text-[9px] tabular-nums text-white/50">
+                        {item.start_at ? fmt(item.start_at) : fmt(`${item.estimate_min}m`)}
                       </span>
+
+                      {moveMenuItemId === item.id && (
+                        <div className="absolute top-4 left-0 z-30 flex gap-0.5 rounded-md border border-white/20 bg-black/95 p-1 shadow-lg">
+                          {effectiveState.blocks.map((target) => (
+                            <button
+                              key={target.id}
+                              type="button"
+                              onClick={() => {
+                                onAssignTask(item.id, target.id);
+                                setMoveMenuItemId(null);
+                              }}
+                              className="rounded px-1 py-0.5 text-[9px] text-white hover:bg-white/20"
+                            >
+                              {target.name.slice(0, 3)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
-                {overflowCount > 0 && (
-                  <div
-                    className="pl-3.5 text-[9.5px] font-medium"
-                    style={{ color: COLOR_TOKENS.textSecondary }}
+
+                {extraCount > 0 && (
+                  <button
+                    type="button"
+                    data-testid={`waqt-block-expand-${blk.id}`}
+                    onClick={(e) => {
+                      returnFocusRef.current = e.currentTarget;
+                      playUiSound("arc_scrub_tick");
+                      setExpandedBlockId(blk.id);
+                    }}
+                    className="w-fit rounded-full bg-white/10 px-1.5 text-[9px] font-medium text-white/75 hover:bg-white/20"
                   >
-                    +{formatDigits(overflowCount, banglaDigits)}
+                    {fmt(`+${extraCount}`)}
+                  </button>
+                )}
+
+                {/* Past block logged facts (never blank) */}
+                {blk.is_past && !hasBlockWork && (
+                  <div
+                    data-testid={`waqt-past-summary-${blk.id}`}
+                    className="mt-0.5 text-[9.5px] text-white/60"
+                  >
+                    {blk.logged_focus_min > 0
+                      ? fmt(`Focus ${formatDurationCompact(blk.logged_focus_min)} · Prayer ✓`)
+                      : "Prayer ✓"}
                   </div>
+                )}
+
+                {/* Sparse / zero-task layers: Rhythm anchors + deterministic suggestion (<=1) + Add one thing */}
+                {!blk.is_past && blk.items.length < 3 && (
+                  <>
+                    {blk.rhythm_anchors.slice(0, 1).map((anchor) => (
+                      <button
+                        key={anchor.id}
+                        type="button"
+                        data-testid={`waqt-rhythm-${blk.id}`}
+                        onClick={() => {
+                          playUiSound("toggle_on");
+                          onAddTask(anchor.title, blk.id, anchor.estimate_min, null);
+                        }}
+                        className="flex w-full items-center justify-between gap-1 rounded px-1 py-[1px] text-left text-[9.5px] text-white/60 hover:bg-white/10 hover:text-white/90"
+                        title={anchor.is_user_template ? msg.waqt.userAnchorLabel : anchor.title}
+                      >
+                        <span className="flex min-w-0 items-center gap-1 truncate">
+                          <span
+                            className="h-[4px] w-[4px] shrink-0 rounded-full"
+                            style={{ backgroundColor: getKindDotColor(anchor.kind) }}
+                          />
+                          <span className="truncate">{anchor.title}</span>
+                        </span>
+                        {anchor.progress_label && (
+                          <span className="shrink-0 text-[8.5px] tabular-nums text-white/45">
+                            {fmt(anchor.progress_label)}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+
+                    {blk.suggestion && (
+                      <motion.div
+                        key={blk.suggestion.id}
+                        data-testid={`waqt-suggestion-${blk.id}`}
+                        initial={reduceMotion ? false : { opacity: 0.4, scale: 0.96 }}
+                        animate={{ opacity: 0.62, scale: 1 }}
+                        whileHover={reduceMotion ? undefined : { opacity: 0.95, scale: 1.01 }}
+                        transition={reduceMotion ? { duration: 0.01 } : MOTION_PRESETS.bouncy}
+                        style={{ borderColor: COLOR_TOKENS.waqtGhostBorder }}
+                        className="flex items-center justify-between gap-1 rounded-[7px] border-[1.5px] border-dashed px-1.5 py-[1.5px] text-[9.5px] text-white/85"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleAcceptSuggestion(blk.suggestion!)}
+                          aria-label={`Add suggestion ${blk.suggestion.text}`}
+                          className="flex min-w-0 flex-1 items-center gap-1 truncate text-left"
+                        >
+                          <PlusIcon size={8} className="shrink-0 text-white/75" />
+                          <span className="truncate">{blk.suggestion.text}</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`waqt-dismiss-sug-${blk.id}`}
+                          aria-label={`Dismiss suggestion ${blk.suggestion.text}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDismissSuggestion(blk.suggestion!);
+                          }}
+                          className="shrink-0 text-[10px] leading-none text-white/45 hover:text-white"
+                        >
+                          ×
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {!hasBlockWork && !blk.suggestion && blk.is_current && (
+                      <button
+                        type="button"
+                        data-testid="waqt-add-one-thing"
+                        onClick={(e) => openQuickAdd(blk.id, e.currentTarget)}
+                        style={{ borderColor: COLOR_TOKENS.waqtGhostBorder }}
+                        className="flex w-full items-center gap-1 rounded-[7px] border-[1.5px] border-dashed px-1.5 py-[2px] text-[9.5px] text-white/70 opacity-75 hover:opacity-100"
+                      >
+                        <PlusIcon size={8} />
+                        <span className="truncate">{msg.waqt.addOneThing}</span>
+                      </button>
+                    )}
+
+                    {!hasBlockWork && !blk.suggestion && (
+                      <span
+                        data-testid={`waqt-length-hint-${blk.id}`}
+                        className="mt-auto truncate text-[9px] text-white/45"
+                      >
+                        {blk.length_hint_kind === "deep_work"
+                          ? msg.waqt.lengthHints.deep_work
+                          : blk.length_hint_kind === "short_break"
+                            ? msg.waqt.lengthHints.short_break
+                            : msg.waqt.lengthHints.quick_tasks}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 
-              {/* Capacity Bar + Status Footer */}
-              <div>
-                <div className="h-[3.5px] w-full overflow-hidden rounded-full bg-white/12">
-                  <motion.div
-                    className="h-full rounded-full"
-                    animate={{ width: `${Math.max(block.items.length > 0 ? 8 : 0, taskRatio)}%` }}
-                    transition={getMotionTransition("progressSpring", reduceMotion)}
-                    style={{
-                      backgroundColor:
-                        block.capacity_status === "overbooked"
-                          ? COLOR_TOKENS.waqtDeadline
-                          : block.is_current
-                            ? COLOR_TOKENS.arcProgress
-                            : COLOR_TOKENS.waqtTask,
-                    }}
-                  />
+              {/* Capacity bar + status footer */}
+              <div className="shrink-0 pt-0.5">
+                <div
+                  data-testid={`waqt-capacity-bar-${blk.id}`}
+                  className="flex h-[3.5px] w-full gap-[1.5px] overflow-hidden rounded-full bg-white/15"
+                >
+                  {slices.map((s) => (
+                    <div
+                      key={s.id}
+                      style={{
+                        width: `${s.pct}%`,
+                        backgroundColor: s.colorVar,
+                      }}
+                      className="h-full rounded-full"
+                    />
+                  ))}
                 </div>
-                <div className="mt-[3px] flex items-center justify-between gap-1">
+                <div className="mt-[2px] flex items-center justify-between gap-1 text-[9.5px] leading-tight">
                   <span
-                    className="truncate text-[9.5px] font-medium tabular-nums"
+                    className="truncate font-medium tabular-nums"
                     style={{
-                      color:
-                        block.capacity_status === "overbooked"
-                          ? COLOR_TOKENS.waqtDeadline
-                          : block.is_current
-                            ? COLOR_TOKENS.arcProgress
-                            : COLOR_TOKENS.textSecondary,
+                      color: isOverbooked
+                        ? COLOR_TOKENS.waqtDeadline
+                        : blk.capacity_status === "tight"
+                          ? COLOR_TOKENS.waqtHabit
+                          : blk.is_current
+                            ? "#ffb020"
+                            : "rgba(255,255,255,0.68)",
                     }}
                   >
-                    {formatDigits(block.status_text, banglaDigits)}
+                    {isOverbooked && nextBlock
+                      ? interpolateMsg(msg.waqt.noRoomBefore, {
+                          prayer: nextBlock.prayer_label.split(" ")[0],
+                        })
+                      : blk.capacity_status === "tight"
+                        ? msg.waqt.almostFull
+                        : fmt(blk.status_text)}
                   </span>
-                  {block.capacity_status === "overbooked" && (
+                  {isOverbooked && nextBlock && (
                     <button
                       type="button"
-                      data-testid={`waqt-move-overflow-${block.id}`}
-                      onClick={() => {
-                        void playUiSound("toggle_on");
-                        onMoveOverflow(block.id);
-                      }}
-                      className="shrink-0 rounded px-1 text-[9px] font-semibold text-white hover:underline"
-                      style={{ backgroundColor: "rgba(255, 69, 58, 0.25)" }}
+                      data-testid={`waqt-move-overflow-${blk.id}`}
+                      onClick={() => handleMoveOverflowBlock(blk, nextBlock)}
+                      className="shrink-0 rounded bg-[var(--waqt-deadline)]/25 px-1 py-[0.5px] text-[8.5px] font-semibold text-white hover:bg-[var(--waqt-deadline)]/40"
                     >
-                      {isBn ? "সরান" : "Move"}
+                      {fmt(
+                        interpolateMsg(msg.waqt.moveToNext, {
+                          count: computeOverflowMoveAssignments(blk, nextBlock).length || 1,
+                          block: nextBlock.name,
+                        }),
+                      )}
                     </button>
                   )}
                 </div>
               </div>
-            </section>
+            </motion.section>
           );
         })}
       </div>
 
-      {/* 4. Bottom Row (3 cards: 1.28fr Focus / 1fr Replay / 1fr Unplanned) */}
-      <div className="relative z-20 grid h-[92px] grid-cols-[1.28fr_1fr_1fr] gap-[8px]">
-        {/* (a) Focus Card with Lumi Body-Double */}
+      {/* 4. BOTTOM ROW: (a) Focus Flow + Lumi, (b) Replay / Tomorrow, (c) Unplanned */}
+      <div className="relative z-10 grid h-[86px] shrink-0 grid-cols-[1.25fr_1fr_1fr] gap-[10px]">
+        {/* (a) Focus Card */}
         <div
           data-testid="waqt-focus-card"
-          className="home-glass-card flex items-center gap-2.5 overflow-hidden px-3 py-2"
           style={{ borderRadius: "var(--waqt-card-radius)" }}
+          className={`flex items-center gap-2 overflow-hidden px-2.5 py-1.5 ${glassSurfaceClass}`}
         >
-          <WaqtBodyDoubleLumi
-            state={bodyDoubleState}
-            isVisible={isVisible}
-            reduceMotion={reduceMotion}
-          />
-          <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
-            <div className="min-w-0">
-              <div className="truncate text-[12.5px] font-semibold leading-tight text-white">
-                {activeFocusTask?.title ?? (isBn ? "ফোকাস সেশন" : "Deep Focus")}
-              </div>
-              <div
-                className="truncate text-[10px] leading-tight"
-                style={{ color: COLOR_TOKENS.textSecondary }}
-              >
-                {looksUp
-                  ? isBn
-                    ? "লুমি জিজ্ঞেস করছে: এখনও কাজ করছেন?"
-                    : "Lumi: Still here?"
-                  : pomodoro.running
-                    ? isBn
-                      ? "লুমি সাথে ফোকাস করছে · সোশ্যাল ব্লকড"
-                      : "Lumi focuses with you · blocked: social"
-                    : isBn
-                      ? "লুমি আপনার পাশে ফোকাস করবে"
-                      : "Lumi focuses with you · blocked: social"}
-              </div>
+          <div className="shrink-0">
+            <WaqtBodyDoubleLumi
+              state={lumiMood}
+              isVisible={isVisible}
+              reduceMotion={reduceMotion}
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-between">
+            <div className="truncate text-[12px] font-semibold leading-tight text-white">
+              {focusHeadline}
             </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                data-testid="waqt-start-focus-btn"
-                onClick={() => {
-                  void playUiSound("toggle_on");
-                  if (pomodoro.running) {
-                    onToggleFocusPause();
-                  } else {
-                    onStartFocusFlow(activeFocusTask?.id ?? null);
-                  }
-                }}
-                className="inline-flex h-[24px] items-center gap-1.5 rounded-full bg-white px-3 text-[11px] font-semibold text-black transition-transform active:scale-95"
+            <div className="truncate text-[9.5px] text-white/65">{focusSubline}</div>
+            {freeFocusPromptOpen ? (
+              <div
+                className="mt-1 flex items-center gap-1"
+                data-testid="waqt-free-focus-log-prompt"
               >
-                <PlayIcon size={9} />
-                <span className="tabular-nums">
-                  {pomodoro.running
-                    ? `${isBn ? "বিরতি" : "Pause"} ${formatDigits(focusTimerLabel, banglaDigits)}`
-                    : `${isBn ? "শুরু" : "Start"} ${formatDigits(focusTimerLabel, banglaDigits)}`}
+                <span className="truncate text-[9.5px] text-white/85">
+                  {msg.waqt.logFreeFocusPrompt}
                 </span>
-              </button>
-              {pomodoro.running && (
                 <button
                   type="button"
                   onClick={() => {
-                    setJustCelebrated(true);
-                    window.setTimeout(() => setJustCelebrated(false), 1800);
-                    onResetFocus();
+                    onAddTask("Focus session", currentBlock?.id ?? "dhuhr", 25, null);
+                    setFreeFocusPromptOpen(false);
                   }}
-                  className="home-glass-chip h-[24px] px-2 text-[10px] text-white"
+                  className="rounded-full bg-white px-2 py-[1px] text-[9.5px] font-semibold text-black"
                 >
-                  {isBn ? "শেষ" : "End"}
+                  {msg.waqt.logFreeFocusYes}
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setFreeFocusPromptOpen(false)}
+                  className="text-[9.5px] text-white/60 hover:text-white"
+                >
+                  {msg.waqt.logFreeFocusNo}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid="waqt-start-focus-btn"
+                  onClick={() => {
+                    playUiSound("toggle_on");
+                    if (pomodoro.running) {
+                      onToggleFocusPause();
+                    } else {
+                      onStartFocusFlow(boundTask?.id ?? null);
+                    }
+                  }}
+                  className="flex h-[22px] items-center gap-1 rounded-full bg-white px-2.5 text-[10.5px] font-semibold text-black hover:bg-white/90"
+                >
+                  {pomodoro.running ? <PauseIcon size={10} /> : <PlayIcon size={10} />}
+                  <span className="tabular-nums">
+                    {pomodoro.running
+                      ? fmt(`Pause ${formatTimerClock(pomodoro.remaining_secs)}`)
+                      : fmt(`Start ${formatTimerClock(pomodoro.total_secs)}`)}
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* (b) Replay Card: 10-bar sparkline + Focus & Prayers summary */}
-        <button
-          type="button"
+        {/* (b) Replay Card / After-Isha Tomorrow Preview */}
+        <div
           data-testid="waqt-replay-card"
-          onClick={() => {
-            setReplaySummaryOpen(false);
-            setReplaying(true);
-          }}
-          className="home-glass-card flex flex-col justify-between px-3 py-2 text-left transition-transform active:scale-[0.99]"
           style={{ borderRadius: "var(--waqt-card-radius)" }}
+          className={`flex flex-col justify-between overflow-hidden px-2.5 py-1.5 ${glassSurfaceClass}`}
         >
-          <div className="text-[11px] font-medium" style={{ color: COLOR_TOKENS.textSecondary }}>
-            {isBn ? "দিনের রিপ্লে" : "Replay my day"}
-          </div>
-          <div className="flex h-[32px] items-end gap-[5px] px-1">
-            {viewState.focus_bars.map((val, idx) => {
-              const hPct =
-                val > 0 ? Math.min(100, Math.max(20, Math.round((val / maxSpark) * 100))) : 14;
-              const isLatestActive =
-                val > 0 && idx === viewState.focus_bars.findLastIndex((v) => v > 0);
-              return (
-                <motion.div
-                  key={idx}
-                  className="w-[6px] rounded-full"
-                  animate={{ height: `${hPct}%` }}
-                  transition={getMotionTransition("progressSpring", reduceMotion)}
-                  style={{
-                    backgroundColor:
-                      val === 0
-                        ? "rgba(255,255,255,0.12)"
-                        : isLatestActive
-                          ? COLOR_TOKENS.arcProgress
-                          : COLOR_TOKENS.waqtTask,
-                  }}
-                />
-              );
-            })}
-          </div>
-          <div className="truncate text-[10.5px] font-medium text-white tabular-nums">
-            {isBn
-              ? `ফোকাস ${formatDigits(formatShortDuration(viewState.total_focus_min), banglaDigits)} · নামাজ ${formatDigits(`${viewState.prayers_done_count}/5`, banglaDigits)}`
-              : `Focus ${formatShortDuration(viewState.total_focus_min)} · Prayers ${viewState.prayers_done_count}/5`}
-          </div>
-        </button>
+          {effectiveState.is_after_isha && !replayPlaying ? (
+            <div
+              data-testid="waqt-tomorrow-preview"
+              className="flex h-full flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-semibold text-white">
+                  {msg.waqt.tomorrowTitle}
+                </span>
+                <button
+                  type="button"
+                  data-testid="waqt-plan-tomorrow-btn"
+                  onClick={(e) => openQuickAdd("tomorrow:fajr", e.currentTarget)}
+                  className="rounded-full bg-white/15 px-2 py-[0.5px] text-[9.5px] font-semibold text-white hover:bg-white/25"
+                >
+                  {msg.waqt.planTomorrow}
+                </button>
+              </div>
+              <div className="grid grid-cols-5 gap-1">
+                {effectiveState.tomorrow_blocks.map((tb) => (
+                  <div
+                    key={tb.id}
+                    className="rounded bg-white/[0.06] px-1 py-[1px] text-center text-[8.5px] text-white/75"
+                  >
+                    <div className="truncate">{tb.name.slice(0, 4)}</div>
+                    <div className="tabular-nums text-white/50">{fmt(String(tb.task_count))}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="truncate text-[9.5px] tabular-nums text-white/65">
+                {fmt(
+                  interpolateMsg(msg.waqt.todaySummary, {
+                    done: effectiveState.blocks.flatMap((b) => b.items).filter((i) => i.done)
+                      .length,
+                    focus: formatDurationCompact(effectiveState.total_focus_min),
+                  }),
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-medium text-white/80">
+                  {focusBarsEmpty ? msg.waqt.replayEmptyTitle : msg.waqt.replayTitle}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Export Day Wrapped PNG"
+                  onClick={handleExportWrapped}
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+                >
+                  <ShareIcon size={10} />
+                </button>
+              </div>
+              <div className="flex h-[28px] items-end gap-[4px]">
+                {effectiveState.focus_bars.map((val, idx) =>
+                  focusBarsEmpty ? (
+                    <div
+                      key={idx}
+                      data-testid="waqt-spark-dotted"
+                      className="h-[6px] flex-1 rounded-full border border-dashed border-white/25"
+                    />
+                  ) : (
+                    <div
+                      key={idx}
+                      style={{
+                        height: `${Math.max(18, Math.min(100, val))}%`,
+                        backgroundColor:
+                          idx === effectiveState.focus_bars.length - 1
+                            ? "var(--waqt-habit)"
+                            : "var(--waqt-task)",
+                      }}
+                      className="flex-1 rounded-full opacity-90"
+                    />
+                  ),
+                )}
+              </div>
+              <div className="truncate text-[9.5px] tabular-nums text-white/65">
+                {exportedUrl
+                  ? "Saved PNG summary"
+                  : focusBarsEmpty
+                    ? msg.waqt.replayEmptySubtitle
+                    : fmt(
+                        `Focus ${formatDurationCompact(effectiveState.total_focus_min)} · Prayers ${effectiveState.prayers_done_count}/5`,
+                      )}
+              </div>
+            </>
+          )}
+        </div>
 
-        {/* (c) Unplanned Card: draggable chips + dashed drop zone */}
+        {/* (c) Unplanned Card */}
         <div
           data-testid="waqt-unplanned-card"
-          onDragOver={(e) => {
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
             e.preventDefault();
-            if (hoverBlockId !== "unplanned") setHoverBlockId("unplanned");
+            if (dragTaskId !== null) {
+              playUiSound("toggle_on");
+              onAssignTask(dragTaskId, null);
+              setDragTaskId(null);
+            }
           }}
-          onDragLeave={() => {
-            if (hoverBlockId === "unplanned") setHoverBlockId(null);
-          }}
-          onDrop={(e) => handleDropOnBlock(e, null)}
-          className="home-glass-card flex flex-col justify-between px-2.5 py-2"
-          style={{
-            borderRadius: "var(--waqt-card-radius)",
-            borderColor: hoverBlockId === "unplanned" ? COLOR_TOKENS.arcProgress : undefined,
-          }}
+          style={{ borderRadius: "var(--waqt-card-radius)" }}
+          className={`flex flex-col justify-between overflow-hidden px-2.5 py-1.5 ${glassSurfaceClass}`}
         >
-          <div className="flex items-center justify-between">
-            <span
-              className="text-[10.5px] font-medium"
-              style={{ color: COLOR_TOKENS.textSecondary }}
-            >
-              {isBn ? "অনির্ধারিত · ব্লকে টানুন" : "Unplanned · drag to a block"}
+          <div className="flex items-center justify-between gap-1">
+            <span className="truncate text-[10.5px] font-medium text-white/80">
+              {msg.waqt.unplannedTitle}
             </span>
+            <span className="text-[9.5px] tabular-nums text-white/45">
+              {fmt(String(effectiveState.unplanned.length))}
+            </span>
+          </div>
+
+          {effectiveState.unplanned.length === 0 ? (
             <button
               type="button"
-              aria-label={isBn ? "নতুন কাজ যোগ করুন" : "Add unplanned task"}
-              onClick={() => setAddingUnplanned((v) => !v)}
-              className="rounded px-1 text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white"
+              data-testid="waqt-unplanned-empty"
+              onClick={(e) => openQuickAdd(null, e.currentTarget)}
+              style={{ borderColor: COLOR_TOKENS.waqtGhostBorder }}
+              className="flex flex-1 items-center justify-center rounded-xl border border-dashed px-2 text-center text-[10px] text-white/55 hover:border-white/40 hover:text-white/85"
             >
-              +
+              {msg.waqt.unplannedEmpty}
             </button>
-          </div>
-
-          {addingUnplanned ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const trimmed = newTaskTitle.trim();
-                if (trimmed) {
-                  onAddTask(trimmed, null, 25);
-                  setNewTaskTitle("");
-                }
-                setAddingUnplanned(false);
-              }}
-              className="flex items-center gap-1"
-            >
-              <input
-                autoFocus
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                placeholder={isBn ? "কাজের নাম..." : "Task title..."}
-                className="w-full rounded bg-white/10 px-1.5 py-0.5 text-[10.5px] text-white outline-none"
-              />
-            </form>
           ) : (
-            <div className="flex flex-wrap items-center gap-1 overflow-hidden">
-              {viewState.unplanned.slice(0, 2).map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  draggable
-                  data-testid={`waqt-unplanned-${t.id}`}
-                  onDragStart={(e) => {
-                    setDraggedTaskId(t.id);
-                    e.dataTransfer.setData("text/lumen-task-id", String(t.id));
-                  }}
-                  onDragEnd={() => setDraggedTaskId(null)}
-                  onClick={() =>
-                    setMoveMenuTask({
-                      id: t.id,
-                      title: t.title,
-                      kind: t.kind ?? "task",
-                      source: "local",
-                      estimate_min: t.estimate_min ?? 25,
-                      done: t.done,
-                      done_at: null,
-                      fixed: false,
-                      start_at: null,
-                      slot_start_min: 0,
-                      slot_end_min: 25,
-                      client: null,
-                      calendar_event_id: null,
-                      sort_order: 0,
-                    })
-                  }
-                  className="home-glass-chip max-w-[82px] cursor-grab truncate px-2 py-[2px] text-[10px] text-white active:cursor-grabbing"
-                >
-                  {t.title}
-                </button>
-              ))}
-              {viewState.unplanned.length > 2 && (
-                <span className="text-[9.5px]" style={{ color: COLOR_TOKENS.textSecondary }}>
-                  +{formatDigits(viewState.unplanned.length - 2, banglaDigits)}
-                </span>
-              )}
-            </div>
+            <>
+              <div className="relative flex flex-wrap gap-1 overflow-visible">
+                {effectiveState.unplanned.slice(0, 3).map((t) => (
+                  <div key={t.id} className="relative">
+                    <button
+                      type="button"
+                      data-testid={`waqt-unplanned-${t.id}`}
+                      draggable
+                      onDragStart={() => setDragTaskId(t.id)}
+                      onClick={() => setMoveMenuItemId((cur) => (cur === t.id ? null : t.id))}
+                      className="max-w-[96px] cursor-grab truncate rounded-full border border-white/15 bg-white/10 px-2 py-[1px] text-[9.5px] text-white/90 hover:bg-white/20"
+                    >
+                      {t.title}
+                    </button>
+                    {moveMenuItemId === t.id && (
+                      <div
+                        data-testid="waqt-move-menu"
+                        className="absolute bottom-5 left-0 z-30 flex gap-0.5 rounded-md border border-white/20 bg-black/95 p-1 shadow-lg"
+                      >
+                        {effectiveState.blocks.map((target) => (
+                          <button
+                            key={target.id}
+                            type="button"
+                            onClick={() => {
+                              onAssignTask(t.id, target.id);
+                              setMoveMenuItemId(null);
+                            }}
+                            className="rounded px-1.5 py-0.5 text-[9px] text-white hover:bg-white/20"
+                          >
+                            {target.name.slice(0, 3)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => openQuickAdd(null, e.currentTarget)}
+                style={{ borderColor: COLOR_TOKENS.waqtGhostBorder }}
+                className="flex h-[20px] items-center justify-center rounded-full border border-dashed text-[9.5px] text-white/55 hover:border-white/40 hover:text-white/85"
+              >
+                {msg.waqt.dropHere}
+              </button>
+            </>
           )}
-
-          <div
-            className="flex h-[20px] items-center justify-center rounded-[8px] border border-dashed text-[10px]"
-            style={{
-              borderColor:
-                hoverBlockId === "unplanned"
-                  ? COLOR_TOKENS.arcProgress
-                  : "rgba(255, 255, 255, 0.16)",
-              color: COLOR_TOKENS.textSecondary,
-            }}
-          >
-            {isBn ? "এখানে ছাড়ুন" : "Drop here"}
-          </div>
         </div>
       </div>
 
-      {/* Bottom Page Indicator Dots (matches Home) */}
-      <div className="relative z-20 flex h-[10px] items-center justify-center gap-1.5">
-        {pageDotIndices.map((idx) => (
+      {/* OVERLAYS INSIDE 640x312 BOUNDARY */}
+
+      {/* S11 First-run 3-step tip card (dismissible, never blocks interactions) */}
+      {!localFirstRunDismissed && (
+        <div
+          data-testid="waqt-first-run-tip"
+          className="absolute right-3 bottom-[94px] z-20 flex items-center gap-2 rounded-xl border border-white/20 bg-black/90 px-2.5 py-1.5 text-[9.5px] text-white shadow-xl"
+        >
+          <span className="font-semibold text-[#ffb020]">{msg.waqt.firstRunTitle}:</span>
+          <span className="text-white/80">
+            {msg.waqt.firstRunStep1} · {msg.waqt.firstRunStep2} · {msg.waqt.firstRunStep3}
+          </span>
           <button
-            key={idx}
             type="button"
-            aria-label={`Page ${idx + 1}`}
-            onClick={() => onSelectPage(idx)}
-            className="h-[5px] rounded-full transition-all"
-            style={{
-              width: idx === activePageIndex ? 14 : 5,
-              backgroundColor:
-                idx === activePageIndex ? COLOR_TOKENS.textPrimary : COLOR_TOKENS.pageDotInactive,
+            data-testid="waqt-dismiss-first-run"
+            onClick={() => {
+              setLocalFirstRunDismissed(true);
+              onDismissFirstRun?.();
+            }}
+            className="rounded-full bg-white/15 px-1.5 py-[1px] font-semibold text-white hover:bg-white/25"
+          >
+            {msg.waqt.dismiss}
+          </button>
+        </div>
+      )}
+
+      {/* Plan my day Preview Bar */}
+      {planPreviewOpen && effectiveState.plan_my_day_preview.length > 0 && (
+        <div
+          data-testid="waqt-plan-preview-bar"
+          className="absolute top-[34px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/95 px-3 py-1 text-[10.5px] text-white shadow-2xl"
+        >
+          <span>
+            {fmt(
+              interpolateMsg(msg.waqt.planPreviewTitle, {
+                count: effectiveState.plan_my_day_preview.length,
+              }),
+            )}
+          </span>
+          <button
+            type="button"
+            data-testid="waqt-plan-accept-btn"
+            onClick={handleApplyPlanPreview}
+            className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-black"
+          >
+            {msg.waqt.accept}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPlanPreviewOpen(false)}
+            className="text-white/60 hover:text-white"
+          >
+            <CloseIcon size={10} />
+          </button>
+        </div>
+      )}
+
+      {/* 5s Undo Toast for Plan my day / Overflow Move / Soft Delete */}
+      {(batchUndoToast || deletedUndo) && (
+        <div
+          data-testid="waqt-undo-toast"
+          className="absolute bottom-[94px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/95 px-3 py-1 text-[10px] text-white shadow-2xl"
+        >
+          <span>{batchUndoToast ? batchUndoToast.label : `Deleted "${deletedUndo?.title}"`}</span>
+          <button
+            type="button"
+            data-testid="waqt-undo-btn"
+            onClick={() => {
+              if (batchUndoToast) {
+                handleUndoBatch();
+              } else if (deletedUndo) {
+                onRestoreTask(deletedUndo);
+                setDeletedUndo(null);
+              }
+            }}
+            className="rounded-full bg-white px-2 py-[1px] font-semibold text-black"
+          >
+            {msg.waqt.undo}
+          </button>
+        </div>
+      )}
+
+      {/* S17 Quick Add Bar */}
+      {quickAddTarget !== undefined && quickAddTarget !== null && (
+        <form
+          data-testid="waqt-quick-add-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitQuickAdd();
+          }}
+          className="absolute top-[34px] left-1/2 z-30 flex w-[380px] -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/25 bg-black/95 px-3 py-1 shadow-2xl"
+        >
+          <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-[1px] text-[9.5px] font-semibold text-[#ffb020]">
+            {quickAddTarget.startsWith("tomorrow:")
+              ? msg.waqt.tomorrowTitle
+              : (effectiveState.blocks.find((b) => b.id === quickAddTarget)?.name ?? "Task")}
+          </span>
+          <input
+            ref={quickAddInputRef}
+            data-testid="waqt-quick-add-input"
+            value={quickAddValue}
+            onChange={(e) => setQuickAddValue(e.target.value)}
+            placeholder={msg.waqt.quickAddPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-[11px] text-white placeholder:text-white/40 focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="rounded-full bg-white px-2 py-[1px] text-[10px] font-semibold text-black"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            aria-label={msg.waqt.closeSheet}
+            onClick={closeQuickAdd}
+            className="text-white/60 hover:text-white"
+          >
+            <CloseIcon size={11} />
+          </button>
+        </form>
+      )}
+
+      {/* S5 4+ Task In-place Block Sheet Morph */}
+      {reduceMotion ? (
+        expandedBlockId ? (
+          <ExpandedBlockSheet
+            block={effectiveState.blocks.find((b) => b.id === expandedBlockId) ?? null}
+            reduceMotion={reduceMotion}
+            closeLabel={msg.waqt.closeSheet}
+            fmt={fmt}
+            onClose={() => {
+              setExpandedBlockId(null);
+              window.requestAnimationFrame(() => returnFocusRef.current?.focus());
+            }}
+            onToggleTask={onToggleTask}
+            onAddToBlock={(bid) => {
+              setExpandedBlockId(null);
+              openQuickAdd(bid);
             }}
           />
-        ))}
+        ) : null
+      ) : (
+        <AnimatePresence>
+          {expandedBlockId && (
+            <ExpandedBlockSheet
+              block={effectiveState.blocks.find((b) => b.id === expandedBlockId) ?? null}
+              reduceMotion={reduceMotion}
+              closeLabel={msg.waqt.closeSheet}
+              fmt={fmt}
+              onClose={() => {
+                setExpandedBlockId(null);
+                window.requestAnimationFrame(() => returnFocusRef.current?.focus());
+              }}
+              onToggleTask={onToggleTask}
+              onAddToBlock={(bid) => {
+                setExpandedBlockId(null);
+                openQuickAdd(bid);
+              }}
+            />
+          )}
+        </AnimatePresence>
+      )}
+    </motion.div>
+  );
+}
+
+interface ExpandedBlockSheetProps {
+  block: WaqtBlockView | null;
+  reduceMotion: boolean;
+  closeLabel: string;
+  fmt: (s: string) => string;
+  onClose: () => void;
+  onToggleTask: (taskId: number) => void;
+  onAddToBlock: (blockId: string) => void;
+}
+
+function ExpandedBlockSheet({
+  block,
+  reduceMotion,
+  closeLabel,
+  fmt,
+  onClose,
+  onToggleTask,
+  onAddToBlock,
+}: ExpandedBlockSheetProps) {
+  if (!block) return null;
+  return (
+    <motion.div
+      data-testid={`waqt-block-sheet-${block.id}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={block.name}
+      layoutId={reduceMotion ? undefined : `waqt-block-card-${block.id}`}
+      initial={reduceMotion ? false : { opacity: 0.9 }}
+      animate={{ opacity: 1 }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0 }}
+      transition={reduceMotion ? { duration: 0.01 } : MOTION_PRESETS.smooth}
+      className="absolute inset-x-[14px] top-[64px] bottom-[96px] z-40 flex flex-col justify-between rounded-[var(--waqt-card-radius)] border border-white/25 bg-[#0d0e12]/95 p-3 backdrop-blur-xl"
+    >
+      <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[12.5px] font-semibold text-white">{block.name}</span>
+          <span className="text-[10.5px] tabular-nums text-white/60">
+            {fmt(block.range_label)} · {fmt(block.status_text)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onAddToBlock(block.id)}
+            className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-white/20"
+          >
+            <PlusIcon size={9} /> Add
+          </button>
+          <button
+            type="button"
+            data-testid="waqt-sheet-close"
+            onClick={onClose}
+            className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-white/25"
+          >
+            {closeLabel}
+          </button>
+        </div>
       </div>
 
-      {/* Estimate Wheel Modal (Long-press / Right-click task) */}
-      <AnimatePresence>
-        {estimateTask && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            onClick={() => setEstimateTask(null)}
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="home-glass-card flex flex-col gap-2 rounded-2xl p-3 shadow-2xl"
-              style={{ background: COLOR_TOKENS.arcTooltipBg }}
+      <div className="my-1.5 flex-1 space-y-1 overflow-y-auto pr-1">
+        {block.items.map((item) => {
+          const isCal = item.source === "calendar" || item.id < 0;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              disabled={isCal}
+              onClick={() => !isCal && onToggleTask(item.id)}
+              className="flex w-full items-center justify-between rounded-lg bg-white/[0.05] px-2 py-1 text-left text-[11px] text-white hover:bg-white/10"
             >
-              <div className="text-[11px] font-semibold text-white">
-                {isBn ? `সময় নির্ধারণ: ${estimateTask.title}` : `Estimate · ${estimateTask.title}`}
-              </div>
-              <div className="flex items-center gap-1.5">
-                {ESTIMATE_OPTIONS.map((mins) => (
-                  <button
-                    key={mins}
-                    type="button"
-                    onClick={() => {
-                      onChangeEstimate(estimateTask.id, mins);
-                      setEstimateTask(null);
-                    }}
-                    className="home-glass-chip px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white"
-                    style={{
-                      borderColor:
-                        estimateTask.estimate_min === mins ? COLOR_TOKENS.arcProgress : undefined,
-                      color:
-                        estimateTask.estimate_min === mins
-                          ? COLOR_TOKENS.arcProgress
-                          : COLOR_TOKENS.textPrimary,
-                    }}
-                  >
-                    {formatDigits(mins, banglaDigits)}m
-                  </button>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Keyboard `M` / Click Unplanned Chip -> Move to Waqt Block Menu */}
-      <AnimatePresence>
-        {moveMenuTask && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            onClick={() => setMoveMenuTask(null)}
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          >
-            <div
-              data-testid="waqt-move-menu"
-              onClick={(e) => e.stopPropagation()}
-              className="home-glass-card flex flex-col gap-2 rounded-2xl p-3 shadow-2xl"
-              style={{ background: COLOR_TOKENS.arcTooltipBg }}
-            >
-              <div className="text-[11px] font-semibold text-white">
-                {isBn
-                  ? `ব্লক বেছে নিন · ${moveMenuTask.title}`
-                  : `Move "${moveMenuTask.title}" to block`}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {viewState.blocks.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => {
-                      onAssignTask(moveMenuTask.id, b.id);
-                      setMoveMenuTask(null);
-                    }}
-                    className="home-glass-chip px-2.5 py-1 text-[11px] text-white"
-                  >
-                    {b.name}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    onAssignTask(moveMenuTask.id, null);
-                    setMoveMenuTask(null);
-                  }}
-                  className="home-glass-chip px-2.5 py-1 text-[11px]"
-                  style={{ color: COLOR_TOKENS.textSecondary }}
-                >
-                  {isBn ? "অনির্ধারিত" : "Unplanned"}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Slide-up "Day Wrapped" Summary & Offline Share Card */}
-      <AnimatePresence>
-        {replaySummaryOpen && (
-          <motion.div
-            data-testid="waqt-day-wrapped"
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 }}
-            className="absolute inset-x-4 bottom-4 z-40 flex items-center justify-between gap-3 rounded-2xl p-3 shadow-2xl"
-            style={{
-              background: COLOR_TOKENS.arcTooltipBg,
-              border: `1px solid ${COLOR_TOKENS.chipGlassBorder}`,
-            }}
-          >
-            <div>
-              <div className="text-[12px] font-semibold text-white">
-                {isBn ? "আজকের সারসংক্ষেপ · Day Wrapped" : `Day Wrapped · ${viewState.date_label}`}
-              </div>
-              <div
-                className="mt-0.5 text-[10.5px] tabular-nums"
-                style={{ color: COLOR_TOKENS.textSecondary }}
-              >
-                Focus {formatShortDuration(viewState.total_focus_min)} · Tasks done{" "}
-                {viewState.blocks.reduce((a, b) => a + b.items.filter((i) => i.done).length, 0)} ·
-                Prayers {viewState.prayers_done_count}/5 · Water {viewState.water_today_ml} ml
-              </div>
-              {shareStatus && (
-                <div className="mt-0.5 text-[10px]" style={{ color: COLOR_TOKENS.accentGreen }}>
-                  {shareStatus}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                data-testid="waqt-share-wrapped"
-                onClick={() => void handleShareDayWrapped()}
-                className="inline-flex h-[24px] items-center gap-1 rounded-full bg-white px-2.5 text-[10.5px] font-semibold text-black"
-              >
-                <ShareIcon size={11} />
-                <span>{isBn ? "শেয়ার" : "Share"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setReplaySummaryOpen(false)}
-                className="home-glass-chip h-[24px] px-2 text-[10.5px] text-white"
-              >
-                {isBn ? "বন্ধ" : "Close"}
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <span className="flex min-w-0 items-center gap-2">
+                {item.done ? (
+                  <CheckIcon size={10} className="shrink-0 text-[var(--waqt-meeting)]" />
+                ) : (
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: getKindDotColor(item.kind) }}
+                  />
+                )}
+                <span className={item.done ? "text-white/45 line-through" : ""}>{item.title}</span>
+              </span>
+              <span className="tabular-nums text-[10px] text-white/55">
+                {item.start_at ? fmt(item.start_at) : fmt(`${item.estimate_min}m`)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </motion.div>
   );
 }

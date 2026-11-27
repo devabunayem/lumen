@@ -101,13 +101,18 @@ import {
   tasksToggle,
   type TimeLedgerState,
   waqtAddTask,
+  waqtAssignBatch,
   waqtAssignTask,
+  waqtAcceptSuggestion,
+  waqtDismissFirstRun,
   waqtDismissHint,
+  waqtDismissSuggestion,
   waqtGetState,
   waqtLogActivity,
   waqtMoveOverflowToNext,
   waqtRenameBlock,
   waqtRolloverYesterday,
+  waqtSeedSampleTask,
   waqtStartFocusFlow,
   waqtUpdateTaskMeta,
   type WaqtTimelineState,
@@ -125,7 +130,12 @@ import {
   snoozeLocalReminder,
   stopLocalReminder,
 } from "../lib/remindersLocal";
-import { DEFAULT_SETTINGS, type ActionGlowMode, type WaqtPrayerPauseMode } from "../settings";
+import {
+  DEFAULT_SETTINGS,
+  type ActionGlowMode,
+  type WaqtPrayerPauseMode,
+  type WaqtRhythmAnchor,
+} from "../settings";
 import { WaqtTimeline } from "../waqt/WaqtTimeline";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
 import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
@@ -188,6 +198,9 @@ export interface IslandShellProps {
   waqtRamadanTaraweeh?: boolean;
   waqtHintDismissed?: boolean;
   waqtBlockNames?: Record<string, string>;
+  waqtQuietMode?: boolean;
+  waqtFirstRunDismissed?: boolean;
+  waqtRhythmAnchors?: WaqtRhythmAnchor[];
   onShapeChange?: (next: ShapeStyle) => void;
   onOpenSettings?: () => void;
 }
@@ -267,6 +280,9 @@ export function IslandShell({
   waqtRamadanTaraweeh = DEFAULT_SETTINGS.waqtRamadanTaraweeh,
   waqtHintDismissed = DEFAULT_SETTINGS.waqtHintDismissed,
   waqtBlockNames = DEFAULT_SETTINGS.waqtBlockNames,
+  waqtQuietMode = DEFAULT_SETTINGS.waqtQuietMode,
+  waqtFirstRunDismissed = DEFAULT_SETTINGS.waqtFirstRunDismissed,
+  waqtRhythmAnchors = DEFAULT_SETTINGS.waqtRhythmAnchors,
   onShapeChange,
   onOpenSettings,
 }: IslandShellProps) {
@@ -299,6 +315,8 @@ export function IslandShell({
   }, [reminders]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [waqtState, setWaqtState] = useState<WaqtTimelineState | null>(null);
+  const [waqtLoading, setWaqtLoading] = useState(() => isTauriRuntime());
+  const [waqtError, setWaqtError] = useState<string | null>(null);
   const [localWaqtNames, setLocalWaqtNames] = useState<Record<string, string>>({});
   const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
   const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
@@ -637,7 +655,16 @@ export function IslandShell({
     void pluginsList().then(setPlugins);
     void tasbihGet().then((ts) => ts && setTasbih(ts));
     void ledgerGet().then((l) => l && setLedger(l));
-    void waqtGetState().then((w) => w && setWaqtState(w));
+    void waqtGetState()
+      .then((w) => {
+        if (w) setWaqtState(w);
+        setWaqtLoading(false);
+        setWaqtError(null);
+      })
+      .catch((err) => {
+        setWaqtLoading(false);
+        setWaqtError(String(err));
+      });
     void clipboardGetLatest().then((c) => c && setClipboard(c));
     void systemBatteryStatus().then((b) => b && setBatteryState(b));
     void systemQuickTogglesState().then((qt) => {
@@ -651,6 +678,12 @@ export function IslandShell({
     });
     void systemGetMicMuted().then((muted) => setMicMuted(muted));
   }, [waterGoalMl]);
+
+  useEffect(() => {
+    if (!waqtFirstRunDismissed) {
+      void waqtSeedSampleTask().then((w) => w && setWaqtState(w));
+    }
+  }, [waqtFirstRunDismissed]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -1922,6 +1955,8 @@ export function IslandShell({
               >
                 <WaqtTimeline
                   waqtState={waqtState}
+                  loading={waqtLoading}
+                  error={waqtError}
                   nowDate={nowDate}
                   schedule={prayerSchedule}
                   tasks={tasks}
@@ -1939,6 +1974,7 @@ export function IslandShell({
                     }
                   }
                   waterTodayMl={waterSummary?.today_ml ?? 0}
+                  waterGoalMl={waterGoalMl}
                   language={language}
                   banglaDigits={banglaDigits}
                   reduceMotion={prefersReducedMotion}
@@ -1949,6 +1985,9 @@ export function IslandShell({
                   prayerPauseMode={waqtPrayerPauseMode}
                   ramadanTaraweeh={waqtRamadanTaraweeh}
                   hintDismissed={waqtHintDismissed}
+                  quietMode={waqtQuietMode}
+                  firstRunDismissed={waqtFirstRunDismissed}
+                  rhythmAnchors={waqtRhythmAnchors}
                   customBlockNames={{ ...waqtBlockNames, ...localWaqtNames }}
                   pagesCount={pages.length}
                   activePageIndex={safePageIndex}
@@ -1964,6 +2003,19 @@ export function IslandShell({
                       void openSettingsWindow();
                     }
                   }}
+                  onRetry={() => {
+                    setWaqtLoading(true);
+                    setWaqtError(null);
+                    void waqtGetState()
+                      .then((w) => {
+                        if (w) setWaqtState(w);
+                        setWaqtLoading(false);
+                      })
+                      .catch((err) => {
+                        setWaqtLoading(false);
+                        setWaqtError(String(err));
+                      });
+                  }}
                   onAssignTask={(taskId, blockId, sortOrder) => {
                     setTasks((cur) =>
                       cur.map((t) =>
@@ -1976,6 +2028,18 @@ export function IslandShell({
                       (w) => w && setWaqtState(w),
                     );
                     void tasksList().then(setTasks);
+                  }}
+                  onAssignBatch={(assignments) => {
+                    const lookup = new Map(assignments);
+                    setTasks((cur) =>
+                      cur.map((t) =>
+                        lookup.has(t.id) ? { ...t, block_id: lookup.get(t.id) ?? null } : t,
+                      ),
+                    );
+                    void waqtAssignBatch(assignments).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
                   }}
                   onToggleTask={(taskId) => {
                     const nowIso = new Date().toISOString();
@@ -1991,7 +2055,7 @@ export function IslandShell({
                       void waqtGetState().then((w) => w && setWaqtState(w));
                     });
                   }}
-                  onAddTask={(title, blockId, estimateMin = 25) => {
+                  onAddTask={(title, blockId, estimateMin = 25, startAt = null) => {
                     const tempId = Date.now();
                     setTasks((cur) => [
                       {
@@ -2002,11 +2066,12 @@ export function IslandShell({
                         created_at: new Date().toISOString(),
                         estimate_min: estimateMin,
                         block_id: blockId,
+                        start_at: startAt ?? null,
                         kind: "task",
                       },
                       ...cur,
                     ]);
-                    void waqtAddTask({ title, blockId, estimateMin }).then((w) => {
+                    void waqtAddTask({ title, blockId, estimateMin, startAt }).then((w) => {
                       if (w) setWaqtState(w);
                       void tasksList().then(setTasks);
                     });
@@ -2079,6 +2144,25 @@ export function IslandShell({
                   }}
                   onDismissHint={() => {
                     void waqtDismissHint();
+                  }}
+                  onDismissFirstRun={() => {
+                    void waqtDismissFirstRun();
+                  }}
+                  onAcceptSuggestion={(sug) => {
+                    void waqtAcceptSuggestion({
+                      suggestionId: sug.id,
+                      text: sug.text,
+                      blockId: sug.block_id,
+                      kind: sug.kind,
+                      estimateMin: sug.estimate_min,
+                      taskId: sug.task_id,
+                    }).then((w) => {
+                      if (w) setWaqtState(w);
+                      void tasksList().then(setTasks);
+                    });
+                  }}
+                  onDismissSuggestion={(sug) => {
+                    void waqtDismissSuggestion(sug.id, sug.text).then((w) => w && setWaqtState(w));
                   }}
                   onLogActivity={(kind, refId, note) => {
                     void waqtLogActivity(kind, refId, note).then((w) => w && setWaqtState(w));

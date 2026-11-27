@@ -23,7 +23,9 @@ use lumen_prayer::{
     BANGLADESH_CITIES, CalculationMethod, Madhab, PrayerCityPreset, PrayerConfig, PrayerSchedule,
     compute_prayer_schedule, resolve_city_name_for_coords,
 };
-use lumen_storage::waqt::{WaqtAnchor, WaqtComputeInput, WaqtTimelineState, compute_waqt_timeline};
+use lumen_storage::waqt::{
+    WaqtAnchor, WaqtComputeInput, WaqtRhythmSpec, WaqtTimelineState, compute_waqt_timeline,
+};
 use lumen_storage::{
     CalendarEvent, ReminderItem, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState,
     WaterSummary,
@@ -1197,6 +1199,69 @@ fn ledger_toggle(
     Ok(next)
 }
 
+fn today_ymd_local(now_utc: chrono::DateTime<Utc>) -> String {
+    let offset = chrono::FixedOffset::east_opt(6 * 3600)
+        .unwrap_or_else(|| chrono::FixedOffset::east_opt(0).expect("offset"));
+    now_utc
+        .with_timezone(&offset)
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+fn load_string_vec_kv(storage: &StorageRepo, key: &str) -> Vec<String> {
+    storage
+        .get_kv(key)
+        .ok()
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_string_vec_kv(storage: &StorageRepo, key: &str, items: &[String]) {
+    if let Ok(json) = serde_json::to_string(items) {
+        let _ = storage.set_kv(key, &json);
+    }
+}
+
+fn ensure_daily_rhythm_tasks(
+    storage: &StorageRepo,
+    now_utc: chrono::DateTime<Utc>,
+    settings: &LumenSettings,
+) {
+    let today = today_ymd_local(now_utc);
+    let last_date = storage
+        .get_kv("waqt_auto_rhythm_date")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    if last_date == today {
+        return;
+    }
+    let existing = storage.list_tasks().unwrap_or_default();
+    for anchor in &settings.waqt_rhythm_anchors {
+        if anchor.enabled && anchor.auto_add_daily {
+            let already = existing.iter().any(|t| {
+                !t.done
+                    && t.title.eq_ignore_ascii_case(&anchor.title)
+                    && t.block_id.as_deref() == Some(anchor.block_id.as_str())
+            });
+            if !already {
+                let _ = storage.add_planner_task(
+                    &anchor.title,
+                    Some(today.clone()),
+                    anchor.estimate_min.max(5),
+                    Some(anchor.block_id.clone()),
+                    false,
+                    None,
+                    None,
+                    &anchor.kind,
+                );
+            }
+        }
+    }
+    let _ = storage.set_kv("waqt_auto_rhythm_date", &today);
+}
+
 fn build_waqt_snapshot(state: &AppState) -> Result<WaqtTimelineState, String> {
     let cfg = state
         .prayer_config
@@ -1223,6 +1288,8 @@ fn build_waqt_snapshot(state: &AppState) -> Result<WaqtTimelineState, String> {
         .lock()
         .map_err(|_| "settings mutex poisoned".to_string())?
         .clone();
+    ensure_daily_rhythm_tasks(&state.storage, now_utc, &settings);
+
     let tasks = state.storage.list_tasks()?;
     let calendar_events = state.storage.list_calendar_events()?;
     let day_start = StorageRepo::day_window_start_utc(now_utc, 0).to_rfc3339();
@@ -1233,6 +1300,23 @@ fn build_waqt_snapshot(state: &AppState) -> Result<WaqtTimelineState, String> {
     let daily_focus = state.storage.daily_focus_minutes(now_utc).unwrap_or(0) as i32;
     let current_focus_task_id = state.waqt_focus_task_id.lock().ok().and_then(|g| *g);
     let location_configured = settings.location_opt_in || !cfg.city_name.trim().is_empty();
+    let today = today_ymd_local(now_utc);
+    let dismissed_key = format!("waqt_dismissed_{today}");
+    let dismissed_suggestions = load_string_vec_kv(&state.storage, &dismissed_key);
+    let recent_suggestion_texts = load_string_vec_kv(&state.storage, "waqt_recent_suggestions");
+    let rhythm_specs: Vec<WaqtRhythmSpec> = settings
+        .waqt_rhythm_anchors
+        .iter()
+        .map(|a| WaqtRhythmSpec {
+            id: a.id.clone(),
+            title: a.title.clone(),
+            block_id: a.block_id.clone(),
+            kind: a.kind.clone(),
+            estimate_min: a.estimate_min,
+            enabled: a.enabled,
+            is_user_template: a.is_user_template,
+        })
+        .collect();
 
     Ok(compute_waqt_timeline(&WaqtComputeInput {
         now_utc,
@@ -1250,8 +1334,13 @@ fn build_waqt_snapshot(state: &AppState) -> Result<WaqtTimelineState, String> {
         location_configured,
         pomodoro_focus_min: daily_focus,
         water_today_ml: water.today_ml,
+        water_goal_ml: settings.water_goal_ml,
         rollover_at_fajr: settings.waqt_rollover_at_fajr,
         current_focus_task_id,
+        quiet_mode: settings.waqt_quiet_mode,
+        rhythm_anchors: &rhythm_specs,
+        dismissed_suggestions: &dismissed_suggestions,
+        recent_suggestion_texts: &recent_suggestion_texts,
     }))
 }
 
@@ -1444,7 +1533,9 @@ fn waqt_start_focus_flow(
 
     let now = Utc::now().to_rfc3339();
     let ref_str = chosen.map(|t| t.id.to_string());
-    let note = chosen.map(|t| t.title.clone());
+    let note = chosen
+        .map(|t| t.title.clone())
+        .or_else(|| Some("Free focus".to_string()));
     let _ = state
         .storage
         .log_activity("focus", &now, None, ref_str.as_deref(), note.as_deref());
@@ -1459,6 +1550,152 @@ fn waqt_start_focus_flow(
         pomodoro: pom_snap,
         ledger,
     })
+}
+
+#[tauri::command]
+fn waqt_assign_batch(
+    assignments: Vec<(i64, Option<String>)>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let _ = state.storage.assign_tasks_batch(&assignments)?;
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+fn waqt_accept_suggestion(
+    suggestion_id: String,
+    text: String,
+    block_id: String,
+    kind: String,
+    estimate_min: i64,
+    task_id: Option<i64>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    if let Some(tid) = task_id {
+        let _ = state.storage.assign_task_block(tid, Some(block_id), None)?;
+    } else {
+        let clean_title = text.split(" · ").next().unwrap_or(&text).trim();
+        let _ = state.storage.add_planner_task(
+            clean_title,
+            None,
+            estimate_min.max(5),
+            Some(block_id),
+            false,
+            None,
+            None,
+            &kind,
+        )?;
+    }
+    let today = today_ymd_local(Utc::now());
+    let dismissed_key = format!("waqt_dismissed_{today}");
+    let mut dismissed = load_string_vec_kv(&state.storage, &dismissed_key);
+    if !dismissed.contains(&suggestion_id) {
+        dismissed.push(suggestion_id.clone());
+    }
+    if let Some(block_id) = suggestion_id.split(':').nth(1) {
+        let block_marker = format!("block:{block_id}");
+        if !dismissed.contains(&block_marker) {
+            dismissed.push(block_marker);
+        }
+    }
+    save_string_vec_kv(&state.storage, &dismissed_key, &dismissed);
+    let mut recent = load_string_vec_kv(&state.storage, "waqt_recent_suggestions");
+    recent.retain(|x| !x.eq_ignore_ascii_case(&text));
+    recent.push(text);
+    if recent.len() > 10 {
+        let overflow = recent.len() - 10;
+        recent.drain(0..overflow);
+    }
+    save_string_vec_kv(&state.storage, "waqt_recent_suggestions", &recent);
+
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_dismiss_suggestion(
+    suggestion_id: String,
+    text: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let today = today_ymd_local(Utc::now());
+    let dismissed_key = format!("waqt_dismissed_{today}");
+    let mut dismissed = load_string_vec_kv(&state.storage, &dismissed_key);
+    if !dismissed.contains(&suggestion_id) {
+        dismissed.push(suggestion_id.clone());
+    }
+    if let Some(block_id) = suggestion_id.split(':').nth(1) {
+        let block_marker = format!("block:{block_id}");
+        if !dismissed.contains(&block_marker) {
+            dismissed.push(block_marker);
+        }
+    }
+    save_string_vec_kv(&state.storage, &dismissed_key, &dismissed);
+    let mut recent = load_string_vec_kv(&state.storage, "waqt_recent_suggestions");
+    recent.retain(|x| !x.eq_ignore_ascii_case(&text));
+    recent.push(text);
+    if recent.len() > 10 {
+        let overflow = recent.len() - 10;
+        recent.drain(0..overflow);
+    }
+    save_string_vec_kv(&state.storage, "waqt_recent_suggestions", &recent);
+
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
+}
+
+#[tauri::command]
+fn waqt_dismiss_first_run(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LumenSettings, String> {
+    let updated = {
+        let mut guard = state
+            .settings
+            .lock()
+            .map_err(|_| "settings mutex poisoned".to_string())?;
+        guard.waqt_first_run_dismissed = true;
+        guard.save_to_path(&state.settings_path)?;
+        guard.clone()
+    };
+    let _ = app.emit("lumen://settings-updated", updated.clone());
+    Ok(updated)
+}
+
+#[tauri::command]
+fn waqt_seed_sample_task(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WaqtTimelineState, String> {
+    let seeded = state
+        .storage
+        .get_kv("waqt_sample_seeded")?
+        .unwrap_or_default();
+    if seeded.is_empty() && state.storage.list_tasks()?.is_empty() {
+        let active_id = build_waqt_snapshot(&state)?.active_block_id;
+        let _ = state.storage.add_planner_task(
+            "Sample: Try 25m focus",
+            None,
+            25,
+            Some(active_id),
+            false,
+            None,
+            None,
+            "task",
+        )?;
+        let _ = state.storage.set_kv("waqt_sample_seeded", "1");
+    }
+    let snap = build_waqt_snapshot(&state)?;
+    emit_waqt_updated(&app, &state);
+    Ok(snap)
 }
 
 #[tauri::command]
@@ -2210,7 +2447,12 @@ pub fn run() {
             waqt_rollover_yesterday,
             waqt_start_focus_flow,
             waqt_dismiss_hint,
-            waqt_log_activity
+            waqt_log_activity,
+            waqt_assign_batch,
+            waqt_accept_suggestion,
+            waqt_dismiss_suggestion,
+            waqt_dismiss_first_run,
+            waqt_seed_sample_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

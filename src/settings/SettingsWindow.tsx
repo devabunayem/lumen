@@ -16,7 +16,12 @@ import {
   settingsGet,
   settingsUpdate,
 } from "../lib/ipc";
-import { DEFAULT_SETTINGS, type LumenSettings } from "./index";
+import {
+  DEFAULT_SETTINGS,
+  type LumenSettings,
+  USER_CHOSEN_ANCHOR_TEMPLATES,
+  type WaqtRhythmAnchor,
+} from "./index";
 
 export type SettingsSection =
   "general" | "appearance" | "pages" | "notifications" | "widgets" | "plugins" | "about";
@@ -1325,6 +1330,115 @@ export function SettingsWindow({
                       onChange={(v) => void commit({ ...settings, waqtRamadanTaraweeh: v })}
                     />
                   </AppleRow>
+                  <AppleRow
+                    label={isBn ? "কোয়াইট মোড (সাজেশন ও লুমি নীরব)" : "Quiet Mode"}
+                    hint={
+                      isBn
+                        ? "সব ওয়াক্ত সাজেশন এবং লুমির বার্তা বন্ধ রাখে"
+                        : "Turns off all block suggestions and Lumi speech bubbles"
+                    }
+                  >
+                    <AppleToggle
+                      checked={settings.waqtQuietMode}
+                      onChange={(v) => void commit({ ...settings, waqtQuietMode: v })}
+                    />
+                  </AppleRow>
+                  <div className="space-y-2 border-t border-[#2c2c2e]/70 pt-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-medium text-white">
+                          {isBn ? "রিদম অ্যাঙ্কর (ব্লক অনুযায়ী)" : "Rhythm Anchors"}
+                        </div>
+                        <div className="text-[11px] text-[#8e8e93]">
+                          {isBn
+                            ? "রুটিন কাজ ব্লকে হালকা ঘোস্ট চিপ হিসেবে দেখাবে"
+                            : "Recurring routines shown subtly per block; opt in to auto-add daily"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {USER_CHOSEN_ANCHOR_TEMPLATES.map((tpl) => {
+                          const exists = settings.waqtRhythmAnchors.some((a) => a.id === tpl.id);
+                          return (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              disabled={exists}
+                              onClick={() => {
+                                const next: WaqtRhythmAnchor[] = [
+                                  ...settings.waqtRhythmAnchors,
+                                  { ...tpl, enabled: true },
+                                ];
+                                void commit({ ...settings, waqtRhythmAnchors: next });
+                              }}
+                              className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-white/80 hover:bg-white/10 disabled:opacity-40"
+                            >
+                              + {tpl.title} {isBn ? "(ব্যবহারকারী-নির্বাচিত)" : "(user-chosen)"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      {settings.waqtRhythmAnchors.map((anchor, idx) => (
+                        <div
+                          key={anchor.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#141416] px-2.5 py-1.5 text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={anchor.enabled}
+                              aria-label={anchor.title}
+                              onChange={(e) => {
+                                const next = settings.waqtRhythmAnchors.map((a, i) =>
+                                  i === idx ? { ...a, enabled: e.target.checked } : a,
+                                );
+                                void commit({ ...settings, waqtRhythmAnchors: next });
+                              }}
+                            />
+                            <span className="font-medium text-white">{anchor.title}</span>
+                            {anchor.isUserTemplate && (
+                              <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/65">
+                                {isBn ? "নিজস্ব টেমপ্লেট" : "user-chosen"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              aria-label={`${anchor.title} block`}
+                              value={anchor.blockId}
+                              onChange={(e) => {
+                                const next = settings.waqtRhythmAnchors.map((a, i) =>
+                                  i === idx ? { ...a, blockId: e.target.value } : a,
+                                );
+                                void commit({ ...settings, waqtRhythmAnchors: next });
+                              }}
+                              className="rounded border border-white/15 bg-[#1c1c1e] px-2 py-0.5 text-[11px] text-white"
+                            >
+                              <option value="fajr">Fajr / Morning</option>
+                              <option value="dhuhr">Dhuhr / Midday</option>
+                              <option value="asr">Asr / Afternoon</option>
+                              <option value="maghrib">Maghrib / Evening</option>
+                              <option value="isha">Isha / Night</option>
+                            </select>
+                            <label className="flex items-center gap-1 text-[11px] text-white/70">
+                              <input
+                                type="checkbox"
+                                checked={anchor.autoAddDaily}
+                                onChange={(e) => {
+                                  const next = settings.waqtRhythmAnchors.map((a, i) =>
+                                    i === idx ? { ...a, autoAddDaily: e.target.checked } : a,
+                                  );
+                                  void commit({ ...settings, waqtRhythmAnchors: next });
+                                }}
+                              />
+                              {isBn ? "দৈনিক অটো-অ্যাড" : "Auto-add daily"}
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </AppleGroup>
             </div>

@@ -513,6 +513,86 @@ pub struct LumenSettings {
     pub waqt_hint_dismissed: bool,
     #[serde(default)]
     pub waqt_block_names: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub waqt_quiet_mode: bool,
+    #[serde(default)]
+    pub waqt_first_run_dismissed: bool,
+    #[serde(default = "default_waqt_rhythm_anchors")]
+    pub waqt_rhythm_anchors: Vec<WaqtRhythmAnchor>,
+}
+
+/// Recurring user-configured anchor shown as a subtle ghost chip inside its preferred Waqt block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WaqtRhythmAnchor {
+    pub id: String,
+    pub title: String,
+    pub block_id: String,
+    pub kind: String,
+    pub estimate_min: i64,
+    pub enabled: bool,
+    pub auto_add_daily: bool,
+    pub is_user_template: bool,
+}
+
+impl Default for WaqtRhythmAnchor {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            title: String::new(),
+            block_id: "dhuhr".to_string(),
+            kind: "habit".to_string(),
+            estimate_min: 5,
+            enabled: true,
+            auto_add_daily: false,
+            is_user_template: false,
+        }
+    }
+}
+
+fn default_waqt_rhythm_anchors() -> Vec<WaqtRhythmAnchor> {
+    vec![
+        WaqtRhythmAnchor {
+            id: "rhythm_water_midday".to_string(),
+            title: "Drink water · 500 ml".to_string(),
+            block_id: "dhuhr".to_string(),
+            kind: "water".to_string(),
+            estimate_min: 5,
+            enabled: true,
+            auto_add_daily: false,
+            is_user_template: false,
+        },
+        WaqtRhythmAnchor {
+            id: "rhythm_walk_afternoon".to_string(),
+            title: "Short walk · 10m".to_string(),
+            block_id: "asr".to_string(),
+            kind: "walk".to_string(),
+            estimate_min: 10,
+            enabled: true,
+            auto_add_daily: false,
+            is_user_template: false,
+        },
+        WaqtRhythmAnchor {
+            id: "rhythm_stretch_evening".to_string(),
+            title: "Stretch · 5m".to_string(),
+            block_id: "maghrib".to_string(),
+            kind: "stretch".to_string(),
+            estimate_min: 5,
+            enabled: false,
+            auto_add_daily: false,
+            is_user_template: false,
+        },
+        WaqtRhythmAnchor {
+            id: "rhythm_eye_break".to_string(),
+            title: "Eye break · 2m".to_string(),
+            block_id: "dhuhr".to_string(),
+            kind: "eye".to_string(),
+            estimate_min: 5,
+            enabled: false,
+            auto_add_daily: false,
+            is_user_template: false,
+        },
+    ]
 }
 
 impl Default for LumenSettings {
@@ -569,6 +649,9 @@ impl Default for LumenSettings {
             waqt_ramadan_taraweeh: false,
             waqt_hint_dismissed: false,
             waqt_block_names: std::collections::HashMap::new(),
+            waqt_quiet_mode: false,
+            waqt_first_run_dismissed: false,
+            waqt_rhythm_anchors: default_waqt_rhythm_anchors(),
         }
     }
 }

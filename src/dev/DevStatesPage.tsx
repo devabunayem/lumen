@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { BASE_GEOMETRY } from "../design/tokens";
 import { HomePage, type HomePageProps } from "../home/HomePage";
-import type { PrayerSchedule } from "../lib/ipc";
+import type { PrayerSchedule, WaqtTimelineState } from "../lib/ipc";
+import { DEFAULT_WAQT_RHYTHM_ANCHORS } from "../settings";
+import { WaqtTimeline, type WaqtTimelineProps } from "../waqt/WaqtTimeline";
 
 function makeBaseSchedule(overrides: Partial<PrayerSchedule> = {}): PrayerSchedule {
   return {
@@ -388,10 +390,289 @@ function buildAll20States(): StateSpec[] {
   ];
 }
 
+interface WaqtStateSpec {
+  id: string;
+  label: string;
+  props: WaqtTimelineProps;
+}
+
+function makeBaseWaqtProps(): WaqtTimelineProps {
+  const noop = () => {};
+  return {
+    waqtState: null,
+    loading: false,
+    error: null,
+    nowDate: new Date(2026, 10, 26, 13, 30, 0),
+    schedule: makeBaseSchedule({
+      next_name_en: "Asr",
+      next_name_bn: "আসর",
+      next_time_12h: "3:40 PM",
+      now_min: 13 * 60 + 30,
+    }),
+    tasks: [],
+    calendarEvents: [],
+    pomodoro: {
+      phase: "focus",
+      remaining_secs: 25 * 60,
+      total_secs: 25 * 60,
+      running: false,
+      cycle_index: 0,
+      cycles_before_long: 4,
+      daily_focus_minutes: 0,
+      chime_tick: 0,
+    },
+    waterTodayMl: 500,
+    waterGoalMl: 1500,
+    language: "en",
+    banglaDigits: false,
+    reduceMotion: true,
+    reduceTransparency: false,
+    isVisible: true,
+    locationConfigured: true,
+    bedtimeHHMM: "23:30",
+    prayerPauseMode: "ask",
+    ramadanTaraweeh: false,
+    hintDismissed: false,
+    quietMode: false,
+    firstRunDismissed: true,
+    rhythmAnchors: DEFAULT_WAQT_RHYTHM_ANCHORS,
+    customBlockNames: {},
+    pagesCount: 9,
+    activePageIndex: 1,
+    onSelectPage: noop,
+    onOpenSettings: noop,
+    onRetry: noop,
+    onAssignTask: noop,
+    onToggleTask: noop,
+    onAddTask: noop,
+    onDeleteTask: noop,
+    onRestoreTask: noop,
+    onChangeEstimate: noop,
+    onMoveOverflow: noop,
+    onRenameBlock: noop,
+    onRolloverYesterday: noop,
+    onStartFocusFlow: noop,
+    onToggleFocusPause: noop,
+    onResetFocus: noop,
+    onDismissHint: noop,
+    onLogActivity: noop,
+  };
+}
+
+function buildWaqt18States(): WaqtStateSpec[] {
+  const b = makeBaseWaqtProps();
+  const t = (
+    id: number,
+    title: string,
+    estimate_min: number,
+    block_id: string | null,
+    done = false,
+  ) => ({
+    id,
+    title,
+    done,
+    due_at: null,
+    created_at: "2026-11-26T08:00:00Z",
+    estimate_min,
+    block_id,
+    kind: "task",
+  });
+  const baseOverride = (over: Partial<WaqtTimelineState>): WaqtTimelineState => ({
+    date_label: "Thu 26 Nov",
+    now_min: 13 * 60 + 30,
+    rail_start_min: 302,
+    rail_end_min: 23 * 60 + 30,
+    sun_progress_pct: 48,
+    is_friday: false,
+    is_ramadan: false,
+    is_after_isha: false,
+    all_tasks_done: false,
+    sehri_min: 302,
+    iftar_min: 1031,
+    location_configured: true,
+    active_block_id: "dhuhr",
+    next_prayer_name: "Asr",
+    next_prayer_in_min: 130,
+    current_focus_task_id: null,
+    focus_next_task_id: null,
+    focus_next_task_title: null,
+    yesterday_rollover_count: 0,
+    total_focus_min: 0,
+    total_planned_min: 0,
+    total_free_min: 480,
+    day_is_overbooked: false,
+    prayers_done_count: 2,
+    water_today_ml: 500,
+    water_goal_ml: 1500,
+    focus_bars: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
+    blocks: [],
+    unplanned: [],
+    tomorrow_blocks: [],
+    tomorrow_tasks: [],
+    plan_my_day_preview: [],
+    activity_log: [],
+    ...over,
+  });
+
+  return [
+    { id: "S0", label: "S0 · Fresh / Empty day (0 tasks, 0 events)", props: { ...b } },
+    {
+      id: "S1",
+      label: "S1 · Calendar only (green events + gap prompt)",
+      props: {
+        ...b,
+        calendarEvents: [{ id: 1, title: "Design sync", start_at: "14:00", created_at: "" }],
+      },
+    },
+    {
+      id: "S2",
+      label: "S2 · One task (bound Focus + encouraging Lumi)",
+      props: { ...b, tasks: [t(1, "Draft proposal", 45, "dhuhr")] },
+    },
+    {
+      id: "S3",
+      label: "S3 · Two tasks (segmented capacity + then: next)",
+      props: {
+        ...b,
+        tasks: [t(1, "Draft proposal", 40, "dhuhr"), t(2, "Review PR", 30, "dhuhr")],
+      },
+    },
+    {
+      id: "S4",
+      label: "S4 · Three tasks in Midday",
+      props: {
+        ...b,
+        tasks: [
+          t(1, "Design review", 30, "dhuhr"),
+          t(2, "Reply mail", 15, "dhuhr"),
+          t(3, "Spec check", 20, "dhuhr"),
+        ],
+      },
+    },
+    {
+      id: "S5",
+      label: "S5 · 4+ tasks in Midday (+N expandable sheet)",
+      props: {
+        ...b,
+        tasks: [
+          t(1, "Design review", 25, "dhuhr"),
+          t(2, "Reply mail", 15, "dhuhr"),
+          t(3, "Spec check", 20, "dhuhr"),
+          t(4, "QA pass", 20, "dhuhr"),
+        ],
+      },
+    },
+    {
+      id: "S6",
+      label: "S6 · Tight capacity (<15m free -> Almost full)",
+      props: {
+        ...b,
+        nowDate: new Date(2026, 10, 26, 14, 15, 0),
+        tasks: [t(1, "Deep sprint", 70, "dhuhr")],
+      },
+    },
+    {
+      id: "S7",
+      label: "S7 · Overbooked (red bar, Day Full banner, 1-tap Move)",
+      props: {
+        ...b,
+        nowDate: new Date(2026, 10, 26, 15, 10, 0),
+        tasks: [t(1, "Heavy audit", 60, "dhuhr"), t(2, "Extra prep", 45, "dhuhr")],
+      },
+    },
+    {
+      id: "S8",
+      label: "S8 · All done (green checks + celebrate Lumi)",
+      props: {
+        ...b,
+        pomodoro: { ...b.pomodoro, daily_focus_minutes: 95 },
+        tasks: [t(1, "Morning standup", 25, "fajr", true), t(2, "Ship feature", 45, "dhuhr", true)],
+      },
+    },
+    {
+      id: "S9",
+      label: "S9 · After Isha / Night (Tomorrow preview + Today summary)",
+      props: {
+        ...b,
+        nowDate: new Date(2026, 10, 26, 21, 15, 0),
+        pomodoro: { ...b.pomodoro, daily_focus_minutes: 130 },
+        tasks: [
+          t(1, "Finished deck", 40, "asr", true),
+          t(2, "Tomorrow kick-off", 30, "tomorrow:fajr"),
+        ],
+      },
+    },
+    {
+      id: "S10",
+      label: "S10 · No city set (fallback hours + city banner)",
+      props: { ...b, locationConfigured: false },
+    },
+    {
+      id: "S11",
+      label: "S11 · First run (dismissible 3-step tip + sample task)",
+      props: {
+        ...b,
+        firstRunDismissed: false,
+        tasks: [t(99, "Sample: Try 25m focus", 25, "dhuhr")],
+      },
+    },
+    {
+      id: "S12",
+      label: "S12 · Friday (Dhuhr block becomes Jumu'ah)",
+      props: {
+        ...b,
+        nowDate: new Date(2026, 10, 27, 13, 30, 0),
+        schedule: makeBaseSchedule({ is_friday: true }),
+      },
+    },
+    {
+      id: "S13",
+      label: "S13 · Ramadan (Sehri & Iftar markers + Taraweeh)",
+      props: {
+        ...b,
+        ramadanTaraweeh: true,
+        schedule: makeBaseSchedule({ is_ramadan: true }),
+      },
+    },
+    {
+      id: "S14",
+      label: "S14 · Day rollover prompt at Fajr",
+      props: {
+        ...b,
+        waqtState: baseOverride({ yesterday_rollover_count: 2 }),
+      },
+    },
+    {
+      id: "S15",
+      label: "S15 · Loading shimmer skeleton",
+      props: { ...b, loading: true },
+    },
+    {
+      id: "S16",
+      label: "S16 · Error with Retry",
+      props: { ...b, error: "Could not read local planner store" },
+    },
+    {
+      id: "S17",
+      label: "S17 · Quiet mode + Unplanned Plan My Day ready",
+      props: {
+        ...b,
+        quietMode: true,
+        tasks: [t(1, "Call client", 20, null), t(2, "Draft invoice", 45, null)],
+      },
+    },
+  ];
+}
+
 export function DevStatesPage() {
-  const states = buildAll20States();
+  const [galleryTab, setGalleryTab] = useState<"home" | "waqt">("home");
+  const homeStates = buildAll20States();
+  const waqtStates = buildWaqt18States();
   const [selectedId, setSelectedId] = useState<string>("all");
-  const visibleStates = selectedId === "all" ? states : states.filter((s) => s.id === selectedId);
+  const visibleHome =
+    selectedId === "all" ? homeStates : homeStates.filter((s) => s.id === selectedId);
+  const visibleWaqt =
+    selectedId === "all" ? waqtStates : waqtStates.filter((s) => s.id === selectedId);
 
   return (
     <div
@@ -402,10 +683,33 @@ export function DevStatesPage() {
       <div className="mx-auto max-w-[1260px]">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
           <div>
-            <h1 className="text-xl font-semibold text-white">Lumen Home — 20 UI States Gallery</h1>
-            <p className="text-xs text-white/60">
-              Visual review matrix at 100% (640×312) and 150% (960×468).
-            </p>
+            <h1 className="text-xl font-semibold text-white">Lumen UI States Gallery (640×312)</h1>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGalleryTab("waqt");
+                  setSelectedId("all");
+                }}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  galleryTab === "waqt" ? "bg-[#ffb020] text-black" : "bg-white/10 text-white/75"
+                }`}
+              >
+                Waqt Timeline (S0–S17)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGalleryTab("home");
+                  setSelectedId("all");
+                }}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  galleryTab === "home" ? "bg-[#0a84ff] text-white" : "bg-white/10 text-white/75"
+                }`}
+              >
+                Home (20 States)
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
             <button
@@ -415,9 +719,9 @@ export function DevStatesPage() {
                 selectedId === "all" ? "bg-[#0a84ff] text-white" : "bg-white/10 text-white/75"
               }`}
             >
-              All 20 States
+              All
             </button>
-            {states.map((st) => (
+            {(galleryTab === "waqt" ? waqtStates : homeStates).map((st) => (
               <button
                 key={st.id}
                 type="button"
@@ -433,47 +737,74 @@ export function DevStatesPage() {
         </div>
 
         <div className="flex flex-col gap-10">
-          {visibleStates.map((st) => {
-            const scale = st.scale ?? 1;
-            const w = Math.round(BASE_GEOMETRY.homeExpanded.width * scale);
-            const h = Math.round(BASE_GEOMETRY.homeExpanded.height * scale);
-
-            return (
-              <section
-                key={st.id}
-                data-testid={`dev-state-${st.id}`}
-                className="flex flex-col gap-2"
-              >
-                <div className="flex items-center justify-between text-xs text-white/75">
-                  <span className="font-semibold">{st.label}</span>
-                  <span className="tabular-nums text-white/50">
-                    {w}×{h} px
-                  </span>
-                </div>
-                <div
-                  className={`relative overflow-hidden bg-black ${st.className ?? ""}`}
-                  style={{
-                    width: `${w}px`,
-                    height: `${h}px`,
-                    borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px`,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderTop: "0px",
-                  }}
+          {galleryTab === "waqt"
+            ? visibleWaqt.map((st) => (
+                <section
+                  key={st.id}
+                  data-testid={`dev-waqt-state-${st.id}`}
+                  className="flex flex-col gap-2"
                 >
+                  <div className="flex items-center justify-between text-xs text-white/75">
+                    <span className="font-semibold">{st.label}</span>
+                    <span className="tabular-nums text-white/50">
+                      {BASE_GEOMETRY.homeExpanded.width}×{BASE_GEOMETRY.homeExpanded.height} px
+                    </span>
+                  </div>
                   <div
-                    className="origin-top-left"
+                    className="relative overflow-hidden bg-black"
                     style={{
                       width: `${BASE_GEOMETRY.homeExpanded.width}px`,
                       height: `${BASE_GEOMETRY.homeExpanded.height}px`,
-                      transform: scale !== 1 ? `scale(${scale})` : undefined,
+                      borderRadius: `0px 0px ${BASE_GEOMETRY.homeBottomRadius}px ${BASE_GEOMETRY.homeBottomRadius}px`,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderTop: "0px",
                     }}
                   >
-                    <HomePage {...st.props} />
+                    <WaqtTimeline {...st.props} />
                   </div>
-                </div>
-              </section>
-            );
-          })}
+                </section>
+              ))
+            : visibleHome.map((st) => {
+                const scale = st.scale ?? 1;
+                const w = Math.round(BASE_GEOMETRY.homeExpanded.width * scale);
+                const h = Math.round(BASE_GEOMETRY.homeExpanded.height * scale);
+
+                return (
+                  <section
+                    key={st.id}
+                    data-testid={`dev-state-${st.id}`}
+                    className="flex flex-col gap-2"
+                  >
+                    <div className="flex items-center justify-between text-xs text-white/75">
+                      <span className="font-semibold">{st.label}</span>
+                      <span className="tabular-nums text-white/50">
+                        {w}×{h} px
+                      </span>
+                    </div>
+                    <div
+                      className={`relative overflow-hidden bg-black ${st.className ?? ""}`}
+                      style={{
+                        width: `${w}px`,
+                        height: `${h}px`,
+                        borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px`,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderTop: "0px",
+                      }}
+                    >
+                      <div
+                        className="origin-top-left"
+                        style={{
+                          width: `${BASE_GEOMETRY.homeExpanded.width}px`,
+                          height: `${BASE_GEOMETRY.homeExpanded.height}px`,
+                          transform: scale !== 1 ? `scale(${scale})` : undefined,
+                        }}
+                      >
+                        <HomePage {...st.props} />
+                      </div>
+                    </div>
+                  </section>
+                );
+              })}
         </div>
       </div>
     </div>

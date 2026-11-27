@@ -119,6 +119,42 @@ export interface WaqtBlockItem {
   sort_order: number;
 }
 
+export interface WaqtSuggestion {
+  id: string;
+  text: string;
+  source: "due_today" | "yesterday_unfinished" | "calendar_gap" | "inbox" | "rhythm" | string;
+  kind: string;
+  estimate_min: number;
+  task_id: number | null;
+  block_id: string;
+}
+
+export interface WaqtGhostAnchor {
+  id: string;
+  title: string;
+  kind: string;
+  estimate_min: number;
+  block_id: string;
+  progress_label: string | null;
+  is_user_template: boolean;
+}
+
+export interface WaqtPlanAssignment {
+  task_id: number;
+  task_title: string;
+  prev_block_id: string | null;
+  target_block_id: string;
+  target_block_name: string;
+  estimate_min: number;
+}
+
+export interface WaqtTomorrowBlock {
+  id: string;
+  name: string;
+  range_label: string;
+  task_count: number;
+}
+
 export interface WaqtBlockView {
   id: string;
   default_name: string;
@@ -134,9 +170,14 @@ export interface WaqtBlockView {
   free_capacity_min: number;
   used_capacity_min: number;
   capacity_status: "free" | "tight" | "overbooked";
+  length_hint_kind: "deep_work" | "quick_tasks" | "short_break" | string;
   focus_minutes: number;
+  logged_focus_min: number;
+  logged_prayer_done: boolean;
   status_text: string;
   items: WaqtBlockItem[];
+  suggestion: WaqtSuggestion | null;
+  rhythm_anchors: WaqtGhostAnchor[];
 }
 
 export interface WaqtTimelineState {
@@ -147,6 +188,8 @@ export interface WaqtTimelineState {
   sun_progress_pct: number;
   is_friday: boolean;
   is_ramadan: boolean;
+  is_after_isha: boolean;
+  all_tasks_done: boolean;
   sehri_min: number;
   iftar_min: number;
   location_configured: boolean;
@@ -154,13 +197,22 @@ export interface WaqtTimelineState {
   next_prayer_name: string;
   next_prayer_in_min: number;
   current_focus_task_id: number | null;
+  focus_next_task_id: number | null;
+  focus_next_task_title: string | null;
   yesterday_rollover_count: number;
   total_focus_min: number;
+  total_planned_min: number;
+  total_free_min: number;
+  day_is_overbooked: boolean;
   prayers_done_count: number;
   water_today_ml: number;
+  water_goal_ml: number;
   focus_bars: number[];
   blocks: WaqtBlockView[];
   unplanned: TaskItem[];
+  tomorrow_blocks: WaqtTomorrowBlock[];
+  tomorrow_tasks: WaqtBlockItem[];
+  plan_my_day_preview: WaqtPlanAssignment[];
   activity_log: ActivityLogItem[];
 }
 
@@ -1125,6 +1177,60 @@ export async function waqtLogActivity(
     refId: refId ?? null,
     note: note ?? null,
   });
+}
+
+export async function waqtAssignBatch(
+  assignments: Array<[number, string | null]>,
+): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_assign_batch", { assignments });
+}
+
+export async function waqtAcceptSuggestion(input: {
+  suggestionId: string;
+  text: string;
+  blockId: string;
+  kind: string;
+  estimateMin: number;
+  taskId: number | null;
+}): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_accept_suggestion", {
+    suggestionId: input.suggestionId,
+    text: input.text,
+    blockId: input.blockId,
+    kind: input.kind,
+    estimateMin: input.estimateMin,
+    taskId: input.taskId,
+  });
+}
+
+export async function waqtDismissSuggestion(
+  suggestionId: string,
+  text: string,
+): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_dismiss_suggestion", { suggestionId, text });
+}
+
+export async function waqtDismissFirstRun(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("waqt_dismiss_first_run");
+}
+
+export async function waqtSeedSampleTask(): Promise<WaqtTimelineState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<WaqtTimelineState>("waqt_seed_sample_task");
 }
 
 export async function subscribeWaqtUpdated(
