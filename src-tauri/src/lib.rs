@@ -1680,12 +1680,18 @@ fn waqt_seed_sample_task(
         .get_kv("waqt_sample_seeded")?
         .unwrap_or_default();
     if seeded.is_empty() && state.storage.list_tasks()?.is_empty() {
-        let active_id = build_waqt_snapshot(&state)?.active_block_id;
+        let snap_now = build_waqt_snapshot(&state)?;
+        let target_block_id = snap_now
+            .blocks
+            .iter()
+            .find(|b| !b.is_past && b.free_capacity_min >= 30)
+            .map(|b| b.id.clone())
+            .unwrap_or(snap_now.active_block_id);
         let _ = state.storage.add_planner_task(
             "Sample: Try 25m focus",
             None,
             25,
-            Some(active_id),
+            Some(target_block_id),
             false,
             None,
             None,

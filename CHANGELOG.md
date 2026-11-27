@@ -6,6 +6,10 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Fixed
 
+- **Waqt Timeline Block Grid Overflow, Motion `layoutId` Projection Overlap & False "Day is Full" Trigger:**
+  - Removed `layoutId` from individual Waqt block grid cards inside `scaleFactor`-transformed wrappers (which caused Framer Motion FLIP layout projections to stretch cards vertically behind the bottom Focus/Replay/Unplanned row), locked the 5-block row with `grid-rows-[minmax(0,1fr)] overflow-hidden`, kept time-range subtitles single-line (`whitespace-nowrap`), and made the overbooked move action concise (`→ <Block>`) so it never clips inside narrow `114px` cards.
+  - Restricted `"Day is full"` banner (`day_is_overbooked` in `waqt.rs` and `waqtEngine.ts`) to actual net remaining-day deficits instead of firing falsely when a single near-ending block overflows while hours remain free later, and updated `waqt_seed_sample_task` to pick the first upcoming block with `>= 30 min` free.
+
 - **Reliable YouTube Thumbnail Hydration, Letterbox Trim & Zero-Flash Side-Flip Track Transitions:**
   - Upgraded `lumen-media`'s `THUMB_CACHE` to store a lightweight FNV-1a stream fingerprint and re-validate incoming SMTC thumbnails during the first 4 seconds of a track change—catching delayed Chrome/Edge YouTube artwork updates (and breaking stale previous-video thumbnail locks) with ~0% overhead, while trimming symmetric `#000000` vertical letterbox bars on `4:3` `hqdefault` thumbnails via WIC `BitmapEncoder`.
   - Added `MediaGraceStabilizer` (`src-tauri/crates/lumen-media` + `src-tauri/src/lib.rs`) alongside a matching frontend hold guard in `MusicCard` and `NowPlayingBanner` artwork hydration (`IslandShell`) so pressing `Next`/`Previous` on YouTube or desktop players never flashes `"Nothing playing"` (`music-empty-state`) during transient media teardown, transitioning directly old-track → new-track.

@@ -382,8 +382,8 @@ describe("Waqt Timeline Page (Page 2 after Home)", () => {
 
     const { rerender } = render(<WaqtTimeline {...baseProps} />);
 
-    // S7 Day Full + 1-tap Move + 5s Undo
-    expect(screen.getByTestId("waqt-day-full-banner")).toBeInTheDocument();
+    // Single-block overflow shows concise move control without falsely claiming the whole day is full
+    expect(screen.queryByTestId("waqt-day-full-banner")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("waqt-move-overflow-dhuhr"));
     expect(onAssignBatch).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("waqt-undo-toast")).toBeInTheDocument();
@@ -393,6 +393,28 @@ describe("Waqt Timeline Page (Page 2 after Home)", () => {
     expect(screen.getByTestId("waqt-plan-preview-bar")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("waqt-plan-accept-btn"));
     expect(onAssignBatch).toHaveBeenCalledTimes(2);
+
+    // S7 True Day Full when total remaining surplus < deficit
+    rerender(
+      <WaqtTimeline
+        {...baseProps}
+        tasks={[
+          ...fourTasks,
+          {
+            id: 6,
+            title: "Late marathon",
+            done: false,
+            due_at: null,
+            created_at: "",
+            estimate_min: 520,
+            block_id: "isha",
+            kind: "task",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("waqt-day-full-banner")).toBeInTheDocument();
+    rerender(<WaqtTimeline {...baseProps} />);
 
     // S5 4+ task expand + Escape close
     fireEvent.click(screen.getByTestId("waqt-block-expand-dhuhr"));

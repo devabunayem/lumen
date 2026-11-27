@@ -1132,9 +1132,12 @@ pub fn compute_waqt_timeline(input: &WaqtComputeInput<'_>) -> WaqtTimelineState 
         .filter(|b| !b.is_past)
         .map(|b| b.free_capacity_min.max(0))
         .sum();
-    let day_is_overbooked = blocks
+    let total_deficit_min: i32 = blocks
         .iter()
-        .any(|b| b.capacity_status == WaqtCapacityStatus::Overbooked);
+        .filter(|b| !b.is_past && b.free_capacity_min < 0)
+        .map(|b| -b.free_capacity_min)
+        .sum();
+    let day_is_overbooked = total_deficit_min > 0 && total_deficit_min >= total_free_min;
 
     let all_tasks_done = active_task_count == 0
         && (done_task_count > 0 || blocks.iter().flat_map(|b| b.items.iter()).any(|i| i.done));
@@ -1343,7 +1346,7 @@ mod tests {
             state.blocks[1].capacity_status,
             WaqtCapacityStatus::Overbooked
         );
-        assert!(state.day_is_overbooked);
+        assert!(!state.day_is_overbooked);
         assert_eq!(state.blocks[2].capacity_status, WaqtCapacityStatus::Tight);
         assert_eq!(state.blocks[2].status_text, "Almost full");
         assert_eq!(state.blocks[3].capacity_status, WaqtCapacityStatus::Free);

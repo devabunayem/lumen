@@ -1106,8 +1106,8 @@ export function WaqtTimeline({
         </svg>
       </div>
 
-      {/* 3. FIVE WAQT BLOCKS GRID (never blank even with 0 tasks!) */}
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-5 gap-[10px] py-[2px]">
+      {/* 3. FIVE WAQT BLOCKS GRID (strict single row locked to remaining height, never overlaps bottom row) */}
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-5 grid-rows-[minmax(0,1fr)] gap-[8px] overflow-hidden py-[2px]">
         {effectiveState.blocks.map((blk, idx) => {
           const nextBlock = effectiveState.blocks[idx + 1];
           const isDropTarget = hoverBlockId === blk.id;
@@ -1118,13 +1118,12 @@ export function WaqtTimeline({
           const hasBlockWork = blk.items.length > 0;
 
           return (
-            <motion.section
+            <section
               key={blk.id}
               data-testid={`waqt-block-${blk.id}`}
               data-current={blk.is_current ? "true" : undefined}
               role="region"
               aria-label={`${blk.name}, ${blk.range_label}, ${blk.items.length} items, ${blk.status_text}`}
-              layoutId={reduceMotion ? undefined : `waqt-block-card-${blk.id}`}
               onDragOver={(e) => {
                 e.preventDefault();
                 setHoverBlockId(blk.id);
@@ -1149,7 +1148,7 @@ export function WaqtTimeline({
                     : undefined,
                 boxShadow: blk.is_current ? `0 0 18px ${COLOR_TOKENS.waqtAmberGlow}` : undefined,
               }}
-              className={`group relative flex min-h-0 flex-col justify-between overflow-hidden px-[8px] py-[6px] ${glassSurfaceClass}`}
+              className={`group relative flex h-full min-h-0 min-w-0 flex-col justify-between overflow-hidden px-[8px] py-[5px] ${glassSurfaceClass}`}
             >
               {/* Block header */}
               <div className="flex items-start justify-between gap-1">
@@ -1186,7 +1185,7 @@ export function WaqtTimeline({
                       {blk.name}
                     </button>
                   )}
-                  <div className="text-[9.5px] leading-tight tabular-nums text-white/55">
+                  <div className="truncate whitespace-nowrap text-[9px] leading-tight tabular-nums text-white/55">
                     {fmt(blk.range_label)}
                   </div>
                 </div>
@@ -1473,26 +1472,27 @@ export function WaqtTimeline({
                     <button
                       type="button"
                       data-testid={`waqt-move-overflow-${blk.id}`}
-                      onClick={() => handleMoveOverflowBlock(blk, nextBlock)}
-                      className="shrink-0 rounded bg-[var(--waqt-deadline)]/25 px-1 py-[0.5px] text-[8.5px] font-semibold text-white hover:bg-[var(--waqt-deadline)]/40"
-                    >
-                      {fmt(
+                      title={fmt(
                         interpolateMsg(msg.waqt.moveToNext, {
                           count: computeOverflowMoveAssignments(blk, nextBlock).length || 1,
                           block: nextBlock.name,
                         }),
                       )}
+                      onClick={() => handleMoveOverflowBlock(blk, nextBlock)}
+                      className="max-w-[58px] shrink-0 truncate rounded bg-[var(--waqt-deadline)]/25 px-1 py-[0.5px] text-[8.5px] font-semibold text-white hover:bg-[var(--waqt-deadline)]/40"
+                    >
+                      {fmt(`→ ${nextBlock.name}`)}
                     </button>
                   )}
                 </div>
               </div>
-            </motion.section>
+            </section>
           );
         })}
       </div>
 
       {/* 4. BOTTOM ROW: (a) Focus Flow + Lumi, (b) Replay / Tomorrow, (c) Unplanned */}
-      <div className="relative z-10 grid h-[86px] shrink-0 grid-cols-[1.25fr_1fr_1fr] gap-[10px]">
+      <div className="relative z-10 grid h-[82px] shrink-0 grid-cols-[1.25fr_1fr_1fr] gap-[10px]">
         {/* (a) Focus Card */}
         <div
           data-testid="waqt-focus-card"
@@ -1937,12 +1937,11 @@ function ExpandedBlockSheet({
       role="dialog"
       aria-modal="true"
       aria-label={block.name}
-      layoutId={reduceMotion ? undefined : `waqt-block-card-${block.id}`}
-      initial={reduceMotion ? false : { opacity: 0.9 }}
-      animate={{ opacity: 1 }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
       transition={reduceMotion ? { duration: 0.01 } : MOTION_PRESETS.smooth}
-      className="absolute inset-x-[14px] top-[64px] bottom-[96px] z-40 flex flex-col justify-between rounded-[var(--waqt-card-radius)] border border-white/25 bg-[#0d0e12]/95 p-3 backdrop-blur-xl"
+      className="absolute inset-x-[14px] top-[64px] bottom-[92px] z-40 flex flex-col justify-between rounded-[var(--waqt-card-radius)] border border-white/25 bg-[#0d0e12]/95 p-3 backdrop-blur-xl"
     >
       <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
         <div className="flex items-baseline gap-2">

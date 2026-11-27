@@ -685,6 +685,10 @@ export function buildClientWaqtFallback(params: {
   const totalFree = blocks
     .filter((b) => !b.is_past)
     .reduce((acc, b) => acc + Math.max(0, b.free_capacity_min), 0);
+  const totalDeficit = blocks
+    .filter((b) => !b.is_past && b.free_capacity_min < 0)
+    .reduce((acc, b) => acc + -b.free_capacity_min, 0);
+  const dayIsOverbooked = totalDeficit > 0 && totalDeficit >= totalFree;
 
   const nextAnchor = slots.find((s) => s.minute_of_day > nowMin) ?? slots[0];
   const nextInMin =
@@ -732,7 +736,7 @@ export function buildClientWaqtFallback(params: {
     total_focus_min: pomodoro.daily_focus_minutes,
     total_planned_min: totalPlanned,
     total_free_min: totalFree,
-    day_is_overbooked: blocks.some((b) => b.capacity_status === "overbooked"),
+    day_is_overbooked: dayIsOverbooked,
     prayers_done_count: slots.filter((s) => s.minute_of_day <= nowMin).length,
     water_today_ml: waterTodayMl,
     water_goal_ml: waterGoalMl,
