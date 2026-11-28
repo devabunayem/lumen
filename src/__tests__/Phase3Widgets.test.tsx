@@ -3,35 +3,93 @@ import { describe, expect, it, vi } from "vitest";
 import { DayArc } from "../home/components/DayArc";
 import { MusicCard } from "../home/components/MusicCard";
 import { computeDayArcGeometry } from "../home/hooks/useDayArcGeometry";
-import { TodoWidget } from "../widgets/todo/TodoWidget";
+import { TodoCard } from "../calendar/TodoCard";
 import { WaterWidget } from "../widgets/water/WaterWidget";
 
 describe("Phase 3 Core Widgets", () => {
-  it("renders TodoWidget counter and adds/toggles tasks", () => {
-    const onAdd = vi.fn();
-    const onToggle = vi.fn();
-    render(
-      <TodoWidget
+  it("renders Calendar Hub TodoCard counter and adds/toggles tasks", () => {
+    const onCreateTask = vi.fn();
+    const onToggleTask = vi.fn();
+    const onOpenQuickAdd = vi.fn();
+    const { rerender } = render(
+      <TodoCard
         tasks={[
-          { id: 1, title: "Write tests", done: true, due_at: null, created_at: "" },
-          { id: 2, title: "Ship Phase 3", done: false, due_at: "20:00", created_at: "" },
+          {
+            id: 1,
+            title: "Write tests",
+            dueDate: "2026-11-26",
+            dueTime: null,
+            estimateMin: 15,
+            doneAt: "2026-11-26T09:00:00Z",
+            client: null,
+            projectId: null,
+            isDeadline: false,
+            createdAt: "",
+          },
+          {
+            id: 2,
+            title: "Ship Phase 3",
+            dueDate: "2026-11-26",
+            dueTime: "20:00",
+            estimateMin: 25,
+            doneAt: null,
+            client: null,
+            projectId: null,
+            isDeadline: false,
+            createdAt: "",
+          },
         ]}
-        onAdd={onAdd}
-        onToggle={onToggle}
-        onDelete={vi.fn()}
+        nowDate={new Date(2026, 10, 26, 16, 0, 0)}
+        todayDateKey="2026-11-26"
+        selectedDateKey="2026-11-26"
+        language="en"
+        banglaDigits={false}
+        reduceMotion
+        onToggleTask={onToggleTask}
+        onOpenQuickAdd={onOpenQuickAdd}
+        onCreateTask={onCreateTask}
       />,
     );
-    expect(screen.getByText("1/2")).toBeInTheDocument();
-    expect(screen.getByText("Task Done Today")).toBeInTheDocument();
+    expect(screen.getByText("1 left")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
-    const input = screen.getByLabelText("New task title");
+    fireEvent.click(screen.getByTestId("cal-todo-add-btn"));
+    expect(onOpenQuickAdd).toHaveBeenCalled();
+
+    rerender(
+      <TodoCard
+        tasks={[
+          {
+            id: 2,
+            title: "Ship Phase 3",
+            dueDate: "2026-11-26",
+            dueTime: "20:00",
+            estimateMin: 25,
+            doneAt: null,
+            client: null,
+            projectId: null,
+            isDeadline: false,
+            createdAt: "",
+          },
+        ]}
+        nowDate={new Date(2026, 10, 26, 16, 0, 0)}
+        todayDateKey="2026-11-26"
+        selectedDateKey="2026-11-26"
+        quickAddOpen
+        language="en"
+        banglaDigits={false}
+        reduceMotion
+        onToggleTask={onToggleTask}
+        onOpenQuickAdd={onOpenQuickAdd}
+        onCreateTask={onCreateTask}
+      />,
+    );
+    const input = screen.getByTestId("cal-quick-add-input-task");
     fireEvent.change(input, { target: { value: "Review PR" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(onAdd).toHaveBeenCalledWith("Review PR", null);
+    fireEvent.submit(screen.getByTestId("cal-quick-add-task"));
+    expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Review PR" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Ship Phase 3" }));
-    expect(onToggle).toHaveBeenCalledWith(2);
+    fireEvent.click(screen.getByTestId("cal-task-row-2"));
+    expect(onToggleTask).toHaveBeenCalledWith(2);
   });
 
   it("renders WaterWidget goal reached and triggers drink + undo", () => {

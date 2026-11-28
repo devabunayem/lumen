@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { BellIcon, SettingsIcon } from "../design/icons";
 import { getMessages } from "../i18n";
 import {
+  calendarHubDeleteAllData,
   closeSettingsWindow,
   type LoadedPlugin,
   type MonitorInfo,
@@ -16,12 +17,7 @@ import {
   settingsGet,
   settingsUpdate,
 } from "../lib/ipc";
-import {
-  DEFAULT_SETTINGS,
-  type LumenSettings,
-  USER_CHOSEN_ANCHOR_TEMPLATES,
-  type WaqtRhythmAnchor,
-} from "./index";
+import { DEFAULT_SETTINGS, type LumenSettings } from "./index";
 
 export type SettingsSection =
   "general" | "appearance" | "pages" | "notifications" | "widgets" | "plugins" | "about";
@@ -1059,7 +1055,7 @@ export function SettingsWindow({
                         <div className="flex items-center gap-2.5">
                           <span className="w-4 font-mono text-xs text-[#8e8e93]">{idx + 1}.</span>
                           <span className="text-sm font-medium capitalize text-white">
-                            {pageId}
+                            {pageId === "calendar_hub" ? "Calendar Hub" : pageId}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -1340,39 +1336,58 @@ export function SettingsWindow({
                 </div>
               </AppleGroup>
 
-              <AppleGroup title={isBn ? "ওয়াক্ত টাইমলাইন" : "Waqt Timeline"}>
+              <AppleGroup
+                title={isBn ? "ক্যালেন্ডার হাব, সিঙ্ক ও ফোকাস" : "Calendar Hub, Sync & Focus"}
+              >
                 <div className="divide-y divide-[#2c2c2e]/70">
                   <AppleRow
-                    label={isBn ? "রাতের সমাপ্তি (Bedtime)" : "Night Block Bedtime"}
-                    hint={
-                      isBn
-                        ? "ইশার পর রাতের ব্লক কোন সময় শেষ হবে"
-                        : "Trims the Night Waqt block end time"
-                    }
+                    label={isBn ? "সপ্তাহের প্রথম দিন" : "First Day of Week"}
+                    hint={isBn ? "ক্যালেন্ডার গ্রিডের প্রথম কলাম" : "First column of the calendar grid"}
                   >
-                    <input
-                      type="time"
-                      value={settings.waqtBedtimeHHMM}
+                    <select
+                      value={settings.calendarFirstDayOfWeek}
                       onChange={(e) =>
-                        void commit({ ...settings, waqtBedtimeHHMM: e.target.value || "23:30" })
+                        void commit({
+                          ...settings,
+                          calendarFirstDayOfWeek: Number(e.target.value) === 6 ? 6 : 0,
+                        })
                       }
                       className="rounded-lg border border-[#38383a] bg-[#2c2c2e] px-2.5 py-1 text-xs text-white outline-none"
+                    >
+                      <option value={0}>{isBn ? "রবিবার (Sunday)" : "Sunday"}</option>
+                      <option value={6}>{isBn ? "শনিবার (Saturday)" : "Saturday"}</option>
+                    </select>
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "কালার-ব্লাইন্ড মার্কার" : "Color-Blind Friendly Marks"}
+                    hint={
+                      isBn
+                        ? "শুধু রঙের বদলে ডট, বার, ডায়মন্ড ও রিং শেপ ব্যবহার করে"
+                        : "Renders distinct shapes (dot, bar, diamond, ring) beside legend keys"
+                    }
+                  >
+                    <AppleToggle
+                      checked={settings.calendarColorBlindMarks}
+                      onChange={(v) => void commit({ ...settings, calendarColorBlindMarks: v })}
                     />
                   </AppleRow>
+
                   <AppleRow
                     label={isBn ? "নামাজের সময় ফোকাস চললে" : "When Prayer Arrives During Focus"}
                     hint={
                       isBn
                         ? "ফোকাস টাইমার চলার সময় আজান/ওয়াক্ত এলে আচরণ"
-                        : "Choose whether to ask, auto-pause, or keep going"
+                        : "Ask first (default), auto-pause Focus, or ignore prayer arrival"
                     }
                   >
                     <select
-                      value={settings.waqtPrayerPauseMode}
+                      value={settings.calendarPrayerPauseMode}
                       onChange={(e) =>
                         void commit({
                           ...settings,
-                          waqtPrayerPauseMode: e.target.value as "ask" | "auto_pause" | "ignore",
+                          calendarPrayerPauseMode: e.target.value as
+                            "ask" | "auto_pause" | "ignore",
                         })
                       }
                       className="rounded-lg border border-[#38383a] bg-[#2c2c2e] px-2.5 py-1 text-xs text-white outline-none"
@@ -1382,129 +1397,157 @@ export function SettingsWindow({
                       <option value="ignore">{isBn ? "চালিয়ে যান" : "Ignore"}</option>
                     </select>
                   </AppleRow>
+
                   <AppleRow
-                    label={isBn ? "ফজরে দিন রোলওভার" : "Roll Over Unfinished Tasks at Fajr"}
-                  >
-                    <AppleToggle
-                      checked={settings.waqtRolloverAtFajr}
-                      onChange={(v) => void commit({ ...settings, waqtRolloverAtFajr: v })}
-                    />
-                  </AppleRow>
-                  <AppleRow label={isBn ? "রমজানে তারাবিহ ব্লক" : "Show Taraweeh Block in Ramadan"}>
-                    <AppleToggle
-                      checked={settings.waqtRamadanTaraweeh}
-                      onChange={(v) => void commit({ ...settings, waqtRamadanTaraweeh: v })}
-                    />
-                  </AppleRow>
-                  <AppleRow
-                    label={isBn ? "কোয়াইট মোড (সাজেশন ও লুমি নীরব)" : "Quiet Mode"}
+                    label={isBn ? "ফোকাস টাইমার (মি.)" : "Focus Flow Timings"}
                     hint={
                       isBn
-                        ? "সব ওয়াক্ত সাজেশন এবং লুমির বার্তা বন্ধ রাখে"
-                        : "Turns off all block suggestions and Lumi speech bubbles"
+                        ? "ফোকাস / ছোট বিরতি / দীর্ঘ বিরতি (মিনিট) এবং রাউন্ড"
+                        : "Focus / short break / long break (min) and rounds per cycle"
+                    }
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <input
+                        type="number"
+                        min={5}
+                        max={120}
+                        aria-label="Focus minutes"
+                        value={settings.focusMinutes}
+                        onChange={(e) =>
+                          void commit({
+                            ...settings,
+                            focusMinutes: Math.max(5, Math.min(120, Number(e.target.value) || 25)),
+                          })
+                        }
+                        className="w-12 rounded border border-[#38383a] bg-[#2c2c2e] px-1.5 py-1 text-center text-white"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        aria-label="Short break minutes"
+                        value={settings.focusShortBreakMinutes}
+                        onChange={(e) =>
+                          void commit({
+                            ...settings,
+                            focusShortBreakMinutes: Math.max(
+                              1,
+                              Math.min(30, Number(e.target.value) || 5),
+                            ),
+                          })
+                        }
+                        className="w-12 rounded border border-[#38383a] bg-[#2c2c2e] px-1.5 py-1 text-center text-white"
+                      />
+                      <input
+                        type="number"
+                        min={5}
+                        max={60}
+                        aria-label="Long break minutes"
+                        value={settings.focusLongBreakMinutes}
+                        onChange={(e) =>
+                          void commit({
+                            ...settings,
+                            focusLongBreakMinutes: Math.max(
+                              5,
+                              Math.min(60, Number(e.target.value) || 15),
+                            ),
+                          })
+                        }
+                        className="w-12 rounded border border-[#38383a] bg-[#2c2c2e] px-1.5 py-1 text-center text-white"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        max={8}
+                        aria-label="Focus rounds"
+                        value={settings.focusRounds}
+                        onChange={(e) =>
+                          void commit({
+                            ...settings,
+                            focusRounds: Math.max(1, Math.min(8, Number(e.target.value) || 4)),
+                          })
+                        }
+                        className="w-12 rounded border border-[#38383a] bg-[#2c2c2e] px-1.5 py-1 text-center text-white"
+                      />
+                    </div>
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "সোশ্যাল ব্লকার সক্রিয়" : "Social Blocker Chip Armed"}
+                    hint={
+                      isBn
+                        ? "ফোকাস চলাকালীন সোশ্যাল ডিস্ট্র্যাকশন গার্ড সক্রিয় রাখে"
+                        : "Arms distraction blocking during active Focus sessions"
                     }
                   >
                     <AppleToggle
-                      checked={settings.waqtQuietMode}
-                      onChange={(v) => void commit({ ...settings, waqtQuietMode: v })}
+                      checked={settings.calendarSocialBlockArmed}
+                      onChange={(v) => void commit({ ...settings, calendarSocialBlockArmed: v })}
                     />
                   </AppleRow>
-                  <div className="space-y-2 border-t border-[#2c2c2e]/70 pt-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-medium text-white">
-                          {isBn ? "রিদম অ্যাঙ্কর (ব্লক অনুযায়ী)" : "Rhythm Anchors"}
-                        </div>
-                        <div className="text-[11px] text-[#8e8e93]">
-                          {isBn
-                            ? "রুটিন কাজ ব্লকে হালকা ঘোস্ট চিপ হিসেবে দেখাবে"
-                            : "Recurring routines shown subtly per block; opt in to auto-add daily"}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {USER_CHOSEN_ANCHOR_TEMPLATES.map((tpl) => {
-                          const exists = settings.waqtRhythmAnchors.some((a) => a.id === tpl.id);
-                          return (
-                            <button
-                              key={tpl.id}
-                              type="button"
-                              disabled={exists}
-                              onClick={() => {
-                                const next: WaqtRhythmAnchor[] = [
-                                  ...settings.waqtRhythmAnchors,
-                                  { ...tpl, enabled: true },
-                                ];
-                                void commit({ ...settings, waqtRhythmAnchors: next });
-                              }}
-                              className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-white/80 hover:bg-white/10 disabled:opacity-40"
-                            >
-                              + {tpl.title} {isBn ? "(ব্যবহারকারী-নির্বাচিত)" : "(user-chosen)"}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      {settings.waqtRhythmAnchors.map((anchor, idx) => (
-                        <div
-                          key={anchor.id}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#141416] px-2.5 py-1.5 text-xs"
-                        >
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={anchor.enabled}
-                              aria-label={anchor.title}
-                              onChange={(e) => {
-                                const next = settings.waqtRhythmAnchors.map((a, i) =>
-                                  i === idx ? { ...a, enabled: e.target.checked } : a,
-                                );
-                                void commit({ ...settings, waqtRhythmAnchors: next });
-                              }}
-                            />
-                            <span className="font-medium text-white">{anchor.title}</span>
-                            {anchor.isUserTemplate && (
-                              <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/65">
-                                {isBn ? "নিজস্ব টেমপ্লেট" : "user-chosen"}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <select
-                              aria-label={`${anchor.title} block`}
-                              value={anchor.blockId}
-                              onChange={(e) => {
-                                const next = settings.waqtRhythmAnchors.map((a, i) =>
-                                  i === idx ? { ...a, blockId: e.target.value } : a,
-                                );
-                                void commit({ ...settings, waqtRhythmAnchors: next });
-                              }}
-                              className="rounded border border-white/15 bg-[#1c1c1e] px-2 py-0.5 text-[11px] text-white"
-                            >
-                              <option value="fajr">Fajr / Morning</option>
-                              <option value="dhuhr">Dhuhr / Midday</option>
-                              <option value="asr">Asr / Afternoon</option>
-                              <option value="maghrib">Maghrib / Evening</option>
-                              <option value="isha">Isha / Night</option>
-                            </select>
-                            <label className="flex items-center gap-1 text-[11px] text-white/70">
-                              <input
-                                type="checkbox"
-                                checked={anchor.autoAddDaily}
-                                onChange={(e) => {
-                                  const next = settings.waqtRhythmAnchors.map((a, i) =>
-                                    i === idx ? { ...a, autoAddDaily: e.target.checked } : a,
-                                  );
-                                  void commit({ ...settings, waqtRhythmAnchors: next });
-                                }}
-                              />
-                              {isBn ? "দৈনিক অটো-অ্যাড" : "Auto-add daily"}
-                            </label>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+
+                  <AppleRow
+                    label="Google OAuth Client ID"
+                    hint="Bring-your-own Desktop App Client ID for PKCE loopback sync"
+                  >
+                    <input
+                      type="text"
+                      value={settings.calendarGoogleClientId}
+                      placeholder="xxx.apps.googleusercontent.com"
+                      onChange={(e) =>
+                        void commit({ ...settings, calendarGoogleClientId: e.target.value })
+                      }
+                      className="w-48 rounded-lg border border-[#38383a] bg-[#2c2c2e] px-2.5 py-1 text-xs text-white outline-none"
+                    />
+                  </AppleRow>
+
+                  <AppleRow
+                    label="Microsoft OAuth Client ID"
+                    hint="Bring-your-own Entra Public Client ID for Graph calendarView/delta"
+                  >
+                    <input
+                      type="text"
+                      value={settings.calendarMicrosoftClientId}
+                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      onChange={(e) =>
+                        void commit({ ...settings, calendarMicrosoftClientId: e.target.value })
+                      }
+                      className="w-48 rounded-lg border border-[#38383a] bg-[#2c2c2e] px-2.5 py-1 text-xs text-white outline-none"
+                    />
+                  </AppleRow>
+
+                  <AppleRow
+                    label={
+                      isBn ? "লুমেনের কাজ ক্যালেন্ডারে যুক্ত করুন" : "Add Lumen Tasks to My Calendar"
+                    }
+                    hint={
+                      isBn
+                        ? "ঐচ্ছিক write-back: সময়যুক্ত কাজগুলো সংযুক্ত ক্যালেন্ডারে পাঠায়"
+                        : "Off by default · requires write scope when connecting Google or Microsoft"
+                    }
+                  >
+                    <AppleToggle
+                      checked={settings.calendarWritebackTasks}
+                      onChange={(v) => void commit({ ...settings, calendarWritebackTasks: v })}
+                    />
+                  </AppleRow>
+
+                  <AppleRow
+                    label={isBn ? "সব ক্যালেন্ডার ডেটা মুছুন" : "Delete All Calendar Data"}
+                    hint={
+                      isBn
+                        ? "লোকাল কাজ, রিমাইন্ডার, ক্যাশড ইভেন্ট ও Credential Manager টোকেন মুছে দেয়"
+                        : "Wipes local tasks, reminders, cached external events, and stored OAuth tokens"
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void calendarHubDeleteAllData()}
+                      className="cursor-pointer rounded-lg border border-[#ff453a]/40 bg-[#ff453a]/15 px-3 py-1 text-xs font-semibold text-[#ff453a]"
+                    >
+                      {isBn ? "সব ডেটা মুছুন" : "Delete all calendar data"}
+                    </button>
+                  </AppleRow>
                 </div>
               </AppleGroup>
             </div>

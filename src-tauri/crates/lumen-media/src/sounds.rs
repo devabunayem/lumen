@@ -16,6 +16,10 @@ pub enum UiSoundName {
     WaterAdd,
     TaskDone,
     ArcScrubTick,
+    DaySelect,
+    DropOnDay,
+    FocusStart,
+    FocusEnd,
     ReminderChime,
     ReminderAlarm,
     MailArrival,
@@ -34,6 +38,10 @@ impl UiSoundName {
             "water_add" | "wateradd" => Some(Self::WaterAdd),
             "task_done" | "taskdone" => Some(Self::TaskDone),
             "arc_scrub_tick" | "arcscrubtick" => Some(Self::ArcScrubTick),
+            "day_select" | "dayselect" => Some(Self::DaySelect),
+            "drop_on_day" | "droponday" => Some(Self::DropOnDay),
+            "focus_start" | "focusstart" => Some(Self::FocusStart),
+            "focus_end" | "focusend" => Some(Self::FocusEnd),
             "reminder_chime" | "reminderchime" => Some(Self::ReminderChime),
             "reminder_alarm" | "reminderalarm" => Some(Self::ReminderAlarm),
             "mail_arrival" | "mailarrival" => Some(Self::MailArrival),
@@ -47,7 +55,7 @@ impl UiSoundName {
     #[must_use]
     pub const fn category(self) -> SoundCategory {
         match self {
-            Self::ReminderChime | Self::ReminderAlarm | Self::MailArrival => {
+            Self::ReminderChime | Self::ReminderAlarm | Self::MailArrival | Self::FocusEnd => {
                 SoundCategory::Reminders
             }
             _ => SoundCategory::Interface,
@@ -196,8 +204,18 @@ pub fn synthesize_ui_sound_pcm16(
             push_glide(&mut fbuf, sample_rate, 784.0, 784.0, 45.0, 0.12, false);
             push_glide(&mut fbuf, sample_rate, 988.0, 988.0, 45.0, 0.12, false);
         }
-        UiSoundName::ArcScrubTick => {
+        UiSoundName::ArcScrubTick | UiSoundName::DaySelect => {
             push_glide(&mut fbuf, sample_rate, 1500.0, 1500.0, 10.0, 0.10, false)
+        }
+        UiSoundName::DropOnDay => {
+            push_glide(&mut fbuf, sample_rate, 320.0, 240.0, 60.0, 0.13, false)
+        }
+        UiSoundName::FocusStart => {
+            push_glide(&mut fbuf, sample_rate, 520.0, 780.0, 75.0, 0.12, false)
+        }
+        UiSoundName::FocusEnd => {
+            push_glide(&mut fbuf, sample_rate, 523.0, 659.0, 90.0, 0.13, false);
+            push_glide(&mut fbuf, sample_rate, 784.0, 784.0, 140.0, 0.13, false);
         }
         UiSoundName::ReminderChime => {
             let total_samples = ((0.740) * sample_rate as f32) as usize;
@@ -508,6 +526,10 @@ mod tests {
             UiSoundName::WaterAdd,
             UiSoundName::TaskDone,
             UiSoundName::ArcScrubTick,
+            UiSoundName::DaySelect,
+            UiSoundName::DropOnDay,
+            UiSoundName::FocusStart,
+            UiSoundName::FocusEnd,
             UiSoundName::ReminderChime,
             UiSoundName::ReminderAlarm,
             UiSoundName::MailArrival,

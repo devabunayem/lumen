@@ -3,6 +3,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub mod calendar_parser;
+pub mod focus_engine;
+
 /// Deterministic states of the Lumen island.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -294,6 +297,18 @@ impl PomodoroController {
         self.running = !self.running;
     }
 
+    pub fn set_running(&mut self, running: bool) {
+        self.running = running;
+    }
+
+    pub fn update_config(&mut self, config: PomodoroConfig) {
+        let was_running = self.running;
+        self.config = config;
+        if !was_running {
+            self.remaining_secs = self.phase_duration(self.phase);
+        }
+    }
+
     pub fn reset(&mut self) {
         self.running = false;
         self.remaining_secs = self.phase_duration(self.phase);
@@ -339,16 +354,7 @@ impl PomodoroController {
     }
 }
 
-const BUILTIN_PAGE_ORDER: [&str; 8] = [
-    "waqt",
-    "control",
-    "calendar",
-    "reminders",
-    "todo",
-    "water",
-    "pomodoro",
-    "shelf",
-];
+const BUILTIN_PAGE_ORDER: [&str; 4] = ["calendar_hub", "control", "water", "shelf"];
 
 fn default_version() -> u32 {
     1
@@ -407,11 +413,20 @@ fn default_action_glow_mode() -> String {
 fn default_dev_pulse_ports() -> Vec<u16> {
     vec![3000, 5173, 1420]
 }
-fn default_waqt_bedtime() -> String {
-    "23:30".into()
-}
-fn default_waqt_prayer_pause_mode() -> String {
+fn default_prayer_pause_mode() -> String {
     "ask".into()
+}
+fn default_focus_minutes() -> u32 {
+    25
+}
+fn default_focus_short_break_minutes() -> u32 {
+    5
+}
+fn default_focus_long_break_minutes() -> u32 {
+    15
+}
+fn default_focus_rounds() -> u32 {
+    4
 }
 
 /// Versioned user preferences persisted in `%APPDATA%/Lumen/settings.json` (`NFR-REL-2`).
@@ -501,104 +516,34 @@ pub struct LumenSettings {
     pub notification_duration_seconds: u32,
     #[serde(default = "default_action_glow_mode")]
     pub action_glow_mode: String,
-    #[serde(default = "default_waqt_bedtime")]
-    pub waqt_bedtime_hhmm: String,
-    #[serde(default = "default_waqt_prayer_pause_mode")]
-    pub waqt_prayer_pause_mode: String,
-    #[serde(default = "default_true")]
-    pub waqt_rollover_at_fajr: bool,
-    #[serde(default)]
-    pub waqt_ramadan_taraweeh: bool,
-    #[serde(default)]
-    pub waqt_hint_dismissed: bool,
-    #[serde(default)]
-    pub waqt_block_names: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    pub waqt_quiet_mode: bool,
-    #[serde(default)]
-    pub waqt_first_run_dismissed: bool,
-    #[serde(default = "default_waqt_rhythm_anchors")]
-    pub waqt_rhythm_anchors: Vec<WaqtRhythmAnchor>,
+    #[serde(default = "default_prayer_pause_mode", alias = "waqtPrayerPauseMode")]
+    pub calendar_prayer_pause_mode: String,
     #[serde(default)]
     pub lumi_talk_less: bool,
     #[serde(default)]
     pub lumi_sounds_enabled: bool,
     #[serde(default)]
     pub lumi_accessories: Vec<String>,
-}
-
-/// Recurring user-configured anchor shown as a subtle ghost chip inside its preferred Waqt block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct WaqtRhythmAnchor {
-    pub id: String,
-    pub title: String,
-    pub block_id: String,
-    pub kind: String,
-    pub estimate_min: i64,
-    pub enabled: bool,
-    pub auto_add_daily: bool,
-    pub is_user_template: bool,
-}
-
-impl Default for WaqtRhythmAnchor {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            title: String::new(),
-            block_id: "dhuhr".to_string(),
-            kind: "habit".to_string(),
-            estimate_min: 5,
-            enabled: true,
-            auto_add_daily: false,
-            is_user_template: false,
-        }
-    }
-}
-
-fn default_waqt_rhythm_anchors() -> Vec<WaqtRhythmAnchor> {
-    vec![
-        WaqtRhythmAnchor {
-            id: "rhythm_water_midday".to_string(),
-            title: "Drink water · 500 ml".to_string(),
-            block_id: "dhuhr".to_string(),
-            kind: "water".to_string(),
-            estimate_min: 5,
-            enabled: true,
-            auto_add_daily: false,
-            is_user_template: false,
-        },
-        WaqtRhythmAnchor {
-            id: "rhythm_walk_afternoon".to_string(),
-            title: "Short walk · 10m".to_string(),
-            block_id: "asr".to_string(),
-            kind: "walk".to_string(),
-            estimate_min: 10,
-            enabled: true,
-            auto_add_daily: false,
-            is_user_template: false,
-        },
-        WaqtRhythmAnchor {
-            id: "rhythm_stretch_evening".to_string(),
-            title: "Stretch · 5m".to_string(),
-            block_id: "maghrib".to_string(),
-            kind: "stretch".to_string(),
-            estimate_min: 5,
-            enabled: false,
-            auto_add_daily: false,
-            is_user_template: false,
-        },
-        WaqtRhythmAnchor {
-            id: "rhythm_eye_break".to_string(),
-            title: "Eye break · 2m".to_string(),
-            block_id: "dhuhr".to_string(),
-            kind: "eye".to_string(),
-            estimate_min: 5,
-            enabled: false,
-            auto_add_daily: false,
-            is_user_template: false,
-        },
-    ]
+    #[serde(default)]
+    pub calendar_first_day_of_week: u8,
+    #[serde(default)]
+    pub calendar_color_blind_marks: bool,
+    #[serde(default = "default_true")]
+    pub calendar_social_block_armed: bool,
+    #[serde(default = "default_focus_minutes")]
+    pub focus_minutes: u32,
+    #[serde(default = "default_focus_short_break_minutes")]
+    pub focus_short_break_minutes: u32,
+    #[serde(default = "default_focus_long_break_minutes")]
+    pub focus_long_break_minutes: u32,
+    #[serde(default = "default_focus_rounds")]
+    pub focus_rounds: u32,
+    #[serde(default)]
+    pub calendar_google_client_id: String,
+    #[serde(default)]
+    pub calendar_microsoft_client_id: String,
+    #[serde(default)]
+    pub calendar_writeback_tasks: bool,
 }
 
 impl Default for LumenSettings {
@@ -649,18 +594,20 @@ impl Default for LumenSettings {
             now_playing_banner_seconds: default_now_playing_banner_seconds(),
             notification_duration_seconds: default_notification_duration_seconds(),
             action_glow_mode: default_action_glow_mode(),
-            waqt_bedtime_hhmm: default_waqt_bedtime(),
-            waqt_prayer_pause_mode: default_waqt_prayer_pause_mode(),
-            waqt_rollover_at_fajr: true,
-            waqt_ramadan_taraweeh: false,
-            waqt_hint_dismissed: false,
-            waqt_block_names: std::collections::HashMap::new(),
-            waqt_quiet_mode: false,
-            waqt_first_run_dismissed: false,
-            waqt_rhythm_anchors: default_waqt_rhythm_anchors(),
+            calendar_prayer_pause_mode: default_prayer_pause_mode(),
             lumi_talk_less: false,
             lumi_sounds_enabled: false,
             lumi_accessories: Vec::new(),
+            calendar_first_day_of_week: 0,
+            calendar_color_blind_marks: false,
+            calendar_social_block_armed: true,
+            focus_minutes: default_focus_minutes(),
+            focus_short_break_minutes: default_focus_short_break_minutes(),
+            focus_long_break_minutes: default_focus_long_break_minutes(),
+            focus_rounds: default_focus_rounds(),
+            calendar_google_client_id: String::new(),
+            calendar_microsoft_client_id: String::new(),
+            calendar_writeback_tasks: false,
         }
     }
 }
@@ -692,14 +639,18 @@ impl LumenSettings {
             self.action_glow_mode = default_action_glow_mode();
         }
         if !matches!(
-            self.waqt_prayer_pause_mode.as_str(),
+            self.calendar_prayer_pause_mode.as_str(),
             "ask" | "auto_pause" | "ignore"
         ) {
-            self.waqt_prayer_pause_mode = default_waqt_prayer_pause_mode();
+            self.calendar_prayer_pause_mode = default_prayer_pause_mode();
         }
-        if self.waqt_bedtime_hhmm.trim().is_empty() || !self.waqt_bedtime_hhmm.contains(':') {
-            self.waqt_bedtime_hhmm = default_waqt_bedtime();
+        if !matches!(self.calendar_first_day_of_week, 0 | 6) {
+            self.calendar_first_day_of_week = 0;
         }
+        self.focus_minutes = self.focus_minutes.clamp(5, 120);
+        self.focus_short_break_minutes = self.focus_short_break_minutes.clamp(1, 30);
+        self.focus_long_break_minutes = self.focus_long_break_minutes.clamp(5, 60);
+        self.focus_rounds = self.focus_rounds.clamp(1, 8);
         self.hover_return_seconds = self.hover_return_seconds.clamp(0, 30);
         self.reminder_snooze_minutes = self.reminder_snooze_minutes.clamp(1, 30);
         self.reminder_default_lead_minutes = self.reminder_default_lead_minutes.clamp(0, 120);
@@ -719,14 +670,22 @@ impl LumenSettings {
         }
 
         let mut deduped = Vec::new();
-        for id in &self.page_order {
-            if !id.trim().is_empty() && !deduped.contains(id) {
-                deduped.push(id.clone());
+        for raw_id in &self.page_order {
+            let trimmed = raw_id.trim();
+            if trimmed.is_empty() || matches!(trimmed, "music" | "prayer") {
+                continue;
+            }
+            let mapped = match trimmed {
+                "waqt" | "calendar" | "reminders" | "todo" | "pomodoro" => "calendar_hub",
+                other => other,
+            };
+            if !deduped.iter().any(|p| p == mapped) {
+                deduped.push(mapped.to_string());
             }
         }
         for builtin in BUILTIN_PAGE_ORDER {
             if !deduped.iter().any(|p| p == builtin) {
-                if builtin == "waqt" {
+                if builtin == "calendar_hub" {
                     deduped.insert(0, builtin.to_string());
                 } else {
                     deduped.push(builtin.to_string());
@@ -734,6 +693,12 @@ impl LumenSettings {
             }
         }
         self.page_order = deduped;
+        self.hidden_pages.retain(|id| {
+            !matches!(
+                id.as_str(),
+                "waqt" | "calendar" | "reminders" | "todo" | "pomodoro" | "music" | "prayer"
+            )
+        });
     }
 
     #[must_use]
@@ -844,10 +809,19 @@ mod tests {
         assert_eq!(migrated.water_goal_ml, 10_000);
         assert_eq!(migrated.position_offset_x, -400);
         assert_eq!(migrated.scale, "auto");
-        assert_eq!(migrated.page_order.len(), 8);
-        assert_eq!(migrated.page_order[0], "waqt");
+        assert_eq!(migrated.page_order.len(), 4);
+        assert_eq!(migrated.page_order[0], "calendar_hub");
         assert_eq!(migrated.reminder_snooze_minutes, 3);
         assert_eq!(migrated.reminder_default_lead_minutes, 10);
+
+        let legacy_waqt = LumenSettings::load_or_migrate(
+            r#"{"waqtPrayerPauseMode":"auto_pause","pageOrder":["control","waqt","todo","water","pomodoro","shelf"]}"#,
+        );
+        assert_eq!(legacy_waqt.calendar_prayer_pause_mode, "auto_pause");
+        assert_eq!(
+            legacy_waqt.page_order,
+            vec!["control", "calendar_hub", "water", "shelf"]
+        );
 
         let fallback = LumenSettings::load_or_migrate("{invalid json");
         assert_eq!(fallback, LumenSettings::default());

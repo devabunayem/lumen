@@ -6,6 +6,19 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **Calendar Hub Page (Phases 1–3 — Unified Workspace, External Sync & Focus Flow Engine):**
+  - Replaced Waqt Timeline and consolidated the standalone To-do, Calendar agenda, Timed reminders, and Pomodoro pages into **Calendar Hub** (`760×376`, bottom radius `40`, `150%` `1140×564`, `200 / 308 / 200` 3-column Bento glass grid) right after Home (`src/calendar/`).
+  - Implemented SQLite schema + automatic zero-loss migration (`lumen-storage::calendar_hub::migrate_legacy_to_calendar_hub`) migrating legacy tasks, reminders, events, and focus sessions into `calendar_tasks`, `calendar_reminders`, `calendar_events`, `calendar_sources`, and `focus_sessions`, alongside automatic `LumenSettings` migration (`waqtPrayerPauseMode` -> `calendarPrayerPauseMode`, legacy page IDs -> `calendar_hub`, default `BUILTIN_PAGE_ORDER = ["calendar_hub", "control", "water", "shelf"]`).
+  - Added the `lumen-sync` Rust crate (`ics.rs`, `oauth.rs`, `google.rs`, `microsoft.rs`, `keyring_store.rs`) using Windows WinRT HTTP and Windows Credential Manager (`keyring` v4.2.0) for `Local` offline mode, `ICS` / `webcal://` subscriptions, BYO Client ID `Google Calendar` OAuth PKCE, and `Microsoft Graph` `calendarView/delta` sync with `-14d..+60d` local pruning, `5 min` background + expand-open stale (`>60s`) refresh, explicit disconnect, and `"Delete all calendar data"` (`CalendarSyncSheet.tsx`).
+  - Added `lumen-core::focus_engine` (`FocusEngine`, `FocusConfig`, `PrayerArrivalMode`, `FreeFocusLogPrompt`) powering `FocusCard.tsx`, Home's `NextCard`, `DayArc` event lanes, Focus chip, and resting pill countdown — supporting task binding (drag onto Focus card or keyboard `M`), `Ask` / `Auto-pause` / `Ignore` prayer-arrival prompts, optional DND & Time Ledger sync, Free Focus post-session `"Log this as a task?"` prompts, and Lumi body-double companion states.
+  - Added four synthesized UI waveforms in `lumen-media::sounds` & `src/design/sounds.ts` (`DaySelect`, `DropOnDay`, `FocusStart`, `FocusEnd`), Settings controls for Calendar Hub, Sync & Focus (`SettingsWindow.tsx`), bilingual (`en`/`bn`) Calendar Hub strings (`en.json`, `bn.json`), and a 17-state Calendar Hub showcase in `/dev/states` (`DevStatesPage.tsx`).
+
+### Removed
+
+- **Retired Waqt Timeline & Legacy Page Clutter:** Deleted all Waqt Timeline components, state engine, SQLite module (`lumen-storage/src/waqt.rs`), Tauri IPC commands, design tokens (`--waqt-*`, `waqtRailDraw`, `waqtBlurEnter`), `WaqtBodyDoubleLumi`, tests (`WaqtTimeline.test.tsx`), and removed the redundant standalone `todo`, `calendar`, `reminders`, and `pomodoro` pages from routes, registry, Home/Control navigation, and Settings page ordering.
+
+### Added
+
 - **Home Quick Shortcuts Customization (`TogglesRow`, `lumen-windows`, `src-tauri`, `src/design/icons.tsx`):**
   - Replaced the Home header quick toggles with 7 requested workflow shortcuts fitted with uniform `1.5`-stroke SVG icons (`SnippingToolIcon`, `ScreenRecordIcon`, `FocusTimerIcon`, `MicIcon`/`MicOffIcon`, `VideoCamIcon`/`VideoCamOffIcon`, `LockIcon`, `BellOffIcon`) and bilingual English/Bangla labels (`en.json`, `bn.json`):
     - **Snipping Tool Screenshot** (`system_launch_snipping_screenshot` -> `ms-screenclip:`)

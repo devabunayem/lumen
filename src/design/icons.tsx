@@ -581,3 +581,113 @@ export function VideoCamOffIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function ShieldIcon({ size = 12, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3Z" />
+    </svg>
+  );
+}
+
+export function RepeatIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M17 2l4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="M7 22l-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  );
+}
+
+export function CrescentIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z" />
+    </svg>
+  );
+}
+
+export function ChevronLeftIcon({ size = 12, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ size = 12, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+export function SolidDotMark({ size = 6, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 8 8"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="4" cy="4" r="3.5" />
+    </svg>
+  );
+}
+
+export function HollowDotMark({ size = 6, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 8 8"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="4" cy="4" r="2.75" />
+    </svg>
+  );
+}
+
+export function BellTickMark({ size = 7, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 10 10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M2.5 6.8h5l-.6-2.4a2 2 0 1 0-3.8 0l-.6 2.4Z" />
+      <path d="M4.2 8.2h1.6" />
+    </svg>
+  );
+}
+
+export function DiamondMark({ size = 6, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 8 8"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <polygon points="4,0.6 7.4,4 4,7.4 0.6,4" />
+    </svg>
+  );
+}

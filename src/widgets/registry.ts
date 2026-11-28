@@ -1,15 +1,6 @@
 import type { LoadedPlugin } from "../lib/ipc";
 
-export const BUILTIN_WIDGET_IDS = [
-  "waqt",
-  "control",
-  "calendar",
-  "reminders",
-  "todo",
-  "water",
-  "pomodoro",
-  "shelf",
-] as const;
+export const BUILTIN_WIDGET_IDS = ["calendar_hub", "control", "water", "shelf"] as const;
 
 export interface IslandPageMeta {
   id: string;

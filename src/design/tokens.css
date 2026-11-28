@@ -75,17 +75,29 @@
   --aurora-focus-a: rgba(114, 112, 255, 0.8);
   --aurora-focus-b: rgba(24, 148, 255, 0.74);
 
-  --waqt-task: #5e5ce6;
-  --waqt-meeting: #30d158;
-  --waqt-habit: #ff9f0a;
-  --waqt-deadline: #ff453a;
-  --waqt-amber-border: rgba(255, 176, 32, 0.75);
-  --waqt-amber-glow: rgba(255, 176, 32, 0.2);
-  --waqt-glow-indigo: rgba(94, 92, 230, 0.48);
-  --waqt-glow-green: rgba(48, 209, 88, 0.24);
-  --waqt-glow-amber: rgba(255, 176, 32, 0.2);
-  --waqt-ghost-border: rgba(255, 255, 255, 0.28);
-  --waqt-card-radius: 16px;
+  --cal-glass-bg: rgba(255, 255, 255, 0.07);
+  --cal-glass-border: rgba(255, 255, 255, 0.11);
+  --cal-glass-hover: rgba(255, 255, 255, 0.12);
+  --cal-pill-bg: rgba(255, 255, 255, 0.08);
+  --cal-pill-border: rgba(255, 255, 255, 0.14);
+  --cal-card-radius: 22px;
+  --cal-blur: 14px;
+  --cal-task: #7a78ff;
+  --cal-event: #30d158;
+  --cal-reminder: #ff9f0a;
+  --cal-deadline: #ff453a;
+  --cal-prayer: #2fd6b8;
+  --cal-today: #ffb020;
+  --cal-today-text: #000000;
+  --cal-selected-ring: rgba(255, 255, 255, 0.85);
+  --cal-social-bg: rgba(255, 69, 58, 0.14);
+  --cal-social-border: rgba(255, 69, 58, 0.3);
+  --cal-glow-indigo: rgba(94, 92, 230, 0.5);
+  --cal-glow-green: rgba(48, 209, 88, 0.24);
+  --cal-glow-amber: rgba(255, 176, 32, 0.2);
+  --cal-cta-bg: #ffffff;
+  --cal-cta-text: #000000;
+  --cal-ring-track: rgba(255, 255, 255, 0.12);
 
   --lumi-body-top: #fff8cf;
   --lumi-body-mid: #ffe083;
@@ -237,6 +249,35 @@ a:focus-visible,
 
 [data-reduce-transparency="true"] .home-glass-chip {
   background: var(--chip-glass-solid);
+}
+
+.cal-glass-card {
+  background: var(--cal-glass-bg);
+  border: 1px solid var(--cal-glass-border);
+  border-radius: var(--cal-card-radius);
+  backdrop-filter: blur(var(--cal-blur));
+}
+
+[data-reduce-transparency="true"] .cal-glass-card {
+  background: var(--glass-card-solid);
+  backdrop-filter: none;
+}
+
+@keyframes lumen-today-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+.lumen-today-ring-pulse {
+  animation: lumen-today-ring-pulse 4s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes lumen-shimmer {
@@ -425,6 +466,7 @@ a:focus-visible,
 [data-reduce-motion="true"] .lumen-water-wave-a,
 [data-reduce-motion="true"] .lumen-water-wave-b,
 [data-reduce-motion="true"] .lumen-water-bubble-1,
-[data-reduce-motion="true"] .lumen-water-bubble-2 {
+[data-reduce-motion="true"] .lumen-water-bubble-2,
+[data-reduce-motion="true"] .lumen-today-ring-pulse {
   animation: none;
 }

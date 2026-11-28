@@ -102,15 +102,6 @@ export const MOTION_PRESETS = {
     duration: 0.28,
     ease: [0.22, 1, 0.36, 1],
   },
-  waqtRailDraw: {
-    duration: 0.6,
-    ease: [0.22, 1, 0.36, 1],
-  },
-  waqtBlurEnter: {
-    duration: 0.2,
-    delay: 0.06,
-    ease: [0.22, 1, 0.36, 1],
-  },
   lumiTransition: {
     duration: 0.22,
     ease: [0.22, 1, 0.36, 1],
@@ -126,6 +117,15 @@ export const MOTION_PRESETS = {
   lumiBeatNod: {
     duration: 0.12,
     ease: [0.22, 1, 0.36, 1],
+  },
+  calendarContentEnter: {
+    duration: 0.2,
+    delay: 0.06,
+    ease: [0.22, 1, 0.36, 1],
+  },
+  calendarDayCrossfade: {
+    duration: 0.12,
+    ease: "easeOut",
   },
 } as const satisfies Record<string, Transition>;
 

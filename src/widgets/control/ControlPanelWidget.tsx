@@ -14,8 +14,9 @@ import {
   ScanTextIcon,
 } from "../../design/icons";
 import {
+  calendarHubAddTask,
+  calendarHubGetSnapshot,
   type CalendarEvent,
-  calendarList,
   type MediaStateSnapshot,
   notifyGetConfig,
   notifySetConfig,
@@ -30,8 +31,6 @@ import {
   systemOcrScreen,
   systemToggleMicMute,
   type TaskItem,
-  tasksAdd,
-  tasksList,
   type WaterSummary,
   waterGetSummary,
   waterLog,
@@ -77,8 +76,27 @@ export function ControlPanelWidget({
     let active = true;
     void systemGetMicMuted().then((m) => active && setMicMuted(m));
     void notifyGetConfig().then((cfg) => active && cfg && setQuietMode(!cfg.enabled));
-    void tasksList().then((list) => active && setTasks(list));
-    void calendarList().then((evs) => active && setEvents(evs));
+    const now = new Date();
+    void calendarHubGetSnapshot(now.getFullYear(), now.getMonth() + 1).then((snap) => {
+      if (!active || !snap) return;
+      setTasks(
+        snap.tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          done: Boolean(t.doneAt),
+          due_at: t.dueDate ? (t.dueTime ? `${t.dueDate}T${t.dueTime}:00` : t.dueDate) : null,
+          created_at: t.createdAt,
+        })),
+      );
+      setEvents(
+        snap.events.map((e) => ({
+          id: e.id,
+          title: e.title,
+          start_at: e.start,
+          created_at: e.start,
+        })),
+      );
+    });
     void prayerGetSchedule().then((p) => active && p && setPrayer(p));
     void waterGetSummary(waterGoalMl).then((w) => active && w && setWater(w));
     return () => {
@@ -129,10 +147,22 @@ export function ControlPanelWidget({
     if (!ocrSnippet) {
       return;
     }
-    const next = await tasksAdd(ocrSnippet, null);
-    setTasks(next);
+    const today = new Date().toISOString().slice(0, 10);
+    const created = await calendarHubAddTask({ title: ocrSnippet, dueDate: today });
+    if (created) {
+      setTasks((prev) => [
+        {
+          id: created.id,
+          title: created.title,
+          done: false,
+          due_at: created.dueDate,
+          created_at: created.createdAt,
+        },
+        ...prev,
+      ]);
+    }
     setOcrSnippet(null);
-    onNavigatePage("todo");
+    onNavigatePage("calendar_hub");
   };
 
   const handleQuickWater = async () => {
@@ -235,7 +265,7 @@ export function ControlPanelWidget({
       icon: quietMode ? <BellOffIcon size={20} /> : <BellIcon size={20} />,
       label: quietLabel,
       onClick: () => void handleToggleQuiet(),
-      onLongPress: () => onNavigatePage("reminders"),
+      onLongPress: () => onNavigatePage("calendar_hub"),
     },
     {
       id: "caffeine",
@@ -288,7 +318,7 @@ export function ControlPanelWidget({
       icon: <ScanTextIcon size={20} />,
       label: ocrLabel,
       onClick: () => void handleOcr(),
-      onLongPress: () => onNavigatePage("todo"),
+      onLongPress: () => onNavigatePage("calendar_hub"),
     },
     {
       id: "calendar",
@@ -297,7 +327,7 @@ export function ControlPanelWidget({
       activeColor: "var(--accent-blue)",
       icon: <CalendarIcon size={20} />,
       label: agendaLabel,
-      onClick: () => onNavigatePage("calendar"),
+      onClick: () => onNavigatePage("calendar_hub"),
     },
     {
       id: "lock",
@@ -400,7 +430,7 @@ export function ControlPanelWidget({
             type="button"
             whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
             transition={{ type: "spring", stiffness: 500, damping: 28 }}
-            onClick={() => onNavigatePage(showPrayerFallback ? "home" : "todo")}
+            onClick={() => onNavigatePage(showPrayerFallback ? "home" : "calendar_hub")}
             className="flex min-h-0 w-full flex-1 cursor-pointer items-center border-0 px-3 py-1.5 text-left transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
             style={{
               backgroundColor: "var(--surface-raised)",
@@ -484,7 +514,7 @@ export function ControlPanelWidget({
             onClick={() => void handleQuickFocus()}
             onContextMenu={(e) => {
               e.preventDefault();
-              onNavigatePage("pomodoro");
+              onNavigatePage("calendar_hub");
             }}
             className="flex cursor-pointer items-center justify-between gap-1.5 border-0 px-2.5 py-1.5 text-left transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
             style={{

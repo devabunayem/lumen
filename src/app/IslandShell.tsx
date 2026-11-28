@@ -1,17 +1,14 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BellIcon,
-  BoltIcon,
   CalendarIcon,
-  CheckListIcon,
   ChevronUpIcon,
   DropletIcon,
   GridIcon,
   InboxIcon,
   PinIcon,
   SettingsIcon,
-  TimerIcon,
+  BoltIcon,
 } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import {
@@ -26,16 +23,40 @@ import {
 } from "../design/lumi";
 import { playUiSound, type UiSoundName } from "../design/sounds";
 import { BASE_GEOMETRY, measureNotificationDimensions, type ShapeStyle } from "../design/tokens";
+import { CalendarHubPage } from "../calendar/CalendarHubPage";
 import { HomePage } from "../home/HomePage";
 import { type AppLanguage, getMessages } from "../i18n";
 import { formatDigits } from "../i18n/digits";
 import {
-  calendarList,
+  calendarHubAddReminder,
+  calendarHubAddTask,
+  calendarHubCompleteReminder,
+  calendarHubConnectIcs,
+  calendarHubConnectOAuth,
+  calendarHubDeleteAllData,
+  calendarHubDeleteTask,
+  calendarHubDisconnectSource,
+  calendarHubDismissMissed,
+  calendarHubFocusDismissFreeLog,
+  calendarHubFocusGetState,
+  calendarHubFocusLogFreeTask,
+  calendarHubFocusRespondPrayer,
+  calendarHubGetSnapshot,
+  type CalendarHubSnapshot,
+  calendarHubMoveTaskDue,
+  calendarHubOpenExternalUrl,
+  calendarHubRestoreTask,
+  calendarHubSetFocusTask,
+  calendarHubSnoozeReminder,
+  calendarHubSyncNow,
+  calendarHubToggleTask,
+  type CalendarTask,
   type CalendarEvent,
   clipboardCopyLatest,
   clipboardGetLatest,
   type ClipboardChipSnapshot,
   type DevPulseSnapshot,
+  type FocusFlowState,
   getMediaState,
   homeSetVisible,
   type HudEvent,
@@ -49,7 +70,6 @@ import {
   openSettingsWindow,
   pluginsList,
   pomodoroGetState,
-  pomodoroReset,
   pomodoroSkip,
   type PomodoroSnapshot,
   pomodoroToggle,
@@ -60,11 +80,6 @@ import {
   prayerSetCity,
   type ReminderAlertPayload,
   type ReminderItem,
-  remindersAdd,
-  remindersDelete,
-  remindersList,
-  remindersSnooze,
-  remindersStop,
   seekMedia,
   selectMediaSession,
   sendMediaCommand,
@@ -77,19 +92,19 @@ import {
   shelfOpen,
   shelfRemove,
   subscribeAudioPeak,
+  subscribeCalendarHubUpdated,
+  subscribeCalendarReminderAlert,
   subscribeClipboardUpdated,
   subscribeDevPulseUpdated,
+  subscribeFocusFlowUpdated,
   subscribeFullscreenChange,
   subscribeHudEvent,
   subscribeMediaUpdated,
   subscribeNotificationPopup,
   subscribePomodoroTick,
   subscribePrayerUpdated,
-  subscribeReminderAlert,
-  subscribeRemindersUpdated,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
-  subscribeWaqtUpdated,
   syncPillBounds,
   systemBatteryStatus,
   systemGetMicMuted,
@@ -106,61 +121,23 @@ import {
   tasbihReset,
   type TasbihState,
   type TaskItem,
-  tasksAdd,
-  tasksDelete,
-  tasksList,
-  tasksToggle,
   type TimeLedgerState,
-  waqtAddTask,
-  waqtAssignBatch,
-  waqtAssignTask,
-  waqtAcceptSuggestion,
-  waqtDismissFirstRun,
-  waqtDismissHint,
-  waqtDismissSuggestion,
-  waqtGetState,
-  waqtLogActivity,
-  waqtMoveOverflowToNext,
-  waqtRenameBlock,
-  waqtRolloverYesterday,
-  waqtSeedSampleTask,
-  waqtStartFocusFlow,
-  waqtUpdateTaskMeta,
-  type WaqtTimelineState,
   waterGetSummary,
   waterLog,
   type WaterSummary,
   waterUndo,
   weatherGetCurrent,
 } from "../lib/ipc";
-import {
-  addLocalReminder,
-  loadLocalReminders,
-  pollDueLocalReminders,
-  saveLocalReminders,
-  snoozeLocalReminder,
-  stopLocalReminder,
-} from "../lib/remindersLocal";
-import {
-  DEFAULT_SETTINGS,
-  type ActionGlowMode,
-  type WaqtPrayerPauseMode,
-  type WaqtRhythmAnchor,
-} from "../settings";
-import { WaqtTimeline } from "../waqt/WaqtTimeline";
+import { DEFAULT_SETTINGS, type ActionGlowMode } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
-import { CalendarWidget } from "../widgets/calendar/CalendarWidget";
 import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
-import { PomodoroWidget } from "../widgets/pomodoro/PomodoroWidget";
-import { RemindersWidget } from "../widgets/reminders/RemindersWidget";
 import {
   BUILTIN_WIDGET_IDS,
   type IslandPageMeta,
   resolveOrderedWidgetIds,
 } from "../widgets/registry";
 import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
-import { TodoWidget } from "../widgets/todo/TodoWidget";
 import { WaterWidget } from "../widgets/water/WaterWidget";
 import { ActionGlowLayer, type LumiMood } from "./ActionGlowLayer";
 import { HudOverlay } from "./HudOverlay";
@@ -207,14 +184,17 @@ export interface IslandShellProps {
   hiddenPages?: string[];
   initialWaterGoalMl?: number;
   mediaExclusions?: string[];
-  waqtBedtimeHHMM?: string;
-  waqtPrayerPauseMode?: WaqtPrayerPauseMode;
-  waqtRamadanTaraweeh?: boolean;
-  waqtHintDismissed?: boolean;
-  waqtBlockNames?: Record<string, string>;
-  waqtQuietMode?: boolean;
-  waqtFirstRunDismissed?: boolean;
-  waqtRhythmAnchors?: WaqtRhythmAnchor[];
+  calendarFirstDayOfWeek?: 0 | 6;
+  calendarColorBlindMarks?: boolean;
+  calendarSocialBlockArmed?: boolean;
+  calendarGoogleClientId?: string;
+  calendarMicrosoftClientId?: string;
+  calendarWritebackTasks?: boolean;
+  onUpdateCalendarSettings?: (patch: {
+    calendarGoogleClientId?: string;
+    calendarMicrosoftClientId?: string;
+    calendarWritebackTasks?: boolean;
+  }) => void;
   onShapeChange?: (next: ShapeStyle) => void;
   onOpenSettings?: () => void;
 }
@@ -231,18 +211,6 @@ function formatClockParts(now: Date): { dateText: string; timeText: string } {
     minute: "2-digit",
   });
   return { dateText, timeText };
-}
-
-function isWithinBedtimeQuietHours(now: Date, bedtimeHHMM: string): boolean {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(bedtimeHHMM.trim());
-  const bedtimeMin = match
-    ? Math.min(23, Number(match[1])) * 60 + Math.min(59, Number(match[2]))
-    : 23 * 60;
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  if (bedtimeMin >= 12 * 60) {
-    return nowMin >= bedtimeMin || nowMin < 5 * 60;
-  }
-  return nowMin >= bedtimeMin && nowMin < 5 * 60;
 }
 
 function isTypingInContainer(container: HTMLElement | null): boolean {
@@ -292,7 +260,6 @@ export function IslandShell({
   chipClipboardEnabled = true,
   chipDevPulseEnabled = true,
   reminderSnoozeMinutes = 3,
-  reminderDefaultLeadMinutes = 10,
   restingShowClock = true,
   restingShowWaveform = true,
   restingShowSensorDots = true,
@@ -304,14 +271,13 @@ export function IslandShell({
   hiddenPages = DEFAULT_SETTINGS.hiddenPages,
   initialWaterGoalMl = 1500,
   mediaExclusions = DEFAULT_SETTINGS.mediaExclusions,
-  waqtBedtimeHHMM = DEFAULT_SETTINGS.waqtBedtimeHHMM,
-  waqtPrayerPauseMode = DEFAULT_SETTINGS.waqtPrayerPauseMode,
-  waqtRamadanTaraweeh = DEFAULT_SETTINGS.waqtRamadanTaraweeh,
-  waqtHintDismissed = DEFAULT_SETTINGS.waqtHintDismissed,
-  waqtBlockNames = DEFAULT_SETTINGS.waqtBlockNames,
-  waqtQuietMode = DEFAULT_SETTINGS.waqtQuietMode,
-  waqtFirstRunDismissed = DEFAULT_SETTINGS.waqtFirstRunDismissed,
-  waqtRhythmAnchors = DEFAULT_SETTINGS.waqtRhythmAnchors,
+  calendarFirstDayOfWeek = DEFAULT_SETTINGS.calendarFirstDayOfWeek,
+  calendarColorBlindMarks = DEFAULT_SETTINGS.calendarColorBlindMarks,
+  calendarSocialBlockArmed = DEFAULT_SETTINGS.calendarSocialBlockArmed,
+  calendarGoogleClientId = DEFAULT_SETTINGS.calendarGoogleClientId,
+  calendarMicrosoftClientId = DEFAULT_SETTINGS.calendarMicrosoftClientId,
+  calendarWritebackTasks = DEFAULT_SETTINGS.calendarWritebackTasks,
+  onUpdateCalendarSettings,
   onShapeChange,
   onOpenSettings,
 }: IslandShellProps) {
@@ -336,17 +302,62 @@ export function IslandShell({
   const [lastPlayedTrack, setLastPlayedTrack] = useState<{ title: string; artist: string } | null>(
     null,
   );
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
-  const [reminders, setReminders] = useState<ReminderItem[]>(() => loadLocalReminders());
-  const remindersRef = useRef<ReminderItem[]>(reminders);
+  const [calendarHubSnapshot, setCalendarHubSnapshot] = useState<CalendarHubSnapshot | null>(null);
+  const [calendarHubLoading, setCalendarHubLoading] = useState(() => isTauriRuntime());
+  const [calSyncing, setCalSyncing] = useState(false);
+  const [focusFlow, setFocusFlow] = useState<FocusFlowState | null>(null);
+  const [calendarMonthCursor, setCalendarMonthCursor] = useState(() => ({
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  }));
+  const lastDeletedCalendarTaskRef = useRef<CalendarTask | null>(null);
+  const calendarCursorRef = useRef(calendarMonthCursor);
   useEffect(() => {
-    remindersRef.current = reminders;
-  }, [reminders]);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [waqtState, setWaqtState] = useState<WaqtTimelineState | null>(null);
-  const [waqtLoading, setWaqtLoading] = useState(() => isTauriRuntime());
-  const [waqtError, setWaqtError] = useState<string | null>(null);
-  const [localWaqtNames, setLocalWaqtNames] = useState<Record<string, string>>({});
+    calendarCursorRef.current = calendarMonthCursor;
+  }, [calendarMonthCursor]);
+
+  const homeTasks = useMemo<TaskItem[]>(
+    () =>
+      (calendarHubSnapshot?.tasks ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        done: Boolean(t.doneAt),
+        due_at: t.dueDate ? (t.dueTime ? `${t.dueDate}T${t.dueTime}:00` : t.dueDate) : null,
+        created_at: t.createdAt,
+        estimate_min: t.estimateMin ?? 25,
+        done_at: t.doneAt,
+        client: t.client,
+        kind: t.isDeadline ? "deadline" : "task",
+      })),
+    [calendarHubSnapshot?.tasks],
+  );
+
+  const homeEvents = useMemo<CalendarEvent[]>(
+    () =>
+      (calendarHubSnapshot?.events ?? []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        start_at: e.start,
+        created_at: e.start,
+      })),
+    [calendarHubSnapshot?.events],
+  );
+
+  const homeReminders = useMemo<ReminderItem[]>(
+    () =>
+      (calendarHubSnapshot?.reminders ?? []).map((r) => ({
+        id: r.id,
+        title: r.title,
+        target_at: r.nextTriggerAt ?? r.at ?? r.createdAt,
+        lead_minutes: 0,
+        lead_dismissed: true,
+        snooze_until: null,
+        exact_fired: false,
+        completed: !r.active,
+        created_at: r.createdAt,
+      })),
+    [calendarHubSnapshot?.reminders],
+  );
   const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
   const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
   const [waterSummary, setWaterSummary] = useState<WaterSummary | null>(null);
@@ -420,11 +431,7 @@ export function IslandShell({
         prayerSchedule.next_diff_min >= 0 &&
         prayerSchedule.next_diff_min <= 2,
       ),
-      isQuietHours: Boolean(
-        waqtQuietMode ||
-        prayerSchedule?.is_night_mode ||
-        isWithinBedtimeQuietHours(nowDate, waqtBedtimeHHMM),
-      ),
+      isQuietHours: Boolean(prayerSchedule?.is_night_mode),
     }),
     [
       mascotEnabled,
@@ -436,9 +443,6 @@ export function IslandShell({
       focusOn,
       pomodoro,
       prayerSchedule,
-      waqtQuietMode,
-      nowDate,
-      waqtBedtimeHHMM,
     ],
   );
   const lumiSilenceDecision = useMemo(
@@ -735,12 +739,12 @@ export function IslandShell({
   const pages = useMemo<IslandPageMeta[]>(() => {
     const catalog = new Map<string, IslandPageMeta>([
       [
-        "waqt",
+        "calendar_hub",
         {
-          id: "waqt",
-          titleLead: msg.pages.waqtLead,
-          titleAccent: msg.pages.waqtAccent,
-          accentVar: "var(--arc-progress)",
+          id: "calendar_hub",
+          titleLead: msg.pages.calendarHubLead,
+          titleAccent: msg.pages.calendarHubAccent,
+          accentVar: "var(--accent-focus)",
         },
       ],
       [
@@ -753,48 +757,12 @@ export function IslandShell({
         },
       ],
       [
-        "calendar",
-        {
-          id: "calendar",
-          titleLead: msg.pages.calendarLead,
-          titleAccent: msg.pages.calendarAccent,
-          accentVar: "var(--accent-orange)",
-        },
-      ],
-      [
-        "reminders",
-        {
-          id: "reminders",
-          titleLead: msg.pages.remindersLead ?? "Timed",
-          titleAccent: msg.pages.remindersAccent ?? "Reminders",
-          accentVar: "var(--accent-red)",
-        },
-      ],
-      [
-        "todo",
-        {
-          id: "todo",
-          titleLead: msg.pages.todoLead,
-          titleAccent: msg.pages.todoAccent,
-          accentVar: "var(--accent-green)",
-        },
-      ],
-      [
         "water",
         {
           id: "water",
           titleLead: msg.pages.waterLead,
           titleAccent: msg.pages.waterAccent,
           accentVar: "var(--accent-blue)",
-        },
-      ],
-      [
-        "pomodoro",
-        {
-          id: "pomodoro",
-          titleLead: msg.pages.pomodoroLead,
-          titleAccent: msg.pages.pomodoroAccent,
-          accentVar: "var(--accent-orange)",
         },
       ],
       [
@@ -848,38 +816,15 @@ export function IslandShell({
   }, []);
 
   useEffect(() => {
-    void tasksList().then(setTasks);
-    void calendarList().then(setCalendarEvents);
-    void remindersList().then((items) => {
-      if (isTauriRuntime()) {
-        setReminders(saveLocalReminders(items));
-      } else {
-        setReminders(loadLocalReminders());
-      }
-    });
     void waterGetSummary(waterGoalMl, 4).then((w) => w && setWaterSummary(w));
     void prayerListCities().then(setPrayerCities);
     void prayerGetSchedule().then((p) => p && setPrayerSchedule(p));
     void pomodoroGetState().then((p) => p && setPomodoro(p));
+    void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
     void shelfList().then(setShelfItems);
     void pluginsList().then(setPlugins);
     void tasbihGet().then((ts) => ts && setTasbih(ts));
     void ledgerGet().then((l) => l && setLedger(l));
-    void waqtGetState()
-      .then((w) => {
-        if (w) setWaqtState(w);
-        setWaqtLoading(false);
-        setWaqtError(null);
-      })
-      .catch((err) => {
-        setWaqtLoading(false);
-        setWaqtError(String(err));
-        triggerLumiEventRef.current("error", {
-          legacyMood: "idle",
-          nativeMood: "oops",
-          durationMs: 2600,
-        });
-      });
     void clipboardGetLatest().then((c) => c && setClipboard(c));
     void systemBatteryStatus().then((b) => b && setBatteryState(b));
     void systemQuickTogglesState().then((qt) => {
@@ -891,13 +836,15 @@ export function IslandShell({
       }
     });
     void systemGetMicMuted().then((muted) => setMicMuted(muted));
-  }, [waterGoalMl]);
-
-  useEffect(() => {
-    if (!waqtFirstRunDismissed) {
-      void waqtSeedSampleTask().then((w) => w && setWaqtState(w));
-    }
-  }, [waqtFirstRunDismissed]);
+    void calendarHubGetSnapshot(calendarMonthCursor.year, calendarMonthCursor.month)
+      .then((snap) => {
+        if (snap) setCalendarHubSnapshot(snap);
+        setCalendarHubLoading(false);
+      })
+      .catch(() => {
+        setCalendarHubLoading(false);
+      });
+  }, [waterGoalMl, calendarMonthCursor.year, calendarMonthCursor.month]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -944,9 +891,9 @@ export function IslandShell({
     let unlistenDevPulse: (() => void) | undefined;
     let unlistenClip: (() => void) | undefined;
     let unlistenPrayer: (() => void) | undefined;
-    let unlistenWaqt: (() => void) | undefined;
-    let unlistenReminderAlert: (() => void) | undefined;
-    let unlistenRemindersList: (() => void) | undefined;
+    let unlistenFocusFlow: (() => void) | undefined;
+    let unlistenCalReminderAlert: (() => void) | undefined;
+    let unlistenCalHubUpdated: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
@@ -1084,28 +1031,6 @@ export function IslandShell({
     }).then((fn) => {
       unlistenNotify = fn;
     });
-    void subscribeReminderAlert((alert) => {
-      setActiveHud(null);
-      setActiveNowPlaying(null);
-      setActiveNotification(null);
-      setNotifyExpanded(false);
-      setActiveReminderAlert(alert);
-      dispatch({ type: "NOTIFICATION" });
-      if (hudTimerRef.current !== null) {
-        window.clearTimeout(hudTimerRef.current);
-      }
-      hudTimerRef.current = window.setTimeout(() => {
-        setActiveReminderAlert(null);
-        dispatch({ type: "HUD_DISMISS" });
-      }, 45_000);
-    }).then((fn) => {
-      unlistenReminderAlert = fn;
-    });
-    void subscribeRemindersUpdated((items) => setReminders(saveLocalReminders(items))).then(
-      (fn) => {
-        unlistenRemindersList = fn;
-      },
-    );
     void subscribeFullscreenChange((active) => {
       dispatch({ type: "FULLSCREEN_CHANGE", active });
     }).then((fn) => {
@@ -1130,8 +1055,46 @@ export function IslandShell({
     void subscribePrayerUpdated((sched) => setPrayerSchedule(sched)).then((fn) => {
       unlistenPrayer = fn;
     });
-    void subscribeWaqtUpdated((nextWaqt) => setWaqtState(nextWaqt)).then((fn) => {
-      unlistenWaqt = fn;
+    void subscribeFocusFlowUpdated((f) => setFocusFlow(f)).then((fn) => {
+      unlistenFocusFlow = fn;
+    });
+    void subscribeCalendarReminderAlert((calAlert) => {
+      setActiveHud(null);
+      setActiveNowPlaying(null);
+      setActiveNotification(null);
+      setNotifyExpanded(false);
+      setActiveReminderAlert({
+        reminder: {
+          id: calAlert.reminder.id,
+          title: calAlert.reminder.title,
+          target_at:
+            calAlert.reminder.nextTriggerAt ?? calAlert.reminder.at ?? new Date().toISOString(),
+          lead_minutes: 0,
+          lead_dismissed: true,
+          snooze_until: null,
+          exact_fired: true,
+          completed: false,
+          created_at: calAlert.reminder.createdAt,
+        },
+        stage: "calendar_hub",
+        is_exact_due: true,
+      });
+      dispatch({ type: "NOTIFICATION" });
+      if (hudTimerRef.current !== null) {
+        window.clearTimeout(hudTimerRef.current);
+      }
+      hudTimerRef.current = window.setTimeout(() => {
+        setActiveReminderAlert(null);
+        dispatch({ type: "HUD_DISMISS" });
+      }, 45_000);
+    }).then((fn) => {
+      unlistenCalReminderAlert = fn;
+    });
+    void subscribeCalendarHubUpdated(() => {
+      const { year, month } = calendarCursorRef.current;
+      void calendarHubGetSnapshot(year, month).then((snap) => snap && setCalendarHubSnapshot(snap));
+    }).then((fn) => {
+      unlistenCalHubUpdated = fn;
     });
 
     return () => {
@@ -1146,34 +1109,17 @@ export function IslandShell({
       unlistenDevPulse?.();
       unlistenClip?.();
       unlistenPrayer?.();
-      unlistenWaqt?.();
-      unlistenReminderAlert?.();
-      unlistenRemindersList?.();
+      unlistenFocusFlow?.();
+      unlistenCalReminderAlert?.();
+      unlistenCalHubUpdated?.();
     };
   }, [dispatch, mediaExclusions]);
-
-  useEffect(() => {
-    if (isTauriRuntime()) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      const { updated, due } = pollDueLocalReminders(remindersRef.current, Date.now());
-      if (due.length > 0) {
-        setReminders(updated);
-        setActiveHud(null);
-        setActiveNotification(null);
-        setActiveReminderAlert(due[0]);
-        dispatch({ type: "NOTIFICATION" });
-      }
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [dispatch]);
 
   const safePageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
-  const isWaqtPage = activePage.id === "waqt";
-  const isHomeSizedPage = isHomePage || isWaqtPage;
+  const isCalendarHubPage = activePage.id === "calendar_hub";
+  const isHomeSizedPage = isHomePage;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1195,7 +1141,9 @@ export function IslandShell({
         const ae = document.activeElement as HTMLElement | null;
         if (
           ae &&
-          ae.closest('[data-testid="day-arc-section"], [data-testid="waqt-rail"], input, textarea')
+          ae.closest(
+            '[data-testid="day-arc-section"], [data-testid="calendar-grid-card"], input, textarea',
+          )
         ) {
           return;
         }
@@ -1206,7 +1154,9 @@ export function IslandShell({
         const ae = document.activeElement as HTMLElement | null;
         if (
           ae &&
-          ae.closest('[data-testid="day-arc-section"], [data-testid="waqt-rail"], input, textarea')
+          ae.closest(
+            '[data-testid="day-arc-section"], [data-testid="calendar-grid-card"], input, textarea',
+          )
         ) {
           return;
         }
@@ -1274,7 +1224,11 @@ export function IslandShell({
       case "live":
         return BASE_GEOMETRY.collapsed;
       case "expanded":
-        return isHomeSizedPage ? BASE_GEOMETRY.homeExpanded : BASE_GEOMETRY.expanded;
+        return isCalendarHubPage
+          ? BASE_GEOMETRY.calendarHubExpanded
+          : isHomeSizedPage
+            ? BASE_GEOMETRY.homeExpanded
+            : BASE_GEOMETRY.expanded;
       case "hud":
         if (activeReminderAlert !== null) {
           return BASE_GEOMETRY.reminder;
@@ -1292,6 +1246,7 @@ export function IslandShell({
   }, [
     effectiveState,
     isSlimQuiet,
+    isCalendarHubPage,
     isHomeSizedPage,
     activeReminderAlert,
     activeNotification,
@@ -1303,7 +1258,7 @@ export function IslandShell({
   const height = Math.round(dimensions.height * scaleFactor);
   const isFloatingPill = shapeStyle === "pill";
   const topOffset = isFloatingPill ? Math.round(BASE_GEOMETRY.pillFloatOffset * scaleFactor) : 0;
-  const homeVisibleNow = isExpanded && isHomeSizedPage && !isHidden;
+  const homeVisibleNow = isExpanded && (isHomeSizedPage || isCalendarHubPage) && !isHidden;
   const isBannerHud =
     effectiveState === "hud" &&
     (activeReminderAlert !== null || activeNotification !== null || activeNowPlaying !== null);
@@ -1318,12 +1273,20 @@ export function IslandShell({
       hideInFullscreen,
       cornerRadius: isFloatingPill
         ? isExpanded
-          ? (isHomeSizedPage ? BASE_GEOMETRY.homeBottomRadius : 28) * scaleFactor
+          ? (isCalendarHubPage
+              ? BASE_GEOMETRY.calendarHubBottomRadius
+              : isHomeSizedPage
+                ? BASE_GEOMETRY.homeBottomRadius
+                : 28) * scaleFactor
           : isBannerHud
             ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2)
         : isExpanded
-          ? (isHomeSizedPage ? BASE_GEOMETRY.homeBottomRadius : 24) * scaleFactor
+          ? (isCalendarHubPage
+              ? BASE_GEOMETRY.calendarHubBottomRadius
+              : isHomeSizedPage
+                ? BASE_GEOMETRY.homeBottomRadius
+                : 24) * scaleFactor
           : isBannerHud
             ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2),
@@ -1367,6 +1330,7 @@ export function IslandShell({
     scaleFactor,
     isFloatingPill,
     isExpanded,
+    isCalendarHubPage,
     isHomeSizedPage,
     homeVisibleNow,
     activeReminderAlert,
@@ -1390,13 +1354,28 @@ export function IslandShell({
 
   const nextShape: ShapeStyle = isFloatingPill ? "notch" : "pill";
   const surfaceBorderRadius = isFloatingPill
-    ? `${Math.min(isExpanded ? (isHomeSizedPage ? BASE_GEOMETRY.homeBottomRadius : 28) : isBannerHud ? (isNowPlaying && !isNotify ? 22 : 24) : Math.round(height / 2), Math.round(height / 2))}px`
+    ? `${Math.min(
+        isExpanded
+          ? isCalendarHubPage
+            ? BASE_GEOMETRY.calendarHubBottomRadius
+            : isHomeSizedPage
+              ? BASE_GEOMETRY.homeBottomRadius
+              : 28
+          : isBannerHud
+            ? isNowPlaying && !isNotify
+              ? 22
+              : 24
+            : Math.round(height / 2),
+        Math.round(height / 2),
+      )}px`
     : isSlimQuiet
       ? "0px 0px 8px 8px"
       : isExpanded
-        ? isHomeSizedPage
-          ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
-          : "0px 0px 24px 24px"
+        ? isCalendarHubPage
+          ? `0px 0px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scaleFactor)}px`
+          : isHomeSizedPage
+            ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
+            : "0px 0px 24px 24px"
         : isBannerHud
           ? isNowPlaying && !isNotify
             ? "0px 0px 22px 22px"
@@ -1615,20 +1594,16 @@ export function IslandShell({
             >
               <ReminderAlertOverlay
                 alert={activeReminderAlert}
-                snoozeMinutes={reminderSnoozeMinutes}
+                snoozeMinutes={
+                  activeReminderAlert.stage === "calendar_hub" ? 10 : reminderSnoozeMinutes
+                }
                 language={language}
-                onStop={(id, stage) => {
+                onStop={(id) => {
                   if (hudTimerRef.current !== null) {
                     window.clearTimeout(hudTimerRef.current);
                     hudTimerRef.current = null;
                   }
-                  if (isTauriRuntime()) {
-                    void remindersStop(id, stage).then((list) =>
-                      setReminders(saveLocalReminders(list)),
-                    );
-                  } else {
-                    setReminders((prev) => stopLocalReminder(prev, id, stage));
-                  }
+                  void calendarHubCompleteReminder(id);
                   setActiveReminderAlert(null);
                 }}
                 onSnooze={(id) => {
@@ -1636,11 +1611,7 @@ export function IslandShell({
                     window.clearTimeout(hudTimerRef.current);
                     hudTimerRef.current = null;
                   }
-                  if (isTauriRuntime()) {
-                    void remindersSnooze(id).then((list) => setReminders(saveLocalReminders(list)));
-                  } else {
-                    setReminders((prev) => snoozeLocalReminder(prev, id, reminderSnoozeMinutes));
-                  }
+                  void calendarHubSnoozeReminder(id, 10);
                   setActiveReminderAlert(null);
                 }}
               />
@@ -1658,20 +1629,16 @@ export function IslandShell({
               >
                 <ReminderAlertOverlay
                   alert={activeReminderAlert}
-                  snoozeMinutes={reminderSnoozeMinutes}
+                  snoozeMinutes={
+                    activeReminderAlert.stage === "calendar_hub" ? 10 : reminderSnoozeMinutes
+                  }
                   language={language}
-                  onStop={(id, stage) => {
+                  onStop={(id) => {
                     if (hudTimerRef.current !== null) {
                       window.clearTimeout(hudTimerRef.current);
                       hudTimerRef.current = null;
                     }
-                    if (isTauriRuntime()) {
-                      void remindersStop(id, stage).then((list) =>
-                        setReminders(saveLocalReminders(list)),
-                      );
-                    } else {
-                      setReminders((prev) => stopLocalReminder(prev, id, stage));
-                    }
+                    void calendarHubCompleteReminder(id);
                     setActiveReminderAlert(null);
                     dispatch({ type: "HUD_DISMISS" });
                   }}
@@ -1680,13 +1647,7 @@ export function IslandShell({
                       window.clearTimeout(hudTimerRef.current);
                       hudTimerRef.current = null;
                     }
-                    if (isTauriRuntime()) {
-                      void remindersSnooze(id).then((list) =>
-                        setReminders(saveLocalReminders(list)),
-                      );
-                    } else {
-                      setReminders((prev) => snoozeLocalReminder(prev, id, reminderSnoozeMinutes));
-                    }
+                    void calendarHubSnoozeReminder(id, 10);
                     setActiveReminderAlert(null);
                     dispatch({ type: "HUD_DISMISS" });
                   }}
@@ -2024,9 +1985,9 @@ export function IslandShell({
                     }
                   }
                   lastPlayedTrack={lastPlayedTrack}
-                  calendarEvents={calendarEvents}
-                  tasks={tasks}
-                  reminders={reminders}
+                  calendarEvents={homeEvents}
+                  tasks={homeTasks}
+                  reminders={homeReminders}
                   water={
                     waterSummary ?? {
                       today_ml: 0,
@@ -2202,9 +2163,9 @@ export function IslandShell({
                   onToggleShape={() => onShapeChange?.(nextShape)}
                 />
               </motion.div>
-            ) : isWaqtPage ? (
+            ) : isCalendarHubPage ? (
               <motion.div
-                key="expanded-waqt"
+                key="expanded-calendar-hub"
                 initial={{ opacity: 0 }}
                 animate={{
                   opacity: 1,
@@ -2224,19 +2185,15 @@ export function IslandShell({
                   left: "50%",
                   x: "-50%",
                   scale: scaleFactor,
-                  width: `${BASE_GEOMETRY.homeExpanded.width}px`,
-                  height: `${BASE_GEOMETRY.homeExpanded.height}px`,
+                  width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
+                  height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
                 }}
                 onClick={(event) => event.stopPropagation()}
               >
-                <WaqtTimeline
-                  waqtState={waqtState}
-                  loading={waqtLoading}
-                  error={waqtError}
+                <CalendarHubPage
+                  snapshot={calendarHubSnapshot}
+                  loading={calendarHubLoading}
                   nowDate={nowDate}
-                  schedule={prayerSchedule}
-                  tasks={tasks}
-                  calendarEvents={calendarEvents}
                   pomodoro={
                     pomodoro ?? {
                       phase: "focus",
@@ -2249,33 +2206,19 @@ export function IslandShell({
                       chime_tick: 0,
                     }
                   }
-                  waterTodayMl={waterSummary?.today_ml ?? 0}
-                  waterGoalMl={waterGoalMl}
+                  focusFlow={focusFlow}
+                  firstDayOfWeek={calendarFirstDayOfWeek}
+                  colorBlindMarks={calendarColorBlindMarks}
+                  socialBlockedArmed={calendarSocialBlockArmed}
+                  googleClientId={calendarGoogleClientId}
+                  microsoftClientId={calendarMicrosoftClientId}
+                  writebackTasks={calendarWritebackTasks}
+                  syncing={calSyncing}
                   language={language}
                   banglaDigits={banglaDigits}
                   reduceMotion={prefersReducedMotion}
                   reduceTransparency={reduceTransparency}
-                  isVisible={homeVisibleNow}
-                  locationConfigured={locationOptIn || Boolean(prayerSchedule?.city_name)}
-                  bedtimeHHMM={waqtBedtimeHHMM}
-                  prayerPauseMode={waqtPrayerPauseMode}
-                  ramadanTaraweeh={waqtRamadanTaraweeh}
-                  hintDismissed={waqtHintDismissed}
-                  quietMode={waqtQuietMode}
-                  firstRunDismissed={waqtFirstRunDismissed}
-                  rhythmAnchors={waqtRhythmAnchors}
-                  customBlockNames={{ ...waqtBlockNames, ...localWaqtNames }}
-                  mascotEnabled={mascotEnabled}
-                  lumiAccessories={lumiAccessories}
-                  lumiBeat={liveTrack?.is_playing ? lumiBeat : 0}
-                  lumiSilent={lumiSilenceDecision.silent}
-                  pagesCount={pages.length}
-                  activePageIndex={safePageIndex}
-                  onSelectPage={(idx) => {
-                    setOpenedViaHomeCard(false);
-                    setSlideDirection(idx >= safePageIndex ? 1 : -1);
-                    setActivePageIndex(idx);
-                  }}
+                  glowEnabled={glowEnabled}
                   onOpenSettings={() => {
                     if (onOpenSettings) {
                       onOpenSettings();
@@ -2283,183 +2226,185 @@ export function IslandShell({
                       void openSettingsWindow();
                     }
                   }}
-                  onRetry={() => {
-                    setWaqtLoading(true);
-                    setWaqtError(null);
-                    void waqtGetState()
-                      .then((w) => {
-                        if (w) setWaqtState(w);
-                        setWaqtLoading(false);
-                      })
-                      .catch((err) => {
-                        setWaqtLoading(false);
-                        setWaqtError(String(err));
-                        triggerLumiEvent("error", {
-                          legacyMood: "idle",
-                          nativeMood: "oops",
-                          durationMs: 2600,
-                        });
-                      });
-                  }}
-                  onAssignTask={(taskId, blockId, sortOrder) => {
-                    setTasks((cur) =>
-                      cur.map((t) =>
-                        t.id === taskId
-                          ? { ...t, block_id: blockId, sort_order: sortOrder ?? t.sort_order }
-                          : t,
-                      ),
-                    );
-                    void waqtAssignTask(taskId, blockId, sortOrder).then(
-                      (w) => w && setWaqtState(w),
-                    );
-                    void tasksList().then(setTasks);
-                  }}
-                  onAssignBatch={(assignments) => {
-                    const lookup = new Map(assignments);
-                    setTasks((cur) =>
-                      cur.map((t) =>
-                        lookup.has(t.id) ? { ...t, block_id: lookup.get(t.id) ?? null } : t,
-                      ),
-                    );
-                    void waqtAssignBatch(assignments).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
-                    });
-                  }}
                   onToggleTask={(taskId) => {
-                    const targetTask = tasks.find((t) => t.id === taskId);
-                    if (targetTask && !targetTask.done) {
-                      triggerLumiEvent("taskDone", {
-                        legacyMood: "celebrate",
-                        durationMs: 2200,
-                        playChirp: "lumi_happy",
-                      });
-                    }
-                    const nowIso = new Date().toISOString();
-                    setTasks((cur) =>
-                      cur.map((t) =>
-                        t.id === taskId
-                          ? { ...t, done: !t.done, done_at: !t.done ? nowIso : null }
-                          : t,
-                      ),
-                    );
-                    void tasksToggle(taskId).then((next) => {
-                      setTasks(next);
-                      void waqtGetState().then((w) => w && setWaqtState(w));
+                    setCalendarHubSnapshot((cur) => {
+                      if (!cur) return cur;
+                      return {
+                        ...cur,
+                        tasks: cur.tasks.map((t) =>
+                          t.id === taskId
+                            ? { ...t, doneAt: t.doneAt ? null : new Date().toISOString() }
+                            : t,
+                        ),
+                      };
                     });
+                    void calendarHubToggleTask(taskId);
                   }}
-                  onAddTask={(title, blockId, estimateMin = 25, startAt = null) => {
-                    const tempId = Date.now();
-                    setTasks((cur) => [
-                      {
-                        id: tempId,
-                        title,
-                        done: false,
-                        due_at: null,
-                        created_at: new Date().toISOString(),
-                        estimate_min: estimateMin,
-                        block_id: blockId,
-                        start_at: startAt ?? null,
-                        kind: "task",
-                      },
-                      ...cur,
-                    ]);
-                    void waqtAddTask({ title, blockId, estimateMin, startAt }).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
+                  onCreateTask={async (parsed) => {
+                    const created = await calendarHubAddTask({
+                      title: parsed.title,
+                      dueDate: parsed.dueDate,
+                      dueTime: parsed.dueTime,
+                      isDeadline: parsed.isDeadline,
                     });
+                    if (created) {
+                      setCalendarHubSnapshot((cur) =>
+                        cur ? { ...cur, tasks: [...cur.tasks, created] } : cur,
+                      );
+                    }
                   }}
                   onDeleteTask={(taskId) => {
-                    setTasks((cur) => cur.filter((t) => t.id !== taskId));
-                    void tasksDelete(taskId).then((next) => {
-                      setTasks(next);
-                      void waqtGetState().then((w) => w && setWaqtState(w));
-                    });
-                  }}
-                  onRestoreTask={({ title, blockId, estimateMin }) => {
-                    void waqtAddTask({ title, blockId, estimateMin }).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
-                    });
-                  }}
-                  onChangeEstimate={(taskId, estimateMin) => {
-                    setTasks((cur) =>
-                      cur.map((t) => (t.id === taskId ? { ...t, estimate_min: estimateMin } : t)),
+                    const found = calendarHubSnapshot?.tasks.find((t) => t.id === taskId) ?? null;
+                    lastDeletedCalendarTaskRef.current = found;
+                    setCalendarHubSnapshot((cur) =>
+                      cur ? { ...cur, tasks: cur.tasks.filter((t) => t.id !== taskId) } : cur,
                     );
-                    void waqtUpdateTaskMeta({ taskId, estimateMin }).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
+                    void calendarHubDeleteTask(taskId);
+                  }}
+                  onRestoreLastDeleted={() => {
+                    const saved = lastDeletedCalendarTaskRef.current;
+                    if (!saved) return;
+                    lastDeletedCalendarTaskRef.current = null;
+                    setCalendarHubSnapshot((cur) =>
+                      cur ? { ...cur, tasks: [...cur.tasks, saved] } : cur,
+                    );
+                    void calendarHubRestoreTask(saved);
+                  }}
+                  onMoveTaskDue={(taskId, dueDate) => {
+                    setCalendarHubSnapshot((cur) =>
+                      cur
+                        ? {
+                            ...cur,
+                            tasks: cur.tasks.map((t) => (t.id === taskId ? { ...t, dueDate } : t)),
+                          }
+                        : cur,
+                    );
+                    void calendarHubMoveTaskDue(taskId, dueDate);
+                  }}
+                  onSetFocusTask={(taskId) => {
+                    setCalendarHubSnapshot((cur) => (cur ? { ...cur, focusTaskId: taskId } : cur));
+                    void calendarHubSetFocusTask(taskId);
+                  }}
+                  onCreateReminder={async (parsed) => {
+                    const created = await calendarHubAddReminder({
+                      title: parsed.title,
+                      kind: parsed.reminderKind,
+                      at: parsed.at,
+                      repeatRule: parsed.repeatRule,
+                      prayerAnchor: parsed.prayerAnchor,
+                      importance: parsed.importance,
                     });
+                    if (created) {
+                      setCalendarHubSnapshot((cur) =>
+                        cur ? { ...cur, reminders: [...cur.reminders, created] } : cur,
+                      );
+                    }
                   }}
-                  onMoveOverflow={(fromBlockId) => {
-                    void waqtMoveOverflowToNext(fromBlockId).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
-                    });
+                  onCompleteReminder={(id) => {
+                    setCalendarHubSnapshot((cur) =>
+                      cur
+                        ? {
+                            ...cur,
+                            reminders: cur.reminders.map((r) =>
+                              r.id === id ? { ...r, missed: false } : r,
+                            ),
+                          }
+                        : cur,
+                    );
+                    void calendarHubCompleteReminder(id);
                   }}
-                  onRenameBlock={(blockId, name) => {
-                    setLocalWaqtNames((cur) => ({ ...cur, [blockId]: name }));
-                    void waqtRenameBlock(blockId, name).then((w) => w && setWaqtState(w));
+                  onDismissMissed={() => {
+                    setCalendarHubSnapshot((cur) =>
+                      cur
+                        ? {
+                            ...cur,
+                            reminders: cur.reminders.map((r) => ({ ...r, missed: false })),
+                          }
+                        : cur,
+                    );
+                    void calendarHubDismissMissed();
                   }}
-                  onRolloverYesterday={(accept) => {
-                    void waqtRolloverYesterday(accept).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
-                    });
-                  }}
-                  onStartFocusFlow={(taskId) => {
-                    setFocusOn(true);
-                    triggerLumiReaction("sleep", 2200);
-                    void waqtStartFocusFlow(taskId).then((res) => {
-                      if (res) {
-                        setWaqtState(res.waqt);
-                        setPomodoro(res.pomodoro);
-                        setLedger(res.ledger);
-                      } else {
-                        void pomodoroToggle().then((p) => p && setPomodoro(p));
-                      }
-                    });
-                  }}
-                  onToggleFocusPause={() => {
-                    setFocusOn((f) => !f);
+                  onToggleFocus={() => {
                     void pomodoroToggle().then((p) => {
                       if (p) setPomodoro(p);
-                      void waqtGetState().then((w) => w && setWaqtState(w));
+                      void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
                     });
                   }}
-                  onResetFocus={() => {
-                    setFocusOn(false);
-                    triggerLumiReaction("celebrate", 2000);
-                    void pomodoroReset().then((p) => {
+                  onSkipFocus={() => {
+                    void pomodoroSkip().then((p) => {
                       if (p) setPomodoro(p);
-                      void waqtGetState().then((w) => w && setWaqtState(w));
+                      void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
                     });
                   }}
-                  onDismissHint={() => {
-                    void waqtDismissHint();
+                  onRespondPrayerPrompt={(pause) => {
+                    void calendarHubFocusRespondPrayer(pause).then((f) => f && setFocusFlow(f));
                   }}
-                  onDismissFirstRun={() => {
-                    void waqtDismissFirstRun();
+                  onDismissFreeFocusLog={() => {
+                    void calendarHubFocusDismissFreeLog().then((f) => f && setFocusFlow(f));
                   }}
-                  onAcceptSuggestion={(sug) => {
-                    void waqtAcceptSuggestion({
-                      suggestionId: sug.id,
-                      text: sug.text,
-                      blockId: sug.block_id,
-                      kind: sug.kind,
-                      estimateMin: sug.estimate_min,
-                      taskId: sug.task_id,
-                    }).then((w) => {
-                      if (w) setWaqtState(w);
-                      void tasksList().then(setTasks);
-                    });
+                  onLogFreeFocusTask={async (title) => {
+                    await calendarHubFocusLogFreeTask(title);
+                    const { year, month } = calendarCursorRef.current;
+                    const snap = await calendarHubGetSnapshot(year, month);
+                    if (snap) setCalendarHubSnapshot(snap);
+                    const f = await calendarHubFocusGetState();
+                    if (f) setFocusFlow(f);
                   }}
-                  onDismissSuggestion={(sug) => {
-                    void waqtDismissSuggestion(sug.id, sug.text).then((w) => w && setWaqtState(w));
+                  onSyncNow={async () => {
+                    setCalSyncing(true);
+                    try {
+                      await calendarHubSyncNow();
+                      const { year, month } = calendarCursorRef.current;
+                      const snap = await calendarHubGetSnapshot(year, month);
+                      if (snap) setCalendarHubSnapshot(snap);
+                    } finally {
+                      setCalSyncing(false);
+                    }
                   }}
-                  onLogActivity={(kind, refId, note) => {
-                    void waqtLogActivity(kind, refId, note).then((w) => w && setWaqtState(w));
+                  onConnectIcs={async (label, url) => {
+                    setCalSyncing(true);
+                    try {
+                      await calendarHubConnectIcs(label, url);
+                      const { year, month } = calendarCursorRef.current;
+                      const snap = await calendarHubGetSnapshot(year, month);
+                      if (snap) setCalendarHubSnapshot(snap);
+                    } finally {
+                      setCalSyncing(false);
+                    }
                   }}
+                  onConnectOAuth={async (provider, clientId, writeScope) => {
+                    setCalSyncing(true);
+                    try {
+                      await calendarHubConnectOAuth(provider, clientId, writeScope);
+                      const { year, month } = calendarCursorRef.current;
+                      const snap = await calendarHubGetSnapshot(year, month);
+                      if (snap) setCalendarHubSnapshot(snap);
+                    } finally {
+                      setCalSyncing(false);
+                    }
+                  }}
+                  onDisconnectSource={async (sourceId) => {
+                    await calendarHubDisconnectSource(sourceId);
+                    const { year, month } = calendarCursorRef.current;
+                    const snap = await calendarHubGetSnapshot(year, month);
+                    if (snap) setCalendarHubSnapshot(snap);
+                  }}
+                  onDeleteAllData={async () => {
+                    await calendarHubDeleteAllData();
+                    const { year, month } = calendarCursorRef.current;
+                    const snap = await calendarHubGetSnapshot(year, month);
+                    if (snap) setCalendarHubSnapshot(snap);
+                  }}
+                  onToggleWriteback={(enabled) => {
+                    onUpdateCalendarSettings?.({ calendarWritebackTasks: enabled });
+                  }}
+                  onJoinMeeting={(url) => {
+                    void calendarHubOpenExternalUrl(url);
+                  }}
+                  onOpenEventExternal={(ev) => {
+                    void calendarHubOpenExternalUrl(ev.meetingUrl ?? "https://calendar.google.com");
+                  }}
+                  onMonthChange={(year, month) => setCalendarMonthCursor({ year, month })}
                 />
               </motion.div>
             ) : (
@@ -2655,102 +2600,6 @@ export function IslandShell({
                           }}
                         />
                       )}
-                      {activePage.id === "calendar" && (
-                        <div className="h-full w-full">
-                          <CalendarWidget language={language} />
-                        </div>
-                      )}
-                      {activePage.id === "reminders" && (
-                        <RemindersWidget
-                          reminders={reminders}
-                          defaultLeadMinutes={reminderDefaultLeadMinutes}
-                          snoozeMinutes={reminderSnoozeMinutes}
-                          language={language}
-                          onInputFocusChange={(focused) => {
-                            editingLockRef.current = focused;
-                          }}
-                          onAdd={async (title, targetAtIso, leadMinutes) => {
-                            triggerLumiReaction("confirm", 2400);
-                            if (isTauriRuntime()) {
-                              const next = await remindersAdd(title, targetAtIso, leadMinutes);
-                              setReminders(saveLocalReminders(next));
-                            } else {
-                              setReminders((prev) =>
-                                addLocalReminder(prev, title, targetAtIso, leadMinutes),
-                              );
-                            }
-                          }}
-                          onDelete={async (id) => {
-                            if (isTauriRuntime()) {
-                              const next = await remindersDelete(id);
-                              setReminders(saveLocalReminders(next));
-                            } else {
-                              setReminders((prev) =>
-                                saveLocalReminders(prev.filter((r) => r.id !== id)),
-                              );
-                            }
-                          }}
-                          onMarkDone={async (id) => {
-                            if (isTauriRuntime()) {
-                              const next = await remindersStop(id, "exact");
-                              setReminders(saveLocalReminders(next));
-                            } else {
-                              setReminders((prev) => stopLocalReminder(prev, id, "exact"));
-                            }
-                          }}
-                        />
-                      )}
-                      {activePage.id === "todo" && (
-                        <TodoWidget
-                          tasks={tasks}
-                          onAdd={(title, dueAt) => {
-                            void tasksAdd(title, dueAt).then((updated) => {
-                              if (updated.length > 0 || isTauriRuntime()) {
-                                setTasks(updated);
-                              } else {
-                                setTasks((prev) => [
-                                  {
-                                    id: Date.now(),
-                                    title,
-                                    done: false,
-                                    due_at: dueAt ?? null,
-                                    created_at: new Date().toISOString(),
-                                  },
-                                  ...prev,
-                                ]);
-                              }
-                            });
-                          }}
-                          onToggle={(id) => {
-                            const targetTask = tasks.find((t) => t.id === id);
-                            if (targetTask && !targetTask.done) {
-                              triggerLumiEvent("taskDone", {
-                                legacyMood: "celebrate",
-                                durationMs: 2200,
-                                playChirp: "lumi_happy",
-                              });
-                            }
-                            void tasksToggle(id).then((updated) => {
-                              if (isTauriRuntime()) {
-                                setTasks(updated);
-                              } else {
-                                setTasks((prev) =>
-                                  prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-                                );
-                              }
-                            });
-                          }}
-                          onDelete={(id) => {
-                            void tasksDelete(id).then((updated) => {
-                              if (isTauriRuntime()) {
-                                setTasks(updated);
-                              } else {
-                                setTasks((prev) => prev.filter((t) => t.id !== id));
-                              }
-                            });
-                          }}
-                        />
-                      )}
 
                       {activePage.id === "water" && (
                         <div className="h-full w-full">
@@ -2793,21 +2642,6 @@ export function IslandShell({
                             }}
                           />
                         </div>
-                      )}
-
-                      {activePage.id === "pomodoro" && (
-                        <PomodoroWidget
-                          pomodoro={pomodoro}
-                          onToggle={() => {
-                            void pomodoroToggle().then((p) => p && setPomodoro(p));
-                          }}
-                          onSkip={() => {
-                            void pomodoroSkip().then((p) => p && setPomodoro(p));
-                          }}
-                          onReset={() => {
-                            void pomodoroReset().then((p) => p && setPomodoro(p));
-                          }}
-                        />
                       )}
 
                       {activePage.id === "shelf" && (
@@ -2924,18 +2758,12 @@ export function IslandShell({
                       {pages.map((page, index) => {
                         const active = index === safePageIndex && !pageGalleryOpen;
                         const icon =
-                          page.id === "control" ? (
-                            <GridIcon size={13} />
-                          ) : page.id === "calendar" ? (
+                          page.id === "calendar_hub" ? (
                             <CalendarIcon size={13} />
-                          ) : page.id === "reminders" ? (
-                            <BellIcon size={13} />
-                          ) : page.id === "todo" ? (
-                            <CheckListIcon size={13} />
+                          ) : page.id === "control" ? (
+                            <GridIcon size={13} />
                           ) : page.id === "water" ? (
                             <DropletIcon size={13} />
-                          ) : page.id === "pomodoro" ? (
-                            <TimerIcon size={13} />
                           ) : page.id === "shelf" ? (
                             <InboxIcon size={13} />
                           ) : (

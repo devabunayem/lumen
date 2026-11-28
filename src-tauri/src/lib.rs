@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Utc};
+use lumen_core::calendar_parser::{ParsedQuickAdd, parse_quick_add};
+use lumen_core::focus_engine::{FocusConfig, FocusEngine, FocusFlowState, PrayerArrivalMode};
 use lumen_core::{
     IslandMachine, LumenSettings, PomodoroController, PomodoroPhase, PomodoroSnapshot,
 };
@@ -23,13 +25,16 @@ use lumen_prayer::{
     BANGLADESH_CITIES, CalculationMethod, Madhab, PrayerCityPreset, PrayerConfig, PrayerSchedule,
     compute_prayer_schedule, resolve_city_name_for_coords,
 };
-use lumen_storage::waqt::{
-    WaqtAnchor, WaqtComputeInput, WaqtRhythmSpec, WaqtTimelineState, compute_waqt_timeline,
+use lumen_storage::calendar_hub::{
+    CalendarHubEvent, CalendarHubSnapshot, CalendarReminder, CalendarTask, PrayerAnchorSpec,
+    SyncedEventInput,
 };
-use lumen_storage::{
-    CalendarEvent, ReminderItem, ShelfItem, StorageRepo, TasbihState, TaskItem, TimeLedgerState,
-    WaterSummary,
-};
+use lumen_storage::{ShelfItem, StorageRepo, TasbihState, TimeLedgerState, WaterSummary};
+use lumen_sync::google::connect_google_pkce;
+use lumen_sync::keyring_store::{delete_tokens, save_tokens};
+use lumen_sync::microsoft::connect_microsoft_pkce;
+use lumen_sync::oauth::open_browser_url;
+use lumen_sync::{cache_window_bounds, disconnect_provider, push_task_to_provider, sync_provider};
 use lumen_windows::{
     ClipboardChipSnapshot, GlobalHotkeyManager, HotkeyAction, HudEvent, OpenMeteoWeather,
     acquire_single_instance_mutex, battery_status, capture_screen_to_png, check_dev_ports,
@@ -50,8 +55,8 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-const CANVAS_WIN_W: f64 = 1040.0;
-const CANVAS_WIN_H: f64 = 510.0;
+const CANVAS_WIN_W: f64 = 1220.0;
+const CANVAS_WIN_H: f64 = 600.0;
 
 #[derive(Debug, Clone, Copy)]
 struct IslandRuntimeConfig {
@@ -112,7 +117,9 @@ struct AppState {
     clipboard_secret: Arc<Mutex<Option<(String, Instant)>>>,
     is_fullscreen: Arc<AtomicBool>,
     silent_mode: Arc<AtomicBool>,
-    waqt_focus_task_id: Arc<Mutex<Option<i64>>>,
+    focus_managed_silent: Arc<AtomicBool>,
+    focus_engine: Arc<Mutex<FocusEngine>>,
+    last_calendar_sync: Arc<Mutex<Option<Instant>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -299,6 +306,20 @@ fn set_island_surface_mode(
         } else {
             recenter_window(&window, CANVAS_WIN_W, CANVAS_WIN_H, &settings);
             let _ = window.show();
+            if expanded {
+                let is_stale = state
+                    .last_calendar_sync
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.map(|t| t.elapsed() >= Duration::from_secs(60)))
+                    .unwrap_or(true);
+                if is_stale {
+                    let sync_app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = calendar_sync_background(&sync_app, None).await;
+                    });
+                }
+            }
         }
     }
     Ok(())
@@ -434,30 +455,6 @@ async fn media_select_session(
 }
 
 #[tauri::command]
-fn tasks_list(state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
-    state.storage.list_tasks()
-}
-
-#[tauri::command]
-fn tasks_add(
-    title: String,
-    due_at: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<TaskItem>, String> {
-    state.storage.add_task(&title, due_at)
-}
-
-#[tauri::command]
-fn tasks_toggle(id: i64, state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
-    state.storage.toggle_task(id)
-}
-
-#[tauri::command]
-fn tasks_delete(id: i64, state: State<'_, AppState>) -> Result<Vec<TaskItem>, String> {
-    state.storage.delete_task(id)
-}
-
-#[tauri::command]
 fn water_get_summary(
     goal_ml: i64,
     reset_hour: u32,
@@ -529,6 +526,66 @@ fn prayer_set_city(city_id: String, state: State<'_, AppState>) -> Result<Prayer
     Ok(compute_prayer_schedule(Utc::now(), &cfg))
 }
 
+fn focus_config_from_settings(settings: &LumenSettings) -> FocusConfig {
+    FocusConfig {
+        focus_min: settings.focus_minutes,
+        short_break_min: settings.focus_short_break_minutes,
+        long_break_min: settings.focus_long_break_minutes,
+        rounds: settings.focus_rounds,
+        social_blocked_armed: settings.calendar_social_block_armed,
+        sync_dnd: true,
+        sync_time_ledger: true,
+        prayer_arrival_mode: PrayerArrivalMode::from_str_mode(&settings.calendar_prayer_pause_mode),
+    }
+}
+
+fn sync_focus_side_effects(
+    app: &tauri::AppHandle,
+    pom_snap: &PomodoroSnapshot,
+    focus_state: &FocusFlowState,
+    storage: &StorageRepo,
+    silent_flag: &AtomicBool,
+    managed_silent: &AtomicBool,
+) {
+    let now = Utc::now().to_rfc3339();
+    if focus_state.dnd_active {
+        if !silent_flag.load(Ordering::Relaxed) {
+            silent_flag.store(true, Ordering::Relaxed);
+            managed_silent.store(true, Ordering::Relaxed);
+        }
+    } else if managed_silent.swap(false, Ordering::Relaxed) {
+        silent_flag.store(false, Ordering::Relaxed);
+    }
+
+    if pom_snap.running && pom_snap.phase == PomodoroPhase::Focus {
+        let task_ref = focus_state.bound_task_id.map(|id| id.to_string());
+        let label = focus_state
+            .bound_task_title
+            .as_deref()
+            .unwrap_or("Free focus");
+        let _ = storage.log_activity("focus", &now, None, task_ref.as_deref(), Some(label));
+        if focus_state.time_ledger_active
+            && let Ok(cur) = storage.get_active_ledger()
+            && !cur.running
+        {
+            let _ = storage.toggle_ledger(Some(label));
+        }
+    } else {
+        let _ = storage.finish_open_focus_activity(&now);
+        if let Ok(cur) = storage.get_active_ledger()
+            && cur.running
+        {
+            let _ = storage.toggle_ledger(None);
+        }
+    }
+
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.emit("lumen://pomodoro-tick", pom_snap);
+        let _ = win.emit("lumen://focus-flow-updated", focus_state);
+    }
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+}
+
 #[tauri::command]
 fn pomodoro_get_state(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
     let guard = state
@@ -539,49 +596,99 @@ fn pomodoro_get_state(state: State<'_, AppState>) -> Result<PomodoroSnapshot, St
 }
 
 #[tauri::command]
-fn pomodoro_toggle(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
-    let mut guard = state
-        .pomodoro
-        .lock()
-        .map_err(|_| "pomodoro lock poisoned".to_string())?;
-    guard.toggle_start_pause();
-    let snap = guard.snapshot();
-    drop(guard);
-    let now = Utc::now().to_rfc3339();
-    if snap.running && snap.phase == PomodoroPhase::Focus {
-        let task_ref = state
-            .waqt_focus_task_id
+fn pomodoro_toggle(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<PomodoroSnapshot, String> {
+    let snap = {
+        let mut guard = state
+            .pomodoro
             .lock()
-            .ok()
-            .and_then(|g| *g)
-            .map(|id| id.to_string());
-        let _ = state
-            .storage
-            .log_activity("focus", &now, None, task_ref.as_deref(), None);
-    } else {
-        let _ = state.storage.finish_open_focus_activity(&now);
+            .map_err(|_| "pomodoro lock poisoned".to_string())?;
+        guard.toggle_start_pause();
+        guard.snapshot()
+    };
+    let focus_state = {
+        let mut fe = state
+            .focus_engine
+            .lock()
+            .map_err(|_| "focus engine lock poisoned".to_string())?;
+        fe.on_manual_toggle(snap.running);
+        fe.snapshot(&snap)
+    };
+    sync_focus_side_effects(
+        &app,
+        &snap,
+        &focus_state,
+        &state.storage,
+        &state.silent_mode,
+        &state.focus_managed_silent,
+    );
+    if snap.running {
+        let settings = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
+        let is_fs = state.is_fullscreen.load(Ordering::Relaxed);
+        let ctx = build_sound_ctx(&settings, &state.pomodoro, is_fs, true);
+        let _ = try_play_ui_sound(UiSoundName::FocusStart, &ctx);
     }
     Ok(snap)
 }
 
 #[tauri::command]
-fn pomodoro_skip(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
-    let mut guard = state
-        .pomodoro
+fn pomodoro_skip(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<PomodoroSnapshot, String> {
+    let snap = {
+        let mut guard = state
+            .pomodoro
+            .lock()
+            .map_err(|_| "pomodoro lock poisoned".to_string())?;
+        guard.skip();
+        guard.snapshot()
+    };
+    let focus_state = state
+        .focus_engine
         .lock()
-        .map_err(|_| "pomodoro lock poisoned".to_string())?;
-    guard.skip();
-    Ok(guard.snapshot())
+        .map_err(|_| "focus engine lock poisoned".to_string())?
+        .snapshot(&snap);
+    sync_focus_side_effects(
+        &app,
+        &snap,
+        &focus_state,
+        &state.storage,
+        &state.silent_mode,
+        &state.focus_managed_silent,
+    );
+    Ok(snap)
 }
 
 #[tauri::command]
-fn pomodoro_reset(state: State<'_, AppState>) -> Result<PomodoroSnapshot, String> {
-    let mut guard = state
-        .pomodoro
+fn pomodoro_reset(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<PomodoroSnapshot, String> {
+    let snap = {
+        let mut guard = state
+            .pomodoro
+            .lock()
+            .map_err(|_| "pomodoro lock poisoned".to_string())?;
+        guard.reset();
+        guard.snapshot()
+    };
+    let focus_state = state
+        .focus_engine
         .lock()
-        .map_err(|_| "pomodoro lock poisoned".to_string())?;
-    guard.reset();
-    Ok(guard.snapshot())
+        .map_err(|_| "focus engine lock poisoned".to_string())?
+        .snapshot(&snap);
+    sync_focus_side_effects(
+        &app,
+        &snap,
+        &focus_state,
+        &state.storage,
+        &state.silent_mode,
+        &state.focus_managed_silent,
+    );
+    Ok(snap)
 }
 
 #[tauri::command]
@@ -757,6 +864,21 @@ fn settings_update(
         *guard = clean.clone();
     }
 
+    let next_focus_cfg = focus_config_from_settings(&clean);
+    let pom_cfg = next_focus_cfg.to_pomodoro_config(true);
+    let pom_snap = if let Ok(mut p) = state.pomodoro.lock() {
+        p.update_config(pom_cfg);
+        p.snapshot()
+    } else {
+        PomodoroController::new(pom_cfg, 0).snapshot()
+    };
+    if let Ok(mut fe) = state.focus_engine.lock() {
+        fe.update_config(next_focus_cfg);
+        let focus_state = fe.snapshot(&pom_snap);
+        let _ = app.emit("lumen://focus-flow-updated", focus_state);
+    }
+    let _ = app.emit("lumen://pomodoro-tick", pom_snap);
+
     if let Some(window) = app.get_webview_window("island") {
         let (_expanded, hidden, _is_hud) =
             state.surface_mode.lock().map(|g| *g).unwrap_or_default();
@@ -883,84 +1005,6 @@ async fn system_privacy_indicators() -> Result<(bool, bool), String> {
 }
 
 #[tauri::command]
-fn calendar_list(state: State<'_, AppState>) -> Result<Vec<CalendarEvent>, String> {
-    state.storage.list_calendar_events()
-}
-
-#[tauri::command]
-fn calendar_add(
-    title: String,
-    start_at: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<CalendarEvent>, String> {
-    state.storage.add_calendar_event(&title, &start_at)
-}
-
-#[tauri::command]
-fn calendar_delete(id: i64, state: State<'_, AppState>) -> Result<Vec<CalendarEvent>, String> {
-    state.storage.delete_calendar_event(id)
-}
-
-#[tauri::command]
-fn reminders_list(state: State<'_, AppState>) -> Result<Vec<ReminderItem>, String> {
-    state.storage.list_reminders()
-}
-
-#[tauri::command]
-fn reminders_add(
-    title: String,
-    target_at: String,
-    lead_minutes: i64,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<ReminderItem>, String> {
-    let list = state
-        .storage
-        .add_reminder(&title, &target_at, lead_minutes)?;
-    let _ = app.emit("lumen://reminders-updated", &list);
-    Ok(list)
-}
-
-#[tauri::command]
-fn reminders_delete(
-    id: i64,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<ReminderItem>, String> {
-    let list = state.storage.delete_reminder(id)?;
-    let _ = app.emit("lumen://reminders-updated", &list);
-    Ok(list)
-}
-
-#[tauri::command]
-fn reminders_stop(
-    id: i64,
-    stage: String,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<ReminderItem>, String> {
-    let list = state.storage.stop_reminder_alert(id, &stage)?;
-    let _ = app.emit("lumen://reminders-updated", &list);
-    Ok(list)
-}
-
-#[tauri::command]
-fn reminders_snooze(
-    id: i64,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<ReminderItem>, String> {
-    let snooze_mins = state
-        .settings
-        .lock()
-        .map(|g| i64::from(g.reminder_snooze_minutes))
-        .unwrap_or(3);
-    let list = state.storage.snooze_reminder_alert(id, snooze_mins)?;
-    let _ = app.emit("lumen://reminders-updated", &list);
-    Ok(list)
-}
-
-#[tauri::command]
 fn plugins_list(state: State<'_, AppState>) -> Vec<LoadedPlugin> {
     discover_plugins(&state.plugins_dir)
 }
@@ -1067,7 +1111,10 @@ fn play_ui_sound(name: String, state: State<'_, AppState>) -> Result<bool, Strin
         return Ok(false);
     }
     let is_fs = state.is_fullscreen.load(Ordering::Relaxed);
-    let allow_focus = matches!(sound, UiSoundName::ReminderAlarm);
+    let allow_focus = matches!(
+        sound,
+        UiSoundName::ReminderAlarm | UiSoundName::FocusStart | UiSoundName::FocusEnd
+    );
     let ctx = build_sound_ctx(&settings, &state.pomodoro, is_fs, allow_focus);
     Ok(try_play_ui_sound(sound, &ctx))
 }
@@ -1271,545 +1318,614 @@ fn ledger_toggle(
     Ok(next)
 }
 
-fn today_ymd_local(now_utc: chrono::DateTime<Utc>) -> String {
-    let offset = chrono::FixedOffset::east_opt(6 * 3600)
-        .unwrap_or_else(|| chrono::FixedOffset::east_opt(0).expect("offset"));
-    now_utc
-        .with_timezone(&offset)
-        .format("%Y-%m-%d")
-        .to_string()
-}
-
-fn load_string_vec_kv(storage: &StorageRepo, key: &str) -> Vec<String> {
-    storage
-        .get_kv(key)
-        .ok()
-        .flatten()
-        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
-        .unwrap_or_default()
-}
-
-fn save_string_vec_kv(storage: &StorageRepo, key: &str, items: &[String]) {
-    if let Ok(json) = serde_json::to_string(items) {
-        let _ = storage.set_kv(key, &json);
-    }
-}
-
-fn ensure_daily_rhythm_tasks(
-    storage: &StorageRepo,
-    now_utc: chrono::DateTime<Utc>,
-    settings: &LumenSettings,
-) {
-    let today = today_ymd_local(now_utc);
-    let last_date = storage
-        .get_kv("waqt_auto_rhythm_date")
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-    if last_date == today {
-        return;
-    }
-    let existing = storage.list_tasks().unwrap_or_default();
-    for anchor in &settings.waqt_rhythm_anchors {
-        if anchor.enabled && anchor.auto_add_daily {
-            let already = existing.iter().any(|t| {
-                !t.done
-                    && t.title.eq_ignore_ascii_case(&anchor.title)
-                    && t.block_id.as_deref() == Some(anchor.block_id.as_str())
-            });
-            if !already {
-                let _ = storage.add_planner_task(
-                    &anchor.title,
-                    Some(today.clone()),
-                    anchor.estimate_min.max(5),
-                    Some(anchor.block_id.clone()),
-                    false,
-                    None,
-                    None,
-                    &anchor.kind,
-                );
-            }
-        }
-    }
-    let _ = storage.set_kv("waqt_auto_rhythm_date", &today);
-}
-
-fn build_waqt_snapshot(state: &AppState) -> Result<WaqtTimelineState, String> {
-    let cfg = state
-        .prayer_config
-        .lock()
-        .map_err(|_| "prayer config mutex poisoned".to_string())?
-        .clone();
-    let now_utc = Utc::now();
-    let sched = compute_prayer_schedule(now_utc, &cfg);
-    let anchors: Vec<WaqtAnchor> = sched
-        .slots
-        .iter()
-        .map(|s| WaqtAnchor {
-            id: s.id.clone(),
-            label: s.name_en.clone(),
-            time_12h: s.time_12h.clone(),
-            minute_of_day: s.minute_of_day,
-            passed: s.passed,
-            is_next: s.name_en == sched.next_name_en,
-        })
-        .collect();
-
-    let settings = state
-        .settings
-        .lock()
-        .map_err(|_| "settings mutex poisoned".to_string())?
-        .clone();
-    ensure_daily_rhythm_tasks(&state.storage, now_utc, &settings);
-
-    let tasks = state.storage.list_tasks()?;
-    let calendar_events = state.storage.list_calendar_events()?;
-    let day_start = StorageRepo::day_window_start_utc(now_utc, 0).to_rfc3339();
-    let activity_log = state.storage.list_activity_since(&day_start)?;
-    let water = state
-        .storage
-        .water_summary(now_utc, settings.water_goal_ml, 4)?;
-    let daily_focus = state.storage.daily_focus_minutes(now_utc).unwrap_or(0) as i32;
-    let current_focus_task_id = state.waqt_focus_task_id.lock().ok().and_then(|g| *g);
-    let location_configured = settings.location_opt_in || !cfg.city_name.trim().is_empty();
-    let today = today_ymd_local(now_utc);
-    let dismissed_key = format!("waqt_dismissed_{today}");
-    let dismissed_suggestions = load_string_vec_kv(&state.storage, &dismissed_key);
-    let recent_suggestion_texts = load_string_vec_kv(&state.storage, "waqt_recent_suggestions");
-    let rhythm_specs: Vec<WaqtRhythmSpec> = settings
-        .waqt_rhythm_anchors
-        .iter()
-        .map(|a| WaqtRhythmSpec {
-            id: a.id.clone(),
-            title: a.title.clone(),
-            block_id: a.block_id.clone(),
-            kind: a.kind.clone(),
-            estimate_min: a.estimate_min,
-            enabled: a.enabled,
-            is_user_template: a.is_user_template,
-        })
-        .collect();
-
-    Ok(compute_waqt_timeline(&WaqtComputeInput {
-        now_utc,
-        anchors: &anchors,
-        tasks: &tasks,
-        calendar_events: &calendar_events,
-        activity_log: &activity_log,
-        custom_block_names: &settings.waqt_block_names,
-        bedtime_hhmm: &settings.waqt_bedtime_hhmm,
-        ramadan_taraweeh: settings.waqt_ramadan_taraweeh,
-        is_friday: sched.is_friday,
-        is_ramadan: sched.is_ramadan,
-        sehri_min: sched.sehri_min,
-        iftar_min: sched.iftar_min,
-        location_configured,
-        pomodoro_focus_min: daily_focus,
-        water_today_ml: water.today_ml,
-        water_goal_ml: settings.water_goal_ml,
-        rollover_at_fajr: settings.waqt_rollover_at_fajr,
-        current_focus_task_id,
-        quiet_mode: settings.waqt_quiet_mode,
-        rhythm_anchors: &rhythm_specs,
-        dismissed_suggestions: &dismissed_suggestions,
-        recent_suggestion_texts: &recent_suggestion_texts,
-    }))
-}
-
-fn emit_waqt_updated(app: &tauri::AppHandle, state: &AppState) {
-    if let Ok(snap) = build_waqt_snapshot(state)
-        && let Some(win) = app.get_webview_window("island")
-    {
-        let _ = win.emit("lumen://waqt-updated", snap);
-    }
+#[tauri::command]
+fn calendar_hub_get_snapshot(
+    year: i32,
+    month: u32,
+    state: State<'_, AppState>,
+) -> Result<CalendarHubSnapshot, String> {
+    state.storage.calendar_hub_snapshot(year, month)
 }
 
 #[tauri::command]
-fn waqt_get_state(state: State<'_, AppState>) -> Result<WaqtTimelineState, String> {
-    build_waqt_snapshot(&state)
+fn calendar_hub_add_task(
+    title: String,
+    due_date: Option<String>,
+    due_time: Option<String>,
+    estimate_min: Option<i64>,
+    is_deadline: Option<bool>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CalendarTask, String> {
+    let task = state.storage.calendar_hub_add_task(
+        &title,
+        due_date.as_deref(),
+        due_time.as_deref(),
+        estimate_min,
+        is_deadline.unwrap_or(false),
+    )?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(task)
+}
+
+#[tauri::command]
+fn calendar_hub_toggle_task(
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let res = state.storage.calendar_hub_toggle_task(id)?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(res)
 }
 
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-fn waqt_add_task(
+fn calendar_hub_add_local_event(
     title: String,
-    estimate_min: Option<i64>,
-    block_id: Option<String>,
-    kind: Option<String>,
-    fixed: Option<bool>,
-    start_at: Option<String>,
-    client: Option<String>,
+    start: String,
+    end: String,
+    all_day: bool,
+    color: String,
+    meeting_url: Option<String>,
+    location: Option<String>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let _ = state.storage.add_planner_task(
+) -> Result<CalendarHubEvent, String> {
+    let ev = state.storage.calendar_hub_add_local_event(
         &title,
-        None,
-        estimate_min.unwrap_or(25),
-        block_id,
-        fixed.unwrap_or(false),
-        start_at,
-        client,
-        kind.as_deref().unwrap_or("task"),
+        &start,
+        &end,
+        all_day,
+        &color,
+        meeting_url.as_deref(),
+        location.as_deref(),
     )?;
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(ev)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+fn calendar_hub_add_reminder(
+    title: String,
+    kind: String,
+    at: Option<String>,
+    repeat_rule: Option<String>,
+    prayer_anchor: Option<PrayerAnchorSpec>,
+    importance: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CalendarReminder, String> {
+    let rem = state.storage.calendar_hub_add_reminder(
+        &title,
+        &kind,
+        at.as_deref(),
+        repeat_rule.as_deref(),
+        prayer_anchor,
+        importance.as_deref().unwrap_or("normal"),
+    )?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(rem)
 }
 
 #[tauri::command]
-fn waqt_assign_task(
-    task_id: i64,
-    block_id: Option<String>,
-    sort_order: Option<i64>,
+fn calendar_hub_parse_quick_add(raw: String, mode: String) -> ParsedQuickAdd {
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    parse_quick_add(&raw, &today, &mode)
+}
+
+#[tauri::command]
+fn calendar_hub_move_task_due(
+    id: i64,
+    due_date: Option<String>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let _ = state
+) -> Result<(), String> {
+    state
         .storage
-        .assign_task_block(task_id, block_id, sort_order)?;
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+        .calendar_hub_move_task_due(id, due_date.as_deref())?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
 }
 
 #[tauri::command]
-fn waqt_update_task_meta(
-    task_id: i64,
-    estimate_min: Option<i64>,
-    kind: Option<String>,
-    block_id: Option<Option<String>>,
-    client: Option<Option<String>>,
+fn calendar_hub_delete_task(
+    id: i64,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let _ = state
-        .storage
-        .update_task_planner(task_id, estimate_min, kind, block_id, client)?;
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+) -> Result<Option<CalendarTask>, String> {
+    let deleted = state.storage.calendar_hub_delete_task(id)?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(deleted)
 }
 
 #[tauri::command]
-fn waqt_move_overflow_to_next(
-    from_block_id: String,
+fn calendar_hub_restore_task(
+    task: CalendarTask,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let current = build_waqt_snapshot(&state)?;
-    if let Some(pos) = current.blocks.iter().position(|b| b.id == from_block_id)
-        && let Some(next_block) = current.blocks.get(pos + 1)
-    {
-        let block = &current.blocks[pos];
-        let mut excess = (-block.free_capacity_min).max(0);
-        for item in block
-            .items
-            .iter()
-            .rev()
-            .filter(|i| !i.fixed && !i.done && i.id > 0)
-        {
-            if excess <= 0 {
-                break;
-            }
-            let _ = state
-                .storage
-                .assign_task_block(item.id, Some(next_block.id.clone()), None)?;
-            excess -= (item.estimate_min as i32) + 5;
-        }
+) -> Result<CalendarTask, String> {
+    let restored = state.storage.calendar_hub_restore_task(&task)?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(restored)
+}
+
+#[tauri::command]
+fn calendar_hub_set_focus_task(
+    task_id: Option<i64>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<i64>, String> {
+    let out = state.storage.calendar_hub_set_focus_task(task_id)?;
+    let title = out.and_then(|tid| {
+        let now = Local::now();
+        state
+            .storage
+            .calendar_hub_snapshot(
+                now.format("%Y").to_string().parse().unwrap_or(2026),
+                now.format("%m").to_string().parse().unwrap_or(1),
+            )
+            .ok()
+            .and_then(|snap| {
+                snap.tasks
+                    .into_iter()
+                    .find(|t| t.id == tid)
+                    .map(|t| t.title)
+            })
+    });
+    let pom_snap = state
+        .pomodoro
+        .lock()
+        .map(|p| p.snapshot())
+        .map_err(|_| "pomodoro lock poisoned".to_string())?;
+    if let Ok(mut fe) = state.focus_engine.lock() {
+        fe.set_bound_task(out, title);
+        let focus_state = fe.snapshot(&pom_snap);
+        let _ = app.emit("lumen://focus-flow-updated", focus_state);
     }
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(out)
 }
 
 #[tauri::command]
-fn waqt_rename_block(
-    block_id: String,
-    name: String,
+fn calendar_hub_complete_reminder(
+    id: i64,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let trimmed = name.trim();
-    if let Ok(mut guard) = state.settings.lock() {
-        if trimmed.is_empty() {
-            guard.waqt_block_names.remove(&block_id);
-        } else {
-            guard.waqt_block_names.insert(block_id, trimmed.to_string());
+) -> Result<(), String> {
+    state
+        .storage
+        .calendar_hub_complete_reminder(id, Utc::now())?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn calendar_hub_snooze_reminder(
+    id: i64,
+    minutes: Option<i64>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .storage
+        .calendar_hub_snooze_reminder(id, minutes.unwrap_or(10), Utc::now())?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn calendar_hub_dismiss_missed(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.storage.calendar_hub_dismiss_missed()?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
+
+async fn calendar_sync_background(
+    app: &tauri::AppHandle,
+    target_source_id: Option<String>,
+) -> Result<(), String> {
+    let Some(st) = app.try_state::<AppState>() else {
+        return Ok(());
+    };
+    let sources = st.storage.calendar_hub_list_sync_sources()?;
+    let settings = st.settings.lock().map(|g| g.clone()).unwrap_or_default();
+    let external: Vec<_> = sources
+        .into_iter()
+        .filter(|(src, _)| src.provider != "local")
+        .filter(|(src, _)| {
+            target_source_id
+                .as_deref()
+                .map(|tid| tid == src.id)
+                .unwrap_or(true)
+        })
+        .collect();
+    if external.is_empty() {
+        if let Ok(mut ts) = st.last_calendar_sync.lock() {
+            *ts = Some(Instant::now());
+        }
+        return Ok(());
+    }
+
+    let storage_ref = Arc::clone(&st.storage);
+    let google_cid = settings.calendar_google_client_id.clone();
+    let ms_cid = settings.calendar_microsoft_client_id.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let now = Utc::now();
+        let (min_w, max_w) = cache_window_bounds(now);
+        for (source, sync_token) in external {
+            let client_id = match source.provider.as_str() {
+                "google" => (!google_cid.trim().is_empty()).then_some(google_cid.as_str()),
+                "microsoft" => (!ms_cid.trim().is_empty()).then_some(ms_cid.as_str()),
+                _ => None,
+            };
+            match sync_provider(
+                &source.provider,
+                &source.id,
+                source.ics_url.as_deref(),
+                sync_token.as_deref(),
+                client_id,
+                now,
+            ) {
+                Ok(res) => {
+                    let mapped: Vec<SyncedEventInput> = res
+                        .events
+                        .into_iter()
+                        .map(|e| SyncedEventInput {
+                            external_id: e.external_id,
+                            title: e.title,
+                            start_at: e.start_at,
+                            end_at: e.end_at,
+                            all_day: e.all_day,
+                            color: e.color,
+                            meeting_url: e.meeting_url,
+                            location: e.location,
+                        })
+                        .collect();
+                    let _ = storage_ref.calendar_hub_apply_sync_result(
+                        &source.id,
+                        &mapped,
+                        &res.removed_external_ids,
+                        res.next_sync_token.as_deref(),
+                        res.full_replace,
+                        now,
+                        min_w,
+                        max_w,
+                    );
+                }
+                Err(err) => {
+                    let _ = storage_ref.calendar_hub_record_sync_error(&source.id, &err);
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("calendar sync task failed: {e}"))?;
+
+    if let Some(st2) = app.try_state::<AppState>()
+        && let Ok(mut ts) = st2.last_calendar_sync.lock()
+    {
+        *ts = Some(Instant::now());
+    }
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn calendar_hub_connect_ics(
+    label: String,
+    url: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let clean_url = url.trim().to_string();
+    let clean_label = if label.trim().is_empty() {
+        "Subscribed ICS".to_string()
+    } else {
+        label.trim().to_string()
+    };
+    let now = Utc::now();
+    let source_id = format!("ics:{}", now.timestamp_millis());
+    let storage_ref = Arc::clone(&state.storage);
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let fetched = sync_provider("ics", &source_id, Some(&clean_url), None, None, now)?;
+        storage_ref.calendar_hub_upsert_sync_source(
+            &source_id,
+            "ics",
+            &clean_label,
+            Some(&clean_url),
+        )?;
+        let (min_w, max_w) = cache_window_bounds(now);
+        let mapped: Vec<SyncedEventInput> = fetched
+            .events
+            .into_iter()
+            .map(|e| SyncedEventInput {
+                external_id: e.external_id,
+                title: e.title,
+                start_at: e.start_at,
+                end_at: e.end_at,
+                all_day: e.all_day,
+                color: e.color,
+                meeting_url: e.meeting_url,
+                location: e.location,
+            })
+            .collect();
+        storage_ref.calendar_hub_apply_sync_result(
+            &source_id,
+            &mapped,
+            &fetched.removed_external_ids,
+            fetched.next_sync_token.as_deref(),
+            true,
+            now,
+            min_w,
+            max_w,
+        )?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("ICS connect join failed: {e}"))??;
+
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn calendar_hub_connect_oauth(
+    provider: String,
+    client_id: String,
+    write_scope: Option<bool>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let prov = provider.trim().to_ascii_lowercase();
+    let clean_cid = client_id.trim().to_string();
+    let write_opt = write_scope.unwrap_or(false);
+    let storage_ref = Arc::clone(&state.storage);
+    let source_id = format!("{prov}:primary");
+
+    // Persist client ID cleanly in settings if entered here
+    if !clean_cid.is_empty()
+        && let Ok(mut guard) = state.settings.lock()
+    {
+        match prov.as_str() {
+            "google" => guard.calendar_google_client_id = clean_cid.clone(),
+            "microsoft" => guard.calendar_microsoft_client_id = clean_cid.clone(),
+            _ => {}
         }
         let _ = guard.save_to_path(&state.settings_path);
         let _ = app.emit("lumen://settings-updated", guard.clone());
     }
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+
+    let sid_clone = source_id.clone();
+    let prov_clone = prov.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let (tokens, account_label) = match prov_clone.as_str() {
+            "google" => connect_google_pkce(&clean_cid, write_opt)?,
+            "microsoft" => connect_microsoft_pkce(&clean_cid, write_opt)?,
+            other => return Err(format!("Unsupported OAuth provider: {other}")),
+        };
+        save_tokens(&sid_clone, &tokens)?;
+        storage_ref.calendar_hub_upsert_sync_source(
+            &sid_clone,
+            &prov_clone,
+            &account_label,
+            None,
+        )?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("OAuth connect join failed: {e}"))??;
+
+    calendar_sync_background(&app, Some(source_id)).await?;
+    Ok(())
 }
 
 #[tauri::command]
-fn waqt_rollover_yesterday(
-    accept: bool,
+async fn calendar_hub_sync_now(
+    source_id: Option<String>,
     app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let _ = state.storage.rollover_yesterday_tasks(accept)?;
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WaqtFocusFlowResult {
-    waqt: WaqtTimelineState,
-    pomodoro: PomodoroSnapshot,
-    ledger: TimeLedgerState,
+) -> Result<(), String> {
+    calendar_sync_background(&app, source_id).await
 }
 
 #[tauri::command]
-fn waqt_start_focus_flow(
-    task_id: Option<i64>,
+fn calendar_hub_disconnect_source(
+    source_id: String,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtFocusFlowResult, String> {
-    let tasks = state.storage.list_tasks()?;
-    let chosen = task_id
-        .and_then(|id| tasks.iter().find(|t| t.id == id))
-        .or_else(|| tasks.iter().find(|t| !t.done));
+) -> Result<(), String> {
+    let prov = state
+        .storage
+        .calendar_hub_list_sync_sources()?
+        .into_iter()
+        .find(|(s, _)| s.id == source_id)
+        .map(|(s, _)| s.provider)
+        .unwrap_or_else(|| "google".into());
+    disconnect_provider(&prov, &source_id)?;
+    state.storage.calendar_hub_disconnect_source(&source_id)?;
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
 
-    if let Ok(mut focus_id) = state.waqt_focus_task_id.lock() {
-        *focus_id = chosen.map(|t| t.id);
+#[tauri::command]
+fn calendar_hub_delete_all_data(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let external_ids = state.storage.calendar_hub_delete_all_data()?;
+    for sid in external_ids {
+        let _ = delete_tokens(&sid);
     }
-
-    let mut pom = state
+    let pom_snap = state
         .pomodoro
         .lock()
-        .map_err(|_| "pomodoro lock poisoned".to_string())?;
-    let mut pom_snap = pom.snapshot();
-    if !pom_snap.running {
-        pom.toggle_start_pause();
-        pom_snap = pom.snapshot();
+        .map(|p| p.snapshot())
+        .unwrap_or_else(|_| PomodoroController::new(Default::default(), 0).snapshot());
+    if let Ok(mut fe) = state.focus_engine.lock() {
+        fe.set_bound_task(None, None);
+        fe.dismiss_free_focus_prompt();
+        let focus_state = fe.snapshot(&pom_snap);
+        let _ = app.emit("lumen://focus-flow-updated", focus_state);
     }
-    drop(pom);
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(())
+}
 
-    let ledger = {
-        let cur = state.storage.get_active_ledger()?;
-        if !cur.running {
-            let client = chosen
-                .and_then(|t| t.client.as_deref())
-                .or_else(|| chosen.map(|t| t.title.as_str()));
-            state.storage.toggle_ledger(client)?
-        } else {
-            cur
-        }
+#[tauri::command]
+fn calendar_hub_open_external_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
+        return Err("Only http/https URLs can be opened".into());
+    }
+    open_browser_url(trimmed)
+}
+
+#[tauri::command]
+fn calendar_hub_push_task_event(
+    title: String,
+    start_rfc3339: String,
+    end_rfc3339: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let settings = state.settings.lock().map(|g| g.clone()).unwrap_or_default();
+    if !settings.calendar_writeback_tasks {
+        return Err("Enable 'Add Lumen tasks to my calendar' in Settings first".into());
+    }
+    let sources = state.storage.calendar_hub_list_sync_sources()?;
+    let writable = sources
+        .into_iter()
+        .find(|(s, _)| s.provider == "google" || s.provider == "microsoft")
+        .ok_or_else(|| "No connected Google or Microsoft calendar found".to_string())?;
+    let cid = match writable.0.provider.as_str() {
+        "google" => (!settings.calendar_google_client_id.trim().is_empty())
+            .then_some(settings.calendar_google_client_id.as_str()),
+        "microsoft" => (!settings.calendar_microsoft_client_id.trim().is_empty())
+            .then_some(settings.calendar_microsoft_client_id.as_str()),
+        _ => None,
     };
-
-    let now = Utc::now().to_rfc3339();
-    let ref_str = chosen.map(|t| t.id.to_string());
-    let note = chosen
-        .map(|t| t.title.clone())
-        .or_else(|| Some("Free focus".to_string()));
-    let _ = state
-        .storage
-        .log_activity("focus", &now, None, ref_str.as_deref(), note.as_deref());
-
-    let waqt = build_waqt_snapshot(&state)?;
-    if let Some(win) = app.get_webview_window("island") {
-        let _ = win.emit("lumen://waqt-updated", &waqt);
-        let _ = win.emit("lumen://pomodoro-tick", &pom_snap);
-    }
-    Ok(WaqtFocusFlowResult {
-        waqt,
-        pomodoro: pom_snap,
-        ledger,
-    })
+    push_task_to_provider(
+        &writable.0.provider,
+        &writable.0.id,
+        cid,
+        &title,
+        &start_rfc3339,
+        &end_rfc3339,
+    )
 }
 
 #[tauri::command]
-fn waqt_assign_batch(
-    assignments: Vec<(i64, Option<String>)>,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let _ = state.storage.assign_tasks_batch(&assignments)?;
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
-}
-
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-fn waqt_accept_suggestion(
-    suggestion_id: String,
-    text: String,
-    block_id: String,
-    kind: String,
-    estimate_min: i64,
-    task_id: Option<i64>,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    if let Some(tid) = task_id {
-        let _ = state.storage.assign_task_block(tid, Some(block_id), None)?;
-    } else {
-        let clean_title = text.split(" · ").next().unwrap_or(&text).trim();
-        let _ = state.storage.add_planner_task(
-            clean_title,
-            None,
-            estimate_min.max(5),
-            Some(block_id),
-            false,
-            None,
-            None,
-            &kind,
-        )?;
-    }
-    let today = today_ymd_local(Utc::now());
-    let dismissed_key = format!("waqt_dismissed_{today}");
-    let mut dismissed = load_string_vec_kv(&state.storage, &dismissed_key);
-    if !dismissed.contains(&suggestion_id) {
-        dismissed.push(suggestion_id.clone());
-    }
-    if let Some(block_id) = suggestion_id.split(':').nth(1) {
-        let block_marker = format!("block:{block_id}");
-        if !dismissed.contains(&block_marker) {
-            dismissed.push(block_marker);
-        }
-    }
-    save_string_vec_kv(&state.storage, &dismissed_key, &dismissed);
-    let mut recent = load_string_vec_kv(&state.storage, "waqt_recent_suggestions");
-    recent.retain(|x| !x.eq_ignore_ascii_case(&text));
-    recent.push(text);
-    if recent.len() > 10 {
-        let overflow = recent.len() - 10;
-        recent.drain(0..overflow);
-    }
-    save_string_vec_kv(&state.storage, "waqt_recent_suggestions", &recent);
-
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+fn calendar_hub_focus_get_state(state: State<'_, AppState>) -> Result<FocusFlowState, String> {
+    let pom_snap = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?
+        .snapshot();
+    let fe = state
+        .focus_engine
+        .lock()
+        .map_err(|_| "focus engine lock poisoned".to_string())?;
+    Ok(fe.snapshot(&pom_snap))
 }
 
 #[tauri::command]
-fn waqt_dismiss_suggestion(
-    suggestion_id: String,
-    text: String,
+fn calendar_hub_focus_respond_prayer(
+    pause: bool,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let today = today_ymd_local(Utc::now());
-    let dismissed_key = format!("waqt_dismissed_{today}");
-    let mut dismissed = load_string_vec_kv(&state.storage, &dismissed_key);
-    if !dismissed.contains(&suggestion_id) {
-        dismissed.push(suggestion_id.clone());
-    }
-    if let Some(block_id) = suggestion_id.split(':').nth(1) {
-        let block_marker = format!("block:{block_id}");
-        if !dismissed.contains(&block_marker) {
-            dismissed.push(block_marker);
-        }
-    }
-    save_string_vec_kv(&state.storage, &dismissed_key, &dismissed);
-    let mut recent = load_string_vec_kv(&state.storage, "waqt_recent_suggestions");
-    recent.retain(|x| !x.eq_ignore_ascii_case(&text));
-    recent.push(text);
-    if recent.len() > 10 {
-        let overflow = recent.len() - 10;
-        recent.drain(0..overflow);
-    }
-    save_string_vec_kv(&state.storage, "waqt_recent_suggestions", &recent);
-
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
-}
-
-#[tauri::command]
-fn waqt_dismiss_first_run(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<LumenSettings, String> {
-    let updated = {
-        let mut guard = state
-            .settings
+) -> Result<FocusFlowState, String> {
+    let should_pause = {
+        let mut fe = state
+            .focus_engine
             .lock()
-            .map_err(|_| "settings mutex poisoned".to_string())?;
-        guard.waqt_first_run_dismissed = true;
-        guard.save_to_path(&state.settings_path)?;
-        guard.clone()
+            .map_err(|_| "focus engine lock poisoned".to_string())?;
+        fe.respond_prayer_prompt(pause)
     };
-    let _ = app.emit("lumen://settings-updated", updated.clone());
-    Ok(updated)
-}
-
-#[tauri::command]
-fn waqt_seed_sample_task(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let seeded = state
-        .storage
-        .get_kv("waqt_sample_seeded")?
-        .unwrap_or_default();
-    if seeded.is_empty() && state.storage.list_tasks()?.is_empty() {
-        let snap_now = build_waqt_snapshot(&state)?;
-        let target_block_id = snap_now
-            .blocks
-            .iter()
-            .find(|b| !b.is_past && b.free_capacity_min >= 30)
-            .map(|b| b.id.clone())
-            .unwrap_or(snap_now.active_block_id);
-        let _ = state.storage.add_planner_task(
-            "Sample: Try 25m focus",
-            None,
-            25,
-            Some(target_block_id),
-            false,
-            None,
-            None,
-            "task",
-        )?;
-        let _ = state.storage.set_kv("waqt_sample_seeded", "1");
-    }
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
-}
-
-#[tauri::command]
-fn waqt_dismiss_hint(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<LumenSettings, String> {
-    let updated = {
-        let mut guard = state
-            .settings
+    let pom_snap = {
+        let mut pom = state
+            .pomodoro
             .lock()
-            .map_err(|_| "settings mutex poisoned".to_string())?;
-        guard.waqt_hint_dismissed = true;
-        guard.save_to_path(&state.settings_path)?;
-        guard.clone()
+            .map_err(|_| "pomodoro lock poisoned".to_string())?;
+        if should_pause {
+            pom.set_running(false);
+        }
+        pom.snapshot()
     };
-    let _ = app.emit("lumen://settings-updated", updated.clone());
-    Ok(updated)
+    let focus_state = state
+        .focus_engine
+        .lock()
+        .map_err(|_| "focus engine lock poisoned".to_string())?
+        .snapshot(&pom_snap);
+    sync_focus_side_effects(
+        &app,
+        &pom_snap,
+        &focus_state,
+        &state.storage,
+        &state.silent_mode,
+        &state.focus_managed_silent,
+    );
+    Ok(focus_state)
 }
 
 #[tauri::command]
-fn waqt_log_activity(
-    kind: String,
-    ref_id: Option<String>,
-    note: Option<String>,
+fn calendar_hub_focus_dismiss_free_log(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> Result<WaqtTimelineState, String> {
-    let now = Utc::now().to_rfc3339();
-    let _ =
-        state
-            .storage
-            .log_activity(&kind, &now, Some(&now), ref_id.as_deref(), note.as_deref())?;
-    let snap = build_waqt_snapshot(&state)?;
-    emit_waqt_updated(&app, &state);
-    Ok(snap)
+) -> Result<FocusFlowState, String> {
+    let pom_snap = state
+        .pomodoro
+        .lock()
+        .map_err(|_| "pomodoro lock poisoned".to_string())?
+        .snapshot();
+    let focus_state = {
+        let mut fe = state
+            .focus_engine
+            .lock()
+            .map_err(|_| "focus engine lock poisoned".to_string())?;
+        fe.dismiss_free_focus_prompt();
+        fe.snapshot(&pom_snap)
+    };
+    let _ = app.emit("lumen://focus-flow-updated", &focus_state);
+    Ok(focus_state)
+}
+
+#[tauri::command]
+fn calendar_hub_focus_log_free_task(
+    title: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CalendarTask, String> {
+    let prompt_mins = state
+        .focus_engine
+        .lock()
+        .ok()
+        .and_then(|mut fe| fe.dismiss_free_focus_prompt())
+        .map(|p| i64::from(p.duration_min));
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    let created = state.storage.calendar_hub_add_task(
+        title.trim(),
+        Some(&today),
+        None,
+        prompt_mins.or(Some(25)),
+        false,
+    )?;
+    // Immediately mark the logged free-focus session task complete
+    let _ = state.storage.calendar_hub_toggle_task(created.id)?;
+    let pom_snap = state
+        .pomodoro
+        .lock()
+        .map(|p| p.snapshot())
+        .unwrap_or_else(|_| PomodoroController::new(Default::default(), 0).snapshot());
+    if let Ok(fe) = state.focus_engine.lock() {
+        let _ = app.emit("lumen://focus-flow-updated", fe.snapshot(&pom_snap));
+    }
+    let _ = app.emit("lumen://calendar-hub-updated", ());
+    Ok(created)
 }
 
 #[tauri::command]
@@ -1914,10 +2030,27 @@ pub fn run() {
                     .expect("failed to initialize Lumen storage"),
             );
             let daily_mins = storage.daily_focus_minutes(Utc::now()).unwrap_or(0);
+            let focus_cfg = focus_config_from_settings(&initial_settings);
             let pomodoro = Arc::new(Mutex::new(PomodoroController::new(
-                Default::default(),
+                focus_cfg.to_pomodoro_config(true),
                 daily_mins,
             )));
+            let focus_engine = Arc::new(Mutex::new(FocusEngine::new(focus_cfg)));
+            if let Ok(Some(fid_str)) = storage.get_kv("calendar_focus_task_id")
+                && let Ok(fid) = fid_str.parse::<i64>()
+                && let Ok(snap) = storage.calendar_hub_snapshot(
+                    Local::now()
+                        .format("%Y")
+                        .to_string()
+                        .parse()
+                        .unwrap_or(2026),
+                    Local::now().format("%m").to_string().parse().unwrap_or(1),
+                )
+                && let Some(t) = snap.tasks.into_iter().find(|t| t.id == fid)
+                && let Ok(mut fe) = focus_engine.lock()
+            {
+                fe.set_bound_task(Some(t.id), Some(t.title));
+            }
 
             let mut machine = IslandMachine::new();
             machine.set_minimal_mode(initial_settings.minimal_notch);
@@ -1926,7 +2059,8 @@ pub fn run() {
                 Arc::new(Mutex::new(None));
             let is_fullscreen = Arc::new(AtomicBool::new(false));
             let silent_mode = Arc::new(AtomicBool::new(false));
-            let shared_waqt_focus_task_id = Arc::new(Mutex::new(None));
+            let focus_managed_silent = Arc::new(AtomicBool::new(false));
+            let last_calendar_sync = Arc::new(Mutex::new(None));
 
             let hotkey_app = app.handle().clone();
             let hotkeys = GlobalHotkeyManager::start(
@@ -1967,7 +2101,9 @@ pub fn run() {
                 clipboard_secret: Arc::clone(&clipboard_secret),
                 is_fullscreen: Arc::clone(&is_fullscreen),
                 silent_mode: Arc::clone(&silent_mode),
-                waqt_focus_task_id: Arc::clone(&shared_waqt_focus_task_id),
+                focus_managed_silent: Arc::clone(&focus_managed_silent),
+                focus_engine: Arc::clone(&focus_engine),
+                last_calendar_sync: Arc::clone(&last_calendar_sync),
             });
 
             let Some(window) = app.get_webview_window("island") else {
@@ -2290,6 +2426,8 @@ pub fn run() {
             let settings_ref = Arc::clone(&shared_settings);
             let bg_fs_flag = Arc::clone(&is_fullscreen);
             let bg_silent_flag = Arc::clone(&silent_mode);
+            let bg_focus_managed_silent = Arc::clone(&focus_managed_silent);
+            let focus_engine_ref = Arc::clone(&focus_engine);
             let media_playing_flag = Arc::new(AtomicBool::new(false));
             let media_playing_for_poll = Arc::clone(&media_playing_flag);
 
@@ -2330,7 +2468,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let mut last_snapshot: Option<MediaStateSnapshot> = None;
                 let mut half_tick: u64 = 0;
-                let mut last_waqt_minute: i64 = -1;
+                let mut last_sync_sec: u64 = 0;
                 let watcher = Arc::new(Mutex::new(SystemNotificationWatcher::new()));
 
                 loop {
@@ -2370,7 +2508,18 @@ pub fn run() {
                                 PomodoroPhase::ShortBreak => "short_break",
                                 PomodoroPhase::LongBreak => "long_break",
                             };
-                            let _ = storage_ref.record_pomodoro_session(kind, secs, true);
+                            let bound_tid =
+                                focus_engine_ref.lock().ok().and_then(|fe| fe.bound_task_id);
+                            let _ = storage_ref
+                                .calendar_hub_record_focus_session(bound_tid, kind, secs, true);
+                            if let Ok(mut fe) = focus_engine_ref.lock() {
+                                fe.on_phase_completed(phase, secs, &Utc::now().to_rfc3339());
+                            }
+                            let settings =
+                                settings_ref.lock().map(|g| g.clone()).unwrap_or_default();
+                            let is_fs = bg_fs_flag.load(Ordering::Relaxed);
+                            let ctx = build_sound_ctx(&settings, &pom_ref, is_fs, true);
+                            let _ = try_play_ui_sound(UiSoundName::FocusEnd, &ctx);
                             if let Ok(mut guard) = pom_ref.lock() {
                                 let mins = storage_ref.daily_focus_minutes(Utc::now()).unwrap_or(0);
                                 guard.set_daily_focus_minutes(mins);
@@ -2379,7 +2528,19 @@ pub fn run() {
                         }
 
                         if let Some(snap) = snap_to_emit {
-                            let _ = media_window.emit("lumen://pomodoro-tick", snap);
+                            if let Ok(fe) = focus_engine_ref.lock() {
+                                let focus_state = fe.snapshot(&snap);
+                                sync_focus_side_effects(
+                                    media_window.app_handle(),
+                                    &snap,
+                                    &focus_state,
+                                    &storage_ref,
+                                    &bg_silent_flag,
+                                    &bg_focus_managed_silent,
+                                );
+                            } else {
+                                let _ = media_window.emit("lumen://pomodoro-tick", snap);
+                            }
                         }
 
                         // Real-time Desktop + Browser Notification Sync with app logos
@@ -2420,31 +2581,113 @@ pub fn run() {
                             }
                         }
 
-                        // Manual Reminders scheduler (lead-time alert, snooze, and mandatory exact-time trigger)
-                        if let Ok(due_alerts) = storage_ref.poll_due_reminders(Utc::now())
-                            && !due_alerts.is_empty()
+                        // Calendar Hub Reminders scheduler + Prayer-arrival Focus check + 5-min sync
                         {
-                            let settings =
-                                settings_ref.lock().map(|g| g.clone()).unwrap_or_default();
-                            let is_fs = bg_fs_flag.load(Ordering::Relaxed);
-                            let ctx = build_sound_ctx(&settings, &pom_ref, is_fs, true);
-                            for alert in &due_alerts {
-                                let _ = media_window.emit("lumen://reminder-alert", alert);
-                            }
-                            let _ = try_play_ui_sound(UiSoundName::ReminderAlarm, &ctx);
-                            if let Ok(updated_list) = storage_ref.list_reminders() {
-                                let _ =
-                                    media_window.emit("lumen://reminders-updated", &updated_list);
-                            }
-                        }
-
-                        // Recompute Waqt blocks cleanly once a minute (and close completed focus sessions)
-                        let now_minute_epoch = Utc::now().timestamp() / 60;
-                        if now_minute_epoch != last_waqt_minute {
-                            last_waqt_minute = now_minute_epoch;
                             let app_handle = media_window.app_handle();
-                            if let Some(st) = app_handle.try_state::<AppState>() {
-                                emit_waqt_updated(app_handle, &st);
+                            let is_fs = bg_fs_flag.load(Ordering::Relaxed);
+                            let pom_snap_now = pom_ref.lock().ok().map(|p| p.snapshot());
+                            let focus_running = pom_snap_now.as_ref().is_some_and(|s| {
+                                s.running && matches!(s.phase, PomodoroPhase::Focus)
+                            });
+                            let (_, mic_in_use) = privacy_device_status();
+                            let silent = bg_silent_flag.load(Ordering::Relaxed);
+                            let defer_normal = is_fs || focus_running || mic_in_use || silent;
+                            let mut prayer_pairs: Vec<(String, DateTime<Utc>)> = Vec::new();
+                            if let Some(st) = app_handle.try_state::<AppState>()
+                                && let Ok(cfg) = st.prayer_config.lock()
+                            {
+                                let sched = compute_prayer_schedule(Utc::now(), &cfg);
+                                let today_local = Local::now().date_naive();
+                                let now_min_local = {
+                                    let t = Local::now().format("%H:%M").to_string();
+                                    let mut parts = t.split(':');
+                                    let h = parts
+                                        .next()
+                                        .and_then(|s| s.parse::<i32>().ok())
+                                        .unwrap_or(0);
+                                    let m = parts
+                                        .next()
+                                        .and_then(|s| s.parse::<i32>().ok())
+                                        .unwrap_or(0);
+                                    h * 60 + m
+                                };
+                                for slot in &sched.slots {
+                                    let h = (slot.minute_of_day.max(0) as u32) / 60;
+                                    let m = (slot.minute_of_day.max(0) as u32) % 60;
+                                    if let Some(ndt) =
+                                        today_local.and_hms_opt(h.min(23), m.min(59), 0)
+                                        && let Some(ldt) = ndt.and_local_timezone(Local).single()
+                                    {
+                                        prayer_pairs
+                                            .push((slot.name_en.clone(), ldt.with_timezone(&Utc)));
+                                    }
+                                    if let Some(ref p_snap) = pom_snap_now
+                                        && (now_min_local - slot.minute_of_day).abs() <= 1
+                                        && let Ok(mut fe) = focus_engine_ref.lock()
+                                    {
+                                        let key = format!("{today_local}:{}", slot.name_en);
+                                        let prev_prompt = fe.prayer_prompt.clone();
+                                        let should_pause =
+                                            fe.on_prayer_arrival(&key, &slot.name_en, p_snap);
+                                        if should_pause {
+                                            if let Ok(mut p) = pom_ref.lock() {
+                                                p.set_running(false);
+                                                let updated_snap = p.snapshot();
+                                                let focus_state = fe.snapshot(&updated_snap);
+                                                sync_focus_side_effects(
+                                                    app_handle,
+                                                    &updated_snap,
+                                                    &focus_state,
+                                                    &storage_ref,
+                                                    &bg_silent_flag,
+                                                    &bg_focus_managed_silent,
+                                                );
+                                            }
+                                            let settings = settings_ref
+                                                .lock()
+                                                .map(|g| g.clone())
+                                                .unwrap_or_default();
+                                            let ctx =
+                                                build_sound_ctx(&settings, &pom_ref, is_fs, true);
+                                            let _ =
+                                                try_play_ui_sound(UiSoundName::ReminderChime, &ctx);
+                                        } else if fe.prayer_prompt != prev_prompt
+                                            && fe.prayer_prompt.is_some()
+                                        {
+                                            let focus_state = fe.snapshot(p_snap);
+                                            let _ = app_handle
+                                                .emit("lumen://focus-flow-updated", focus_state);
+                                        }
+                                    }
+                                }
+                            }
+                            if let Ok(poll) = storage_ref.calendar_hub_poll_reminders(
+                                Utc::now(),
+                                defer_normal,
+                                &prayer_pairs,
+                            ) && (!poll.due_alerts.is_empty()
+                                || !poll.missed_reminders.is_empty())
+                            {
+                                if !poll.due_alerts.is_empty() {
+                                    let settings =
+                                        settings_ref.lock().map(|g| g.clone()).unwrap_or_default();
+                                    let ctx = build_sound_ctx(&settings, &pom_ref, is_fs, true);
+                                    for alert in &poll.due_alerts {
+                                        let _ = media_window
+                                            .emit("lumen://calendar-reminder-alert", alert);
+                                    }
+                                    let _ = try_play_ui_sound(UiSoundName::ReminderChime, &ctx);
+                                }
+                                let _ = media_window.emit("lumen://calendar-hub-updated", ());
+                            }
+
+                            let elapsed_sec = half_tick / 2;
+                            if elapsed_sec.saturating_sub(last_sync_sec) >= 300 {
+                                last_sync_sec = elapsed_sec;
+                                let sync_app = app_handle.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let _ = calendar_sync_background(&sync_app, None).await;
+                                });
                             }
                         }
                     }
@@ -2464,10 +2707,6 @@ pub fn run() {
             media_seek,
             media_set_volume,
             media_select_session,
-            tasks_list,
-            tasks_add,
-            tasks_toggle,
-            tasks_delete,
             water_get_summary,
             water_log,
             water_undo,
@@ -2497,14 +2736,6 @@ pub fn run() {
             system_capture_screenshot,
             system_ocr_screen,
             system_privacy_indicators,
-            calendar_list,
-            calendar_add,
-            calendar_delete,
-            reminders_list,
-            reminders_add,
-            reminders_delete,
-            reminders_stop,
-            reminders_snooze,
             plugins_list,
             play_ui_sound,
             system_quick_toggles_state,
@@ -2527,21 +2758,30 @@ pub fn run() {
             home_set_visible,
             system_battery_status,
             monitor_auto_scale_factor,
-            waqt_get_state,
-            waqt_add_task,
-            waqt_assign_task,
-            waqt_update_task_meta,
-            waqt_move_overflow_to_next,
-            waqt_rename_block,
-            waqt_rollover_yesterday,
-            waqt_start_focus_flow,
-            waqt_dismiss_hint,
-            waqt_log_activity,
-            waqt_assign_batch,
-            waqt_accept_suggestion,
-            waqt_dismiss_suggestion,
-            waqt_dismiss_first_run,
-            waqt_seed_sample_task
+            calendar_hub_get_snapshot,
+            calendar_hub_add_task,
+            calendar_hub_toggle_task,
+            calendar_hub_add_local_event,
+            calendar_hub_add_reminder,
+            calendar_hub_parse_quick_add,
+            calendar_hub_move_task_due,
+            calendar_hub_delete_task,
+            calendar_hub_restore_task,
+            calendar_hub_set_focus_task,
+            calendar_hub_complete_reminder,
+            calendar_hub_snooze_reminder,
+            calendar_hub_dismiss_missed,
+            calendar_hub_connect_ics,
+            calendar_hub_connect_oauth,
+            calendar_hub_sync_now,
+            calendar_hub_disconnect_source,
+            calendar_hub_delete_all_data,
+            calendar_hub_open_external_url,
+            calendar_hub_push_task_event,
+            calendar_hub_focus_get_state,
+            calendar_hub_focus_respond_prayer,
+            calendar_hub_focus_dismiss_free_log,
+            calendar_hub_focus_log_free_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumen");

@@ -59,11 +59,11 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 
-    // Wheel #1 from Home -> Waqt Timeline (640x312), Wheel #2 -> Control (560x172) where Pin button lives
+    // Wheel #1 from Home -> Calendar Hub (760x376), Wheel #2 -> Control (560x172) where Pin button lives
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByTestId("waqt-timeline-page")).toBeInTheDocument();
-    expect(pill).toHaveAttribute("data-target-width", "640");
-    expect(pill).toHaveAttribute("data-target-height", "312");
+    expect(screen.getByTestId("calendar-hub-page")).toBeInTheDocument();
+    expect(pill).toHaveAttribute("data-target-width", "760");
+    expect(pill).toHaveAttribute("data-target-height", "376");
 
     act(() => {
       vi.advanceTimersByTime(300);
@@ -82,25 +82,14 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 
-    // Unpin and switch to Todo page with a focused input (control -> music -> calendar -> reminders -> todo)
+    // Unpin and wheel back to Calendar Hub where quick-add opens a focused input
     fireEvent.click(screen.getByRole("button", { name: "Unpin island" }));
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    fireEvent.wheel(pill, { deltaY: 120 });
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    fireEvent.wheel(pill, { deltaY: 120 });
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    fireEvent.wheel(pill, { deltaY: 120 });
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    fireEvent.wheel(pill, { deltaY: 120 });
-    fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
+    fireEvent.wheel(pill, { deltaY: -120 });
+    expect(screen.getByTestId("calendar-hub-page")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cal-todo-add-btn"));
     const input = pill.querySelector("input");
     expect(input).not.toBeNull();
     input?.focus();
@@ -112,7 +101,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(pill).toHaveAttribute("data-state", "expanded");
   });
 
-  it("switches expanded pages on mouse wheel scroll from Home -> Waqt Timeline -> Control -> Today Agenda", () => {
+  it("switches expanded pages on mouse wheel scroll from Home -> Calendar Hub -> Control -> Water", () => {
     render(<IslandShell hoverToOpen />);
     const pill = screen.getByTestId("lumen-island-pill");
 
@@ -120,7 +109,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(screen.getByTestId("home-page")).toBeInTheDocument();
 
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByTestId("waqt-timeline-page")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-hub-page")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(300);
@@ -132,6 +121,6 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(300);
     });
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByText("Tracker")).toBeInTheDocument();
   });
 });

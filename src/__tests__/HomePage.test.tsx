@@ -8,6 +8,7 @@ describe("Home Page & /dev/states 20 UI states", () => {
   it("renders all 20 required UI states cleanly including Bangla locale and 150% scale", () => {
     render(<DevStatesPage />);
     expect(screen.getByTestId("dev-states-page")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Home (20 States)" }));
 
     const expectedIds = [
       "default",
@@ -39,6 +40,7 @@ describe("Home Page & /dev/states 20 UI states", () => {
 
   it("filters to individual states cleanly without losing interactivity", async () => {
     render(<DevStatesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Home (20 States)" }));
     const zoomBtn = screen.getByRole("button", { name: "no-music" });
     fireEvent.click(zoomBtn);
     const emptyState = await screen.findByTestId("music-empty-state");
@@ -65,7 +67,7 @@ describe("Home Page & /dev/states 20 UI states", () => {
     });
 
     fireEvent.click(screen.getByTestId("home-next-card"));
-    expect(await screen.findByTestId("reminders-widget")).toBeInTheDocument();
+    expect(await screen.findByTestId("calendar-hub-page")).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(await screen.findByTestId("home-page")).toBeInTheDocument();

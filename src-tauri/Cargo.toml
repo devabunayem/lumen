@@ -8,6 +8,7 @@ members = [
     "crates/lumen-notify",
     "crates/lumen-storage",
     "crates/lumen-plugins",
+    "crates/lumen-sync",
 ]
 resolver = "2"
 
@@ -30,6 +31,7 @@ lumen-prayer = { path = "crates/lumen-prayer" }
 lumen-notify = { path = "crates/lumen-notify" }
 lumen-storage = { path = "crates/lumen-storage" }
 lumen-plugins = { path = "crates/lumen-plugins" }
+lumen-sync = { path = "crates/lumen-sync" }
 
 [package]
 name = "lumen"
@@ -58,6 +60,7 @@ lumen-prayer.workspace = true
 lumen-notify.workspace = true
 lumen-storage.workspace = true
 lumen-plugins.workspace = true
+lumen-sync.workspace = true
 
 [profile.release]
 panic = "abort"

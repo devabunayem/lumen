@@ -8,84 +8,7 @@ import {
 
 export type MonitorMode = "primary" | "active" | "index";
 export type ActionGlowMode = "action" | "always" | "off";
-export type WaqtPrayerPauseMode = "ask" | "auto_pause" | "ignore";
-
-export interface WaqtRhythmAnchor {
-  id: string;
-  title: string;
-  blockId: "fajr" | "dhuhr" | "asr" | "maghrib" | "isha" | string;
-  kind: "habit" | "water" | "walk" | "stretch" | "eye" | string;
-  estimateMin: number;
-  enabled: boolean;
-  autoAddDaily: boolean;
-  isUserTemplate: boolean;
-}
-
-export const DEFAULT_WAQT_RHYTHM_ANCHORS: WaqtRhythmAnchor[] = [
-  {
-    id: "rhythm_water_midday",
-    title: "Drink water · 500 ml",
-    blockId: "dhuhr",
-    kind: "water",
-    estimateMin: 5,
-    enabled: true,
-    autoAddDaily: false,
-    isUserTemplate: false,
-  },
-  {
-    id: "rhythm_walk_afternoon",
-    title: "Short walk · 10m",
-    blockId: "asr",
-    kind: "walk",
-    estimateMin: 10,
-    enabled: true,
-    autoAddDaily: false,
-    isUserTemplate: false,
-  },
-  {
-    id: "rhythm_stretch_evening",
-    title: "Stretch · 5m",
-    blockId: "maghrib",
-    kind: "stretch",
-    estimateMin: 5,
-    enabled: false,
-    autoAddDaily: false,
-    isUserTemplate: false,
-  },
-  {
-    id: "rhythm_eye_break",
-    title: "Eye break · 2m",
-    blockId: "dhuhr",
-    kind: "eye",
-    estimateMin: 5,
-    enabled: false,
-    autoAddDaily: false,
-    isUserTemplate: false,
-  },
-];
-
-export const USER_CHOSEN_ANCHOR_TEMPLATES: WaqtRhythmAnchor[] = [
-  {
-    id: "user_tpl_quran",
-    title: "Quran reading · 15m",
-    blockId: "fajr",
-    kind: "habit",
-    estimateMin: 15,
-    enabled: false,
-    autoAddDaily: false,
-    isUserTemplate: true,
-  },
-  {
-    id: "user_tpl_adhkar",
-    title: "Adhkar · 10m",
-    blockId: "asr",
-    kind: "habit",
-    estimateMin: 10,
-    enabled: false,
-    autoAddDaily: false,
-    isUserTemplate: true,
-  },
-];
+export type PrayerArrivalModeSetting = "ask" | "auto_pause" | "ignore";
 
 export interface LumenSettings {
   version: number;
@@ -133,18 +56,20 @@ export interface LumenSettings {
   nowPlayingBannerSeconds: number;
   notificationDurationSeconds: number;
   actionGlowMode: ActionGlowMode;
-  waqtBedtimeHHMM: string;
-  waqtPrayerPauseMode: WaqtPrayerPauseMode;
-  waqtRolloverAtFajr: boolean;
-  waqtRamadanTaraweeh: boolean;
-  waqtHintDismissed: boolean;
-  waqtBlockNames: Record<string, string>;
-  waqtQuietMode: boolean;
-  waqtFirstRunDismissed: boolean;
-  waqtRhythmAnchors: WaqtRhythmAnchor[];
+  calendarPrayerPauseMode: PrayerArrivalModeSetting;
   lumiTalkLess: boolean;
   lumiSoundsEnabled: boolean;
   lumiAccessories: LumiAccessory[];
+  calendarFirstDayOfWeek: 0 | 6;
+  calendarColorBlindMarks: boolean;
+  calendarSocialBlockArmed: boolean;
+  focusMinutes: number;
+  focusShortBreakMinutes: number;
+  focusLongBreakMinutes: number;
+  focusRounds: number;
+  calendarGoogleClientId: string;
+  calendarMicrosoftClientId: string;
+  calendarWritebackTasks: boolean;
 }
 
 export const DEFAULT_SETTINGS: LumenSettings = {
@@ -165,7 +90,7 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   startWithWindows: false,
   hotkeyHide: "Ctrl+Alt+L",
   hotkeyExpand: "Ctrl+Alt+Space",
-  pageOrder: ["waqt", "control", "calendar", "reminders", "todo", "water", "pomodoro", "shelf"],
+  pageOrder: ["calendar_hub", "control", "water", "shelf"],
   hiddenPages: [],
   waterGoalMl: 1500,
   mediaExclusions: [],
@@ -193,18 +118,20 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   nowPlayingBannerSeconds: 4,
   notificationDurationSeconds: 8,
   actionGlowMode: "action",
-  waqtBedtimeHHMM: "23:30",
-  waqtPrayerPauseMode: "ask",
-  waqtRolloverAtFajr: true,
-  waqtRamadanTaraweeh: false,
-  waqtHintDismissed: false,
-  waqtBlockNames: {},
-  waqtQuietMode: false,
-  waqtFirstRunDismissed: false,
-  waqtRhythmAnchors: DEFAULT_WAQT_RHYTHM_ANCHORS,
+  calendarPrayerPauseMode: "ask",
   lumiTalkLess: false,
   lumiSoundsEnabled: false,
   lumiAccessories: [],
+  calendarFirstDayOfWeek: 0,
+  calendarColorBlindMarks: false,
+  calendarSocialBlockArmed: true,
+  focusMinutes: 25,
+  focusShortBreakMinutes: 5,
+  focusLongBreakMinutes: 15,
+  focusRounds: 4,
+  calendarGoogleClientId: "",
+  calendarMicrosoftClientId: "",
+  calendarWritebackTasks: false,
 };
 
 export function resolveSettingsScaleFactor(

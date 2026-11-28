@@ -1,5 +1,4 @@
-import { motion, useReducedMotion } from "motion/react";
-import { MOTION_PRESETS } from "../design/motion";
+import { useReducedMotion } from "motion/react";
 import {
   Lumi,
   type LumiAccessory,
@@ -7,7 +6,6 @@ import {
   type LumiLookPoint,
   type LumiMood as NativeLumiMood,
 } from "../design/lumi";
-import { COLOR_TOKENS } from "../design/tokens";
 import type { LumiMood } from "./ActionGlowLayer";
 
 export interface LumenMascotProps {
@@ -131,97 +129,5 @@ export function LumenMascot({
         </span>
       )}
     </span>
-  );
-}
-
-export type WaqtBodyDoubleState = "idle_working" | "focus" | "looks_up" | "break" | "celebrate";
-
-export interface WaqtBodyDoubleLumiProps {
-  state: WaqtBodyDoubleState;
-  isVisible: boolean;
-  reduceMotion?: boolean;
-  accessories?: readonly LumiAccessory[];
-  beat?: number;
-  silent?: boolean;
-  canLook?: boolean;
-  nowDate?: Date;
-}
-
-function mapWaqtStateToLumiMood(state: WaqtBodyDoubleState, silent: boolean): NativeLumiMood {
-  if (silent) {
-    return "calm";
-  }
-  switch (state) {
-    case "focus":
-      return "focus";
-    case "celebrate":
-      return "celebrate";
-    case "break":
-      return "happy";
-    case "looks_up":
-      return "curious";
-    case "idle_working":
-    default:
-      return "idle";
-  }
-}
-
-/**
- * Unified Lumi body-double companion for Waqt Focus Flow:
- * renders the full-detail `<Lumi />` rig (with Focus headphones in `focus` mood)
- * and animates gently only when visible and `reduceMotion` is disabled.
- */
-export function WaqtBodyDoubleLumi({
-  state,
-  isVisible,
-  reduceMotion = false,
-  accessories = [],
-  beat = 0,
-  silent = false,
-  canLook = true,
-  nowDate,
-}: WaqtBodyDoubleLumiProps) {
-  const prefersReduced = (useReducedMotion() ?? false) || reduceMotion;
-  const shouldAnimate = isVisible && !prefersReduced;
-  const nativeMood = mapWaqtStateToLumiMood(state, silent);
-
-  return (
-    <motion.div
-      data-testid="waqt-lumi-body-double"
-      data-body-state={state}
-      aria-hidden="true"
-      className="relative flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full"
-      style={{
-        background: `radial-gradient(circle, ${COLOR_TOKENS.waqtGlowIndigo} 0%, rgba(94, 92, 230, 0.14) 70%, transparent 100%)`,
-      }}
-      animate={
-        shouldAnimate
-          ? state === "celebrate"
-            ? { y: [0, -2, 0] }
-            : state === "break"
-              ? { rotate: [-2, 2, -2] }
-              : { y: [0, -1, 0] }
-          : undefined
-      }
-      transition={
-        shouldAnimate
-          ? state === "celebrate"
-            ? { ...MOTION_PRESETS.bouncy, repeat: 1 }
-            : { duration: 2.8, repeat: Infinity, ease: "easeInOut" }
-          : undefined
-      }
-    >
-      <Lumi
-        size={42}
-        mood={nativeMood}
-        glowHue={nativeMood === "focus" ? "focus" : nativeMood === "calm" ? "prayer" : "dusk"}
-        beat={beat}
-        active={isVisible}
-        canLook={canLook && isVisible}
-        reducedMotion={prefersReduced}
-        nowDate={nowDate}
-        accessories={accessories}
-      />
-    </motion.div>
   );
 }

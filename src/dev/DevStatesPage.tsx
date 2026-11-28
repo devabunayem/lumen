@@ -1,9 +1,8 @@
 import { useState } from "react";
+import { CalendarHubPage, type CalendarHubPageProps } from "../calendar/CalendarHubPage";
 import { BASE_GEOMETRY } from "../design/tokens";
 import { HomePage, type HomePageProps } from "../home/HomePage";
-import type { PrayerSchedule, WaqtTimelineState } from "../lib/ipc";
-import { DEFAULT_WAQT_RHYTHM_ANCHORS } from "../settings";
-import { WaqtTimeline, type WaqtTimelineProps } from "../waqt/WaqtTimeline";
+import type { CalendarHubSnapshot, PrayerSchedule } from "../lib/ipc";
 
 function makeBaseSchedule(overrides: Partial<PrayerSchedule> = {}): PrayerSchedule {
   return {
@@ -390,27 +389,183 @@ function buildAll20States(): StateSpec[] {
   ];
 }
 
-interface WaqtStateSpec {
+interface CalendarHubStateEntry {
   id: string;
   label: string;
-  props: WaqtTimelineProps;
+  scale?: number;
+  dir?: "ltr" | "rtl";
+  props: CalendarHubPageProps;
 }
 
-function makeBaseWaqtProps(): WaqtTimelineProps {
-  const noop = () => {};
-  return {
-    waqtState: null,
-    loading: false,
-    error: null,
-    nowDate: new Date(2026, 10, 26, 13, 30, 0),
-    schedule: makeBaseSchedule({
-      next_name_en: "Asr",
-      next_name_bn: "আসর",
-      next_time_12h: "3:40 PM",
-      now_min: 13 * 60 + 30,
-    }),
-    tasks: [],
-    calendarEvents: [],
+function buildCalendarHubPhase1States(): CalendarHubStateEntry[] {
+  const refNow = new Date(2026, 10, 26, 16, 0, 0);
+  const baseSnapshot: CalendarHubSnapshot = {
+    year: 2026,
+    month: 11,
+    dayMarks: [
+      { dateKey: "2026-11-02", taskCount: 1, eventCount: 0, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-03", taskCount: 0, eventCount: 1, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-05", taskCount: 0, eventCount: 0, reminderCount: 1, deadlineCount: 0 },
+      { dateKey: "2026-11-09", taskCount: 1, eventCount: 1, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-10", taskCount: 0, eventCount: 0, reminderCount: 1, deadlineCount: 0 },
+      { dateKey: "2026-11-12", taskCount: 1, eventCount: 0, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-14", taskCount: 0, eventCount: 1, reminderCount: 1, deadlineCount: 0 },
+      { dateKey: "2026-11-16", taskCount: 0, eventCount: 1, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-17", taskCount: 1, eventCount: 0, reminderCount: 1, deadlineCount: 0 },
+      { dateKey: "2026-11-19", taskCount: 0, eventCount: 0, reminderCount: 1, deadlineCount: 0 },
+      { dateKey: "2026-11-23", taskCount: 1, eventCount: 1, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-26", taskCount: 1, eventCount: 1, reminderCount: 1, deadlineCount: 0 },
+      { dateKey: "2026-11-27", taskCount: 0, eventCount: 1, reminderCount: 0, deadlineCount: 0 },
+      { dateKey: "2026-11-28", taskCount: 2, eventCount: 0, reminderCount: 0, deadlineCount: 1 },
+      { dateKey: "2026-11-29", taskCount: 2, eventCount: 1, reminderCount: 1, deadlineCount: 1 },
+      { dateKey: "2026-11-30", taskCount: 1, eventCount: 0, reminderCount: 0, deadlineCount: 0 },
+    ],
+    tasks: [
+      {
+        id: 1,
+        title: "Invoice",
+        dueDate: "2026-11-26",
+        dueTime: "9:00",
+        estimateMin: 15,
+        doneAt: "2026-11-26T09:05:00Z",
+        client: null,
+        projectId: null,
+        isDeadline: false,
+        createdAt: "",
+      },
+      {
+        id: 2,
+        title: "Design review",
+        dueDate: "2026-11-26",
+        dueTime: "2:30",
+        estimateMin: 25,
+        doneAt: null,
+        client: null,
+        projectId: null,
+        isDeadline: false,
+        createdAt: "",
+      },
+      {
+        id: 3,
+        title: "Reply mail",
+        dueDate: "2026-11-26",
+        dueTime: null,
+        estimateMin: 15,
+        doneAt: null,
+        client: null,
+        projectId: null,
+        isDeadline: false,
+        createdAt: "",
+      },
+      {
+        id: 4,
+        title: "Review PRs",
+        dueDate: "2026-11-26",
+        dueTime: null,
+        estimateMin: 25,
+        doneAt: null,
+        client: null,
+        projectId: null,
+        isDeadline: false,
+        createdAt: "",
+      },
+    ],
+    events: [
+      {
+        id: 1,
+        sourceId: "google-1",
+        title: "Team standup",
+        start: "2026-11-26T16:12:00",
+        end: "2026-11-26T16:42:00",
+        allDay: false,
+        color: "#30d158",
+        meetingUrl: "https://meet.google.com/abc-defg-hij",
+        location: "Google Meet",
+        readOnly: true,
+      },
+      {
+        id: 2,
+        sourceId: "google-1",
+        title: "Client call",
+        start: "2026-11-26T18:30:00",
+        end: "2026-11-26T19:00:00",
+        allDay: false,
+        color: "#7a78ff",
+        meetingUrl: null,
+        location: null,
+        readOnly: true,
+      },
+      {
+        id: 3,
+        sourceId: "google-1",
+        title: "Sprint review",
+        start: "2026-11-27T10:00:00",
+        end: "2026-11-27T11:00:00",
+        allDay: false,
+        color: "#30d158",
+        meetingUrl: null,
+        location: null,
+        readOnly: true,
+      },
+    ],
+    reminders: [
+      {
+        id: 1,
+        title: "Call supplier",
+        kind: "once",
+        at: "2026-11-26T17:00:00",
+        repeatRule: "5:00 PM · once",
+        prayerAnchor: null,
+        snoozeCount: 0,
+        active: true,
+        importance: "normal",
+        missed: false,
+        createdAt: "",
+      },
+      {
+        id: 2,
+        title: "Read 10 pages",
+        kind: "daily",
+        at: "2026-11-26T21:00:00",
+        repeatRule: "Daily · 9:00 PM",
+        prayerAnchor: null,
+        snoozeCount: 0,
+        active: true,
+        importance: "normal",
+        missed: false,
+        createdAt: "",
+      },
+      {
+        id: 3,
+        title: "Review notes",
+        kind: "prayer",
+        at: "2026-11-26T17:01:00",
+        repeatRule: null,
+        prayerAnchor: { prayer: "Maghrib", offsetMin: 10, relation: "before" },
+        snoozeCount: 0,
+        active: true,
+        importance: "normal",
+        missed: false,
+        createdAt: "",
+      },
+    ],
+    sources: [
+      {
+        id: "google-1",
+        provider: "google",
+        accountLabel: "Google",
+        icsUrl: null,
+        lastSyncedAt: "2026-11-26T15:58:00Z",
+        lastError: null,
+        connected: true,
+      },
+    ],
+    recentFocusSessions: [],
+  };
+
+  const baseProps: CalendarHubPageProps = {
+    snapshot: baseSnapshot,
+    nowDate: refNow,
     pomodoro: {
       phase: "focus",
       remaining_secs: 25 * 60,
@@ -418,261 +573,274 @@ function makeBaseWaqtProps(): WaqtTimelineProps {
       running: false,
       cycle_index: 0,
       cycles_before_long: 4,
-      daily_focus_minutes: 0,
+      daily_focus_minutes: 50,
       chime_tick: 0,
     },
-    waterTodayMl: 500,
-    waterGoalMl: 1500,
+    firstDayOfWeek: 0,
+    colorBlindMarks: false,
+    socialBlockedArmed: true,
     language: "en",
     banglaDigits: false,
     reduceMotion: true,
     reduceTransparency: false,
-    isVisible: true,
-    locationConfigured: true,
-    bedtimeHHMM: "23:30",
-    prayerPauseMode: "ask",
-    ramadanTaraweeh: false,
-    hintDismissed: false,
-    quietMode: false,
-    firstRunDismissed: true,
-    rhythmAnchors: DEFAULT_WAQT_RHYTHM_ANCHORS,
-    customBlockNames: {},
-    pagesCount: 9,
-    activePageIndex: 1,
-    onSelectPage: noop,
-    onOpenSettings: noop,
-    onRetry: noop,
-    onAssignTask: noop,
-    onToggleTask: noop,
-    onAddTask: noop,
-    onDeleteTask: noop,
-    onRestoreTask: noop,
-    onChangeEstimate: noop,
-    onMoveOverflow: noop,
-    onRenameBlock: noop,
-    onRolloverYesterday: noop,
-    onStartFocusFlow: noop,
-    onToggleFocusPause: noop,
-    onResetFocus: noop,
-    onDismissHint: noop,
-    onLogActivity: noop,
+    glowEnabled: true,
+    onOpenSettings: () => {},
+    onToggleTask: () => {},
+    onToggleFocus: () => {},
   };
-}
-
-function buildWaqt18States(): WaqtStateSpec[] {
-  const b = makeBaseWaqtProps();
-  const t = (
-    id: number,
-    title: string,
-    estimate_min: number,
-    block_id: string | null,
-    done = false,
-  ) => ({
-    id,
-    title,
-    done,
-    due_at: null,
-    created_at: "2026-11-26T08:00:00Z",
-    estimate_min,
-    block_id,
-    kind: "task",
-  });
-  const baseOverride = (over: Partial<WaqtTimelineState>): WaqtTimelineState => ({
-    date_label: "Thu 26 Nov",
-    now_min: 13 * 60 + 30,
-    rail_start_min: 302,
-    rail_end_min: 23 * 60 + 30,
-    sun_progress_pct: 48,
-    is_friday: false,
-    is_ramadan: false,
-    is_after_isha: false,
-    all_tasks_done: false,
-    sehri_min: 302,
-    iftar_min: 1031,
-    location_configured: true,
-    active_block_id: "dhuhr",
-    next_prayer_name: "Asr",
-    next_prayer_in_min: 130,
-    current_focus_task_id: null,
-    focus_next_task_id: null,
-    focus_next_task_title: null,
-    yesterday_rollover_count: 0,
-    total_focus_min: 0,
-    total_planned_min: 0,
-    total_free_min: 480,
-    day_is_overbooked: false,
-    prayers_done_count: 2,
-    water_today_ml: 500,
-    water_goal_ml: 1500,
-    focus_bars: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
-    blocks: [],
-    unplanned: [],
-    tomorrow_blocks: [],
-    tomorrow_tasks: [],
-    plan_my_day_preview: [],
-    activity_log: [],
-    ...over,
-  });
 
   return [
-    { id: "S0", label: "S0 · Fresh / Empty day (0 tasks, 0 events)", props: { ...b } },
+    { id: "default", label: "Calendar Hub · Default (760×376)", props: baseProps },
     {
-      id: "S1",
-      label: "S1 · Calendar only (green events + gap prompt)",
+      id: "color-blind",
+      label: "Color-blind friendly marks",
+      props: { ...baseProps, colorBlindMarks: true },
+    },
+    {
+      id: "local-empty",
+      label: "Local calendar · Empty cards",
       props: {
-        ...b,
-        calendarEvents: [{ id: 1, title: "Design sync", start_at: "14:00", created_at: "" }],
+        ...baseProps,
+        syncStatusOverride: "local",
+        snapshot: {
+          ...baseSnapshot,
+          dayMarks: [],
+          tasks: [],
+          events: [],
+          reminders: [],
+          sources: [
+            {
+              id: "local",
+              provider: "local",
+              accountLabel: "Local calendar",
+              icsUrl: null,
+              lastSyncedAt: null,
+              lastError: null,
+              connected: true,
+            },
+          ],
+        },
       },
     },
     {
-      id: "S2",
-      label: "S2 · One task (bound Focus + encouraging Lumi)",
-      props: { ...b, tasks: [t(1, "Draft proposal", 45, "dhuhr")] },
-    },
-    {
-      id: "S3",
-      label: "S3 · Two tasks (segmented capacity + then: next)",
+      id: "overdue-missed",
+      label: "Overdue task · Missed reminder · Sync error",
       props: {
-        ...b,
-        tasks: [t(1, "Draft proposal", 40, "dhuhr"), t(2, "Review PR", 30, "dhuhr")],
+        ...baseProps,
+        syncStatusOverride: "error",
+        snapshot: {
+          ...baseSnapshot,
+          tasks: [
+            {
+              ...baseSnapshot.tasks[1],
+              dueDate: "2026-11-24",
+              dueTime: "Nov 24",
+              isDeadline: true,
+            },
+            ...baseSnapshot.tasks.slice(2),
+          ],
+          reminders: [
+            { ...baseSnapshot.reminders[0], missed: true },
+            ...baseSnapshot.reminders.slice(1),
+          ],
+        },
       },
     },
     {
-      id: "S4",
-      label: "S4 · Three tasks in Midday",
+      id: "syncing",
+      label: "Syncing shimmer chip",
+      props: { ...baseProps, syncStatusOverride: "syncing" },
+    },
+    {
+      id: "offline-cache",
+      label: "Offline cache timestamp",
+      props: { ...baseProps, syncStatusOverride: "offline" },
+    },
+    {
+      id: "loading",
+      label: "Loading skeleton (no spinner)",
+      props: { ...baseProps, loading: true },
+    },
+    {
+      id: "reduce-transparency",
+      label: "Reduce transparency solid cards",
+      props: { ...baseProps, reduceTransparency: true },
+    },
+    {
+      id: "scale-150",
+      label: "150% DPI Scale (1140×564)",
+      scale: 1.5,
+      props: baseProps,
+    },
+    {
+      id: "bangla-locale",
+      label: "Bangla locale · Saturday first · Bangla digits",
       props: {
-        ...b,
-        tasks: [
-          t(1, "Design review", 30, "dhuhr"),
-          t(2, "Reply mail", 15, "dhuhr"),
-          t(3, "Spec check", 20, "dhuhr"),
-        ],
+        ...baseProps,
+        language: "bn",
+        banglaDigits: true,
+        firstDayOfWeek: 6,
       },
     },
     {
-      id: "S5",
-      label: "S5 · 4+ tasks in Midday (+N expandable sheet)",
+      id: "week-view",
+      label: "Week View · 7-column strip morph",
+      props: { ...baseProps, viewModeOverride: "week" },
+    },
+    {
+      id: "day-filtered",
+      label: "Selected day filter + Back to today",
+      props: { ...baseProps, selectedDateKeyOverride: "2026-11-27" },
+    },
+    {
+      id: "event-sheet",
+      label: "Event detail sheet + Join",
+      props: { ...baseProps, initialSelectedEvent: baseSnapshot.events[0] },
+    },
+    {
+      id: "missed-list",
+      label: "Missed reminders drawer",
       props: {
-        ...b,
-        tasks: [
-          t(1, "Design review", 25, "dhuhr"),
-          t(2, "Reply mail", 15, "dhuhr"),
-          t(3, "Spec check", 20, "dhuhr"),
-          t(4, "QA pass", 20, "dhuhr"),
-        ],
+        ...baseProps,
+        initialShowMissed: true,
+        snapshot: {
+          ...baseSnapshot,
+          reminders: [
+            { ...baseSnapshot.reminders[0], missed: true },
+            { ...baseSnapshot.reminders[1], missed: true },
+            baseSnapshot.reminders[2],
+          ],
+        },
       },
     },
     {
-      id: "S6",
-      label: "S6 · Tight capacity (<15m free -> Almost full)",
+      id: "drag-over-day",
+      label: "Drag-over day amber highlight",
+      props: { ...baseProps, dragOverDateKeyOverride: "2026-11-28" },
+    },
+    {
+      id: "drag-over-focus",
+      label: "Drag-over Focus amber highlight",
+      props: { ...baseProps, dragOverFocusOverride: true },
+    },
+    {
+      id: "sync-sheet",
+      label: "Calendar Sync sheet (ICS / Google PKCE / Outlook delta / Delete all)",
+      props: { ...baseProps, initialShowSyncSheet: true },
+    },
+    {
+      id: "disconnected",
+      label: "Disconnected / Connect calendar CTA",
+      props: { ...baseProps, syncStatusOverride: "disconnected" },
+    },
+    {
+      id: "focus-running",
+      label: "Focus running · Body-double Lumi + Skip",
       props: {
-        ...b,
-        nowDate: new Date(2026, 10, 26, 14, 15, 0),
-        tasks: [t(1, "Deep sprint", 70, "dhuhr")],
+        ...baseProps,
+        pomodoro: { ...baseProps.pomodoro, running: true, remaining_secs: 1120 },
+        focusFlow: {
+          config: {
+            focusMin: 25,
+            shortBreakMin: 5,
+            longBreakMin: 15,
+            rounds: 4,
+            socialBlockedArmed: true,
+            syncDnd: true,
+            syncTimeLedger: true,
+            prayerArrivalMode: "ask",
+          },
+          boundTaskId: 2,
+          boundTaskTitle: "Design review",
+          pausedForPrayer: null,
+          prayerPrompt: null,
+          freeFocusLogPrompt: null,
+          lumiCompanionMode: "body_double_focus",
+          socialBlockActive: true,
+          dndActive: true,
+          timeLedgerActive: true,
+        },
       },
     },
     {
-      id: "S7",
-      label: "S7 · Overbooked (red bar, Day Full banner, 1-tap Move)",
+      id: "focus-prayer-ask",
+      label: "Focus prayer arrival prompt (Ask default)",
       props: {
-        ...b,
-        nowDate: new Date(2026, 10, 26, 15, 10, 0),
-        tasks: [t(1, "Heavy audit", 60, "dhuhr"), t(2, "Extra prep", 45, "dhuhr")],
+        ...baseProps,
+        pomodoro: { ...baseProps.pomodoro, running: true, remaining_secs: 900 },
+        focusFlow: {
+          config: {
+            focusMin: 25,
+            shortBreakMin: 5,
+            longBreakMin: 15,
+            rounds: 4,
+            socialBlockedArmed: true,
+            syncDnd: true,
+            syncTimeLedger: true,
+            prayerArrivalMode: "ask",
+          },
+          boundTaskId: 2,
+          boundTaskTitle: "Design review",
+          pausedForPrayer: null,
+          prayerPrompt: { prayerKey: "2026-11-26:Maghrib", prayerName: "Maghrib" },
+          freeFocusLogPrompt: null,
+          lumiCompanionMode: "body_double_focus",
+          socialBlockActive: true,
+          dndActive: true,
+          timeLedgerActive: true,
+        },
       },
     },
     {
-      id: "S8",
-      label: "S8 · All done (green checks + celebrate Lumi)",
+      id: "focus-free-done",
+      label: "Free focus complete · Log this as a task?",
       props: {
-        ...b,
-        pomodoro: { ...b.pomodoro, daily_focus_minutes: 95 },
-        tasks: [t(1, "Morning standup", 25, "fajr", true), t(2, "Ship feature", 45, "dhuhr", true)],
+        ...baseProps,
+        focusFlow: {
+          config: {
+            focusMin: 25,
+            shortBreakMin: 5,
+            longBreakMin: 15,
+            rounds: 4,
+            socialBlockedArmed: true,
+            syncDnd: true,
+            syncTimeLedger: true,
+            prayerArrivalMode: "ask",
+          },
+          boundTaskId: null,
+          boundTaskTitle: null,
+          pausedForPrayer: null,
+          prayerPrompt: null,
+          freeFocusLogPrompt: {
+            durationMin: 25,
+            completedAt: "2026-11-26T16:30:00Z",
+            suggestedTitle: "Focus session (25m)",
+          },
+          lumiCompanionMode: "celebrate_focus",
+          socialBlockActive: false,
+          dndActive: false,
+          timeLedgerActive: false,
+        },
       },
     },
     {
-      id: "S9",
-      label: "S9 · After Isha / Night (Tomorrow preview + Today summary)",
-      props: {
-        ...b,
-        nowDate: new Date(2026, 10, 26, 21, 15, 0),
-        pomodoro: { ...b.pomodoro, daily_focus_minutes: 130 },
-        tasks: [
-          t(1, "Finished deck", 40, "asr", true),
-          t(2, "Tomorrow kick-off", 30, "tomorrow:fajr"),
-        ],
-      },
-    },
-    {
-      id: "S10",
-      label: "S10 · No city set (fallback hours + city banner)",
-      props: { ...b, locationConfigured: false },
-    },
-    {
-      id: "S11",
-      label: "S11 · First run (dismissible 3-step tip + sample task)",
-      props: {
-        ...b,
-        firstRunDismissed: false,
-        tasks: [t(99, "Sample: Try 25m focus", 25, "dhuhr")],
-      },
-    },
-    {
-      id: "S12",
-      label: "S12 · Friday (Dhuhr block becomes Jumu'ah)",
-      props: {
-        ...b,
-        nowDate: new Date(2026, 10, 27, 13, 30, 0),
-        schedule: makeBaseSchedule({ is_friday: true }),
-      },
-    },
-    {
-      id: "S13",
-      label: "S13 · Ramadan (Sehri & Iftar markers + Taraweeh)",
-      props: {
-        ...b,
-        ramadanTaraweeh: true,
-        schedule: makeBaseSchedule({ is_ramadan: true }),
-      },
-    },
-    {
-      id: "S14",
-      label: "S14 · Day rollover prompt at Fajr",
-      props: {
-        ...b,
-        waqtState: baseOverride({ yesterday_rollover_count: 2 }),
-      },
-    },
-    {
-      id: "S15",
-      label: "S15 · Loading shimmer skeleton",
-      props: { ...b, loading: true },
-    },
-    {
-      id: "S16",
-      label: "S16 · Error with Retry",
-      props: { ...b, error: "Could not read local planner store" },
-    },
-    {
-      id: "S17",
-      label: "S17 · Quiet mode + Unplanned Plan My Day ready",
-      props: {
-        ...b,
-        quietMode: true,
-        tasks: [t(1, "Call client", 20, null), t(2, "Draft invoice", 45, null)],
-      },
+      id: "rtl-preview",
+      label: "RTL mirroring safe shell preview",
+      dir: "rtl",
+      props: baseProps,
     },
   ];
 }
 
 export function DevStatesPage() {
-  const [galleryTab, setGalleryTab] = useState<"home" | "waqt">("home");
+  const [galleryTab, setGalleryTab] = useState<"home" | "calendar_hub">("calendar_hub");
   const homeStates = buildAll20States();
-  const waqtStates = buildWaqt18States();
+  const calendarHubStates = buildCalendarHubPhase1States();
   const [selectedId, setSelectedId] = useState<string>("all");
   const visibleHome =
     selectedId === "all" ? homeStates : homeStates.filter((s) => s.id === selectedId);
-  const visibleWaqt =
-    selectedId === "all" ? waqtStates : waqtStates.filter((s) => s.id === selectedId);
+  const visibleCalendarHub =
+    selectedId === "all" ? calendarHubStates : calendarHubStates.filter((s) => s.id === selectedId);
 
   return (
     <div
@@ -683,19 +851,21 @@ export function DevStatesPage() {
       <div className="mx-auto max-w-[1260px]">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
           <div>
-            <h1 className="text-xl font-semibold text-white">Lumen UI States Gallery (640×312)</h1>
+            <h1 className="text-xl font-semibold text-white">Lumen UI States Gallery</h1>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setGalleryTab("waqt");
+                  setGalleryTab("calendar_hub");
                   setSelectedId("all");
                 }}
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  galleryTab === "waqt" ? "bg-[#ffb020] text-black" : "bg-white/10 text-white/75"
+                  galleryTab === "calendar_hub"
+                    ? "bg-[#5e5ce6] text-white"
+                    : "bg-white/10 text-white/75"
                 }`}
               >
-                Waqt Timeline (S0–S17)
+                Calendar Hub (All States)
               </button>
               <button
                 type="button"
@@ -721,7 +891,7 @@ export function DevStatesPage() {
             >
               All
             </button>
-            {(galleryTab === "waqt" ? waqtStates : homeStates).map((st) => (
+            {(galleryTab === "calendar_hub" ? calendarHubStates : homeStates).map((st) => (
               <button
                 key={st.id}
                 type="button"
@@ -737,33 +907,48 @@ export function DevStatesPage() {
         </div>
 
         <div className="flex flex-col gap-10">
-          {galleryTab === "waqt"
-            ? visibleWaqt.map((st) => (
-                <section
-                  key={st.id}
-                  data-testid={`dev-waqt-state-${st.id}`}
-                  className="flex flex-col gap-2"
-                >
-                  <div className="flex items-center justify-between text-xs text-white/75">
-                    <span className="font-semibold">{st.label}</span>
-                    <span className="tabular-nums text-white/50">
-                      {BASE_GEOMETRY.homeExpanded.width}×{BASE_GEOMETRY.homeExpanded.height} px
-                    </span>
-                  </div>
-                  <div
-                    className="relative overflow-hidden bg-black"
-                    style={{
-                      width: `${BASE_GEOMETRY.homeExpanded.width}px`,
-                      height: `${BASE_GEOMETRY.homeExpanded.height}px`,
-                      borderRadius: `0px 0px ${BASE_GEOMETRY.homeBottomRadius}px ${BASE_GEOMETRY.homeBottomRadius}px`,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderTop: "0px",
-                    }}
+          {galleryTab === "calendar_hub"
+            ? visibleCalendarHub.map((st) => {
+                const scale = st.scale ?? 1;
+                const w = Math.round(BASE_GEOMETRY.calendarHubExpanded.width * scale);
+                const h = Math.round(BASE_GEOMETRY.calendarHubExpanded.height * scale);
+                return (
+                  <section
+                    key={st.id}
+                    data-testid={`dev-cal-hub-state-${st.id}`}
+                    className="flex flex-col gap-2"
                   >
-                    <WaqtTimeline {...st.props} />
-                  </div>
-                </section>
-              ))
+                    <div className="flex items-center justify-between text-xs text-white/75">
+                      <span className="font-semibold">{st.label}</span>
+                      <span className="tabular-nums text-white/50">
+                        {w}×{h} px
+                      </span>
+                    </div>
+                    <div
+                      dir={st.dir}
+                      className="relative overflow-hidden bg-black"
+                      style={{
+                        width: `${w}px`,
+                        height: `${h}px`,
+                        borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scale)}px`,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderTop: "0px",
+                      }}
+                    >
+                      <div
+                        className="origin-top-left"
+                        style={{
+                          width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
+                          height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
+                          transform: scale !== 1 ? `scale(${scale})` : undefined,
+                        }}
+                      >
+                        <CalendarHubPage {...st.props} />
+                      </div>
+                    </div>
+                  </section>
+                );
+              })
             : visibleHome.map((st) => {
                 const scale = st.scale ?? 1;
                 const w = Math.round(BASE_GEOMETRY.homeExpanded.width * scale);

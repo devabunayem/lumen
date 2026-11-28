@@ -9,7 +9,7 @@ import {
   purgeExpiredLocalReminders,
   stopLocalReminder,
 } from "../lib/remindersLocal";
-import { RemindersWidget } from "../widgets/reminders/RemindersWidget";
+import { RemindersCard } from "../calendar/RemindersCard";
 
 describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
   it("renders medium reminder alert with Stop (OK) and configurable Snooze actions", () => {
@@ -50,35 +50,36 @@ describe("Reminders Overlay, Widget & Real-Time Media Card", () => {
     expect(onStop).toHaveBeenCalledWith(7, "lead");
   });
 
-  it("allows creating a manual reminder with custom date, target time and advance lead minutes", async () => {
-    const onAdd = vi.fn().mockResolvedValue(undefined);
+  it("allows creating a prayer-anchored or timed reminder via Calendar Hub RemindersCard", async () => {
+    const onCreateReminder = vi.fn().mockResolvedValue(undefined);
     render(
-      <RemindersWidget
+      <RemindersCard
         reminders={[]}
-        defaultLeadMinutes={10}
-        snoozeMinutes={3}
+        nowDate={new Date(2026, 10, 26, 15, 0, 0)}
+        selectedDateKey="2026-11-26"
+        quickAddOpen
         language="en"
-        onAdd={onAdd}
-        onDelete={vi.fn()}
-        onMarkDone={vi.fn()}
+        banglaDigits={false}
+        onCreateReminder={onCreateReminder}
+        onCompleteReminder={vi.fn()}
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Reminder title"), {
-      target: { value: "Deploy build" },
+    const input = screen.getByTestId("cal-quick-add-input-reminder");
+    fireEvent.change(input, {
+      target: { value: "Review notes 10 min before Maghrib" },
     });
-    fireEvent.change(screen.getByLabelText("Target date"), {
-      target: { value: "2026-11-28" },
-    });
-    fireEvent.change(screen.getByLabelText("Target time"), {
-      target: { value: "21:00" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "15m" }));
     await act(async () => {
-      fireEvent.click(screen.getByTestId("reminder-submit-btn"));
+      fireEvent.submit(screen.getByTestId("cal-quick-add-reminder"));
     });
 
-    expect(onAdd).toHaveBeenCalledWith("Deploy build", expect.stringContaining("2026-11-28"), 15);
+    expect(onCreateReminder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Review notes",
+        reminderKind: "prayer",
+        prayerAnchor: { prayer: "Maghrib", offsetMin: 10, relation: "before" },
+      }),
+    );
   });
 
   it("persists reminders in localStorage, honors exact-time fire, and auto-purges after 7 days", () => {

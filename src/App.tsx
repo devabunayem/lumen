@@ -156,17 +156,20 @@ export function App() {
       hiddenPages={settings.hiddenPages}
       initialWaterGoalMl={settings.waterGoalMl}
       mediaExclusions={settings.mediaExclusions}
-      waqtBedtimeHHMM={settings.waqtBedtimeHHMM}
-      waqtPrayerPauseMode={settings.waqtPrayerPauseMode}
-      waqtRamadanTaraweeh={settings.waqtRamadanTaraweeh}
-      waqtHintDismissed={settings.waqtHintDismissed}
-      waqtBlockNames={settings.waqtBlockNames}
-      waqtQuietMode={settings.waqtQuietMode}
-      waqtFirstRunDismissed={settings.waqtFirstRunDismissed}
-      waqtRhythmAnchors={settings.waqtRhythmAnchors}
       lumiTalkLess={settings.lumiTalkLess}
       lumiSoundsEnabled={settings.lumiSoundsEnabled}
       lumiAccessories={settings.lumiAccessories}
+      calendarFirstDayOfWeek={settings.calendarFirstDayOfWeek}
+      calendarColorBlindMarks={settings.calendarColorBlindMarks}
+      calendarSocialBlockArmed={settings.calendarSocialBlockArmed}
+      calendarGoogleClientId={settings.calendarGoogleClientId}
+      calendarMicrosoftClientId={settings.calendarMicrosoftClientId}
+      calendarWritebackTasks={settings.calendarWritebackTasks}
+      onUpdateCalendarSettings={(patch) => {
+        const next = { ...settings, ...patch };
+        setSettings(next);
+        void settingsUpdate(next);
+      }}
       onShapeChange={handleShapeChange}
     />
   );

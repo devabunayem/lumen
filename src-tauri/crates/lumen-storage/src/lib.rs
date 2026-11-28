@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration, Local, NaiveTime, TimeZone, Utc};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-pub mod waqt;
+pub mod calendar_hub;
 
 /// Core SQLite schema matching SRS Section 7.4.
 pub const INITIAL_SCHEMA_SQL: &str = r"
@@ -287,6 +287,7 @@ impl StorageRepo {
         conn.execute_batch(INITIAL_SCHEMA_SQL)
             .map_err(|e| format!("SQLite migration failed: {e}"))?;
         migrate_waqt_columns(&conn)?;
+        calendar_hub::init_calendar_hub_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -297,6 +298,7 @@ impl StorageRepo {
         conn.execute_batch(INITIAL_SCHEMA_SQL)
             .map_err(|e| format!("SQLite migration failed: {e}"))?;
         migrate_waqt_columns(&conn)?;
+        calendar_hub::init_calendar_hub_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -922,13 +924,7 @@ impl StorageRepo {
         duration_s: u32,
         completed: bool,
     ) -> Result<(), String> {
-        let now = Utc::now().to_rfc3339();
-        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
-        conn.execute(
-            "INSERT INTO pomodoro_sessions (kind, started_at, duration_s, completed) VALUES (?1, ?2, ?3, ?4)",
-            params![kind, now, i64::from(duration_s), i64::from(completed)],
-        )
-        .map_err(|e| format!("record pomodoro failed: {e}"))?;
+        self.calendar_hub_record_focus_session(None, kind, duration_s, completed)?;
         Ok(())
     }
 
@@ -989,15 +985,27 @@ impl StorageRepo {
     pub fn daily_focus_minutes(&self, now_utc: DateTime<Utc>) -> Result<i64, String> {
         let day_start = Self::day_window_start_utc(now_utc, 0);
         let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
-        let secs: i64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(duration_s), 0) FROM pomodoro_sessions
-                 WHERE kind = 'focus' AND completed = 1 AND started_at >= ?1",
-                params![day_start.to_rfc3339()],
-                |row| row.get(0),
+        let mut stmt = conn
+            .prepare(
+                "SELECT start_at, end_at FROM focus_sessions
+                 WHERE kind = 'focus' AND completed = 1 AND start_at >= ?1 AND end_at IS NOT NULL",
             )
             .map_err(|e| format!("daily focus query failed: {e}"))?;
-        Ok(secs / 60)
+        let rows = stmt
+            .query_map(params![day_start.to_rfc3339()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("daily focus map failed: {e}"))?;
+        let mut total_secs = 0i64;
+        for row in rows.flatten() {
+            if let (Ok(s), Ok(e)) = (
+                DateTime::parse_from_rfc3339(&row.0),
+                DateTime::parse_from_rfc3339(&row.1),
+            ) {
+                total_secs += (e.signed_duration_since(s)).num_seconds().max(0);
+            }
+        }
+        Ok(total_secs / 60)
     }
 
     pub fn with_connection<T>(

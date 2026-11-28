@@ -6,5 +6,6 @@ license.workspace = true
 description = "Core deterministic state machine, event bus, and settings schema for Lumen"
 
 [dependencies]
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

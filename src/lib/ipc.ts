@@ -102,126 +102,6 @@ export interface ActivityLogItem {
   note: string | null;
 }
 
-export interface WaqtBlockItem {
-  id: number;
-  title: string;
-  kind: "task" | "meeting" | "habit" | "deadline" | string;
-  source: "local" | "calendar" | string;
-  estimate_min: number;
-  done: boolean;
-  done_at: string | null;
-  fixed: boolean;
-  start_at: string | null;
-  slot_start_min: number;
-  slot_end_min: number;
-  client: string | null;
-  calendar_event_id: number | null;
-  sort_order: number;
-}
-
-export interface WaqtSuggestion {
-  id: string;
-  text: string;
-  source: "due_today" | "yesterday_unfinished" | "calendar_gap" | "inbox" | "rhythm" | string;
-  kind: string;
-  estimate_min: number;
-  task_id: number | null;
-  block_id: string;
-}
-
-export interface WaqtGhostAnchor {
-  id: string;
-  title: string;
-  kind: string;
-  estimate_min: number;
-  block_id: string;
-  progress_label: string | null;
-  is_user_template: boolean;
-}
-
-export interface WaqtPlanAssignment {
-  task_id: number;
-  task_title: string;
-  prev_block_id: string | null;
-  target_block_id: string;
-  target_block_name: string;
-  estimate_min: number;
-}
-
-export interface WaqtTomorrowBlock {
-  id: string;
-  name: string;
-  range_label: string;
-  task_count: number;
-}
-
-export interface WaqtBlockView {
-  id: string;
-  default_name: string;
-  name: string;
-  prayer_label: string;
-  start_min: number;
-  end_min: number;
-  range_label: string;
-  is_past: boolean;
-  is_current: boolean;
-  fill_ratio_pct: number;
-  remaining_min: number;
-  free_capacity_min: number;
-  used_capacity_min: number;
-  capacity_status: "free" | "tight" | "overbooked";
-  length_hint_kind: "deep_work" | "quick_tasks" | "short_break" | string;
-  focus_minutes: number;
-  logged_focus_min: number;
-  logged_prayer_done: boolean;
-  status_text: string;
-  items: WaqtBlockItem[];
-  suggestion: WaqtSuggestion | null;
-  rhythm_anchors: WaqtGhostAnchor[];
-}
-
-export interface WaqtTimelineState {
-  date_label: string;
-  now_min: number;
-  rail_start_min: number;
-  rail_end_min: number;
-  sun_progress_pct: number;
-  is_friday: boolean;
-  is_ramadan: boolean;
-  is_after_isha: boolean;
-  all_tasks_done: boolean;
-  sehri_min: number;
-  iftar_min: number;
-  location_configured: boolean;
-  active_block_id: string;
-  next_prayer_name: string;
-  next_prayer_in_min: number;
-  current_focus_task_id: number | null;
-  focus_next_task_id: number | null;
-  focus_next_task_title: string | null;
-  yesterday_rollover_count: number;
-  total_focus_min: number;
-  total_planned_min: number;
-  total_free_min: number;
-  day_is_overbooked: boolean;
-  prayers_done_count: number;
-  water_today_ml: number;
-  water_goal_ml: number;
-  focus_bars: number[];
-  blocks: WaqtBlockView[];
-  unplanned: TaskItem[];
-  tomorrow_blocks: WaqtTomorrowBlock[];
-  tomorrow_tasks: WaqtBlockItem[];
-  plan_my_day_preview: WaqtPlanAssignment[];
-  activity_log: ActivityLogItem[];
-}
-
-export interface WaqtFocusFlowResult {
-  waqt: WaqtTimelineState;
-  pomodoro: PomodoroSnapshot;
-  ledger: TimeLedgerState;
-}
-
 export interface WaterDayPoint {
   date_label: string;
   total_ml: number;
@@ -467,34 +347,6 @@ export async function selectMediaSession(appId: string): Promise<MediaStateSnaps
     return null;
   }
   return invoke<MediaStateSnapshot>("media_select_session", { appId });
-}
-
-export async function tasksList(): Promise<TaskItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<TaskItem[]>("tasks_list");
-}
-
-export async function tasksAdd(title: string, dueAt?: string | null): Promise<TaskItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<TaskItem[]>("tasks_add", { title, dueAt: dueAt ?? null });
-}
-
-export async function tasksToggle(id: number): Promise<TaskItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<TaskItem[]>("tasks_toggle", { id });
-}
-
-export async function tasksDelete(id: number): Promise<TaskItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<TaskItem[]>("tasks_delete", { id });
 }
 
 export async function waterGetSummary(goalMl = 1500, resetHour = 4): Promise<WaterSummary | null> {
@@ -824,88 +676,6 @@ export async function systemPrivacyIndicators(): Promise<[boolean, boolean]> {
   return invoke<[boolean, boolean]>("system_privacy_indicators");
 }
 
-export async function calendarList(): Promise<CalendarEvent[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<CalendarEvent[]>("calendar_list");
-}
-
-export async function calendarAdd(title: string, startAt: string): Promise<CalendarEvent[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<CalendarEvent[]>("calendar_add", { title, startAt });
-}
-
-export async function calendarDelete(id: number): Promise<CalendarEvent[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<CalendarEvent[]>("calendar_delete", { id });
-}
-
-export async function remindersList(): Promise<ReminderItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<ReminderItem[]>("reminders_list");
-}
-
-export async function remindersAdd(
-  title: string,
-  targetAt: string,
-  leadMinutes: number,
-): Promise<ReminderItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<ReminderItem[]>("reminders_add", { title, targetAt, leadMinutes });
-}
-
-export async function remindersDelete(id: number): Promise<ReminderItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<ReminderItem[]>("reminders_delete", { id });
-}
-
-export async function remindersStop(id: number, stage: string): Promise<ReminderItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<ReminderItem[]>("reminders_stop", { id, stage });
-}
-
-export async function remindersSnooze(id: number): Promise<ReminderItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return invoke<ReminderItem[]>("reminders_snooze", { id });
-}
-
-export async function subscribeReminderAlert(
-  onAlert: (alert: ReminderAlertPayload) => void,
-): Promise<UnlistenFn> {
-  if (!isTauriRuntime()) {
-    return () => {};
-  }
-  return listen<ReminderAlertPayload>("lumen://reminder-alert", (event) => {
-    onAlert(event.payload);
-  });
-}
-
-export async function subscribeRemindersUpdated(
-  onUpdated: (items: ReminderItem[]) => void,
-): Promise<UnlistenFn> {
-  if (!isTauriRuntime()) {
-    return () => {};
-  }
-  return listen<ReminderItem[]>("lumen://reminders-updated", (event) => {
-    onUpdated(event.payload);
-  });
-}
-
 export async function systemQuickTogglesState(): Promise<QuickTogglesState> {
   if (!isTauriRuntime()) {
     return {
@@ -1092,188 +862,638 @@ export async function subscribePrayerUpdated(
   });
 }
 
-export async function waqtGetState(): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_get_state");
-}
-
-export async function waqtAddTask(input: {
+export interface CalendarTask {
+  id: number;
   title: string;
-  estimateMin?: number;
-  blockId?: string | null;
-  kind?: string;
-  fixed?: boolean;
-  startAt?: string | null;
-  client?: string | null;
-}): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_add_task", {
-    title: input.title,
-    estimateMin: input.estimateMin ?? null,
-    blockId: input.blockId ?? null,
-    kind: input.kind ?? null,
-    fixed: input.fixed ?? null,
-    startAt: input.startAt ?? null,
-    client: input.client ?? null,
-  });
+  dueDate: string | null;
+  dueTime: string | null;
+  estimateMin: number | null;
+  doneAt: string | null;
+  client: string | null;
+  projectId: string | null;
+  isDeadline: boolean;
+  createdAt: string;
 }
 
-export async function waqtAssignTask(
-  taskId: number,
-  blockId: string | null,
-  sortOrder?: number | null,
-): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_assign_task", {
-    taskId,
-    blockId,
-    sortOrder: sortOrder ?? null,
-  });
+export interface PrayerAnchorSpec {
+  prayer: string;
+  offsetMin: number;
+  relation: "before" | "after" | string;
 }
 
-export async function waqtUpdateTaskMeta(input: {
-  taskId: number;
-  estimateMin?: number;
-  kind?: string;
-  blockId?: string | null;
-  client?: string | null;
-}): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_update_task_meta", {
-    taskId: input.taskId,
-    estimateMin: input.estimateMin ?? null,
-    kind: input.kind ?? null,
-    blockId: input.blockId === undefined ? null : input.blockId,
-    client: input.client === undefined ? null : input.client,
-  });
+export interface CalendarReminder {
+  id: number;
+  title: string;
+  kind: "once" | "daily" | "weekly" | "monthly" | "prayer" | string;
+  at: string | null;
+  repeatRule: string | null;
+  prayerAnchor: PrayerAnchorSpec | null;
+  snoozeCount: number;
+  active: boolean;
+  importance: "normal" | "urgent" | string;
+  missed: boolean;
+  nextTriggerAt?: string | null;
+  createdAt: string;
 }
 
-export async function waqtMoveOverflowToNext(
-  fromBlockId: string,
-): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_move_overflow_to_next", { fromBlockId });
+export interface CalendarSource {
+  id: string;
+  provider: "local" | "ics" | "google" | "microsoft" | string;
+  accountLabel: string;
+  icsUrl: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  connected: boolean;
 }
 
-export async function waqtRenameBlock(
-  blockId: string,
-  name: string,
-): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_rename_block", { blockId, name });
+export interface CalendarHubEvent {
+  id: number;
+  sourceId: string;
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  color: string;
+  meetingUrl: string | null;
+  location: string | null;
+  readOnly: boolean;
 }
 
-export async function waqtRolloverYesterday(accept: boolean): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_rollover_yesterday", { accept });
-}
-
-export async function waqtStartFocusFlow(
-  taskId?: number | null,
-): Promise<WaqtFocusFlowResult | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtFocusFlowResult>("waqt_start_focus_flow", { taskId: taskId ?? null });
-}
-
-export async function waqtDismissHint(): Promise<void> {
-  if (!isTauriRuntime()) {
-    return;
-  }
-  await invoke("waqt_dismiss_hint");
-}
-
-export async function waqtLogActivity(
-  kind: string,
-  refId?: string | null,
-  note?: string | null,
-): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_log_activity", {
-    kind,
-    refId: refId ?? null,
-    note: note ?? null,
-  });
-}
-
-export async function waqtAssignBatch(
-  assignments: Array<[number, string | null]>,
-): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_assign_batch", { assignments });
-}
-
-export async function waqtAcceptSuggestion(input: {
-  suggestionId: string;
-  text: string;
-  blockId: string;
-  kind: string;
-  estimateMin: number;
+export interface FocusSessionRecord {
+  id: number;
   taskId: number | null;
-}): Promise<WaqtTimelineState | null> {
+  startAt: string;
+  endAt: string | null;
+  kind: "focus" | "short" | "long" | string;
+  completed: boolean;
+}
+
+export interface DayMarkSummary {
+  dateKey: string;
+  taskCount: number;
+  eventCount: number;
+  reminderCount: number;
+  deadlineCount: number;
+}
+
+export interface CalendarHubSnapshot {
+  year: number;
+  month: number;
+  dayMarks: DayMarkSummary[];
+  tasks: CalendarTask[];
+  events: CalendarHubEvent[];
+  reminders: CalendarReminder[];
+  sources: CalendarSource[];
+  recentFocusSessions: FocusSessionRecord[];
+  focusTaskId?: number | null;
+}
+
+export interface ParsedQuickAdd {
+  title: string;
+  targetKind: "task" | "reminder" | string;
+  dueDate: string | null;
+  dueTime: string | null;
+  isDeadline: boolean;
+  reminderKind: "once" | "daily" | "weekly" | "monthly" | "prayer" | string;
+  at: string | null;
+  repeatRule: string | null;
+  prayerAnchor: PrayerAnchorSpec | null;
+  importance: "normal" | "urgent" | string;
+  chipLabel: string;
+}
+
+export interface DueCalendarReminderAlert {
+  reminder: CalendarReminder;
+  isRepeat: boolean;
+  wasDeferred: boolean;
+}
+
+export async function calendarHubGetSnapshot(
+  year: number,
+  month: number,
+): Promise<CalendarHubSnapshot | null> {
   if (!isTauriRuntime()) {
-    return null;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const prefix = `${year}-${pad(month)}`;
+    return {
+      year,
+      month,
+      dayMarks: [
+        {
+          dateKey: `${prefix}-02`,
+          taskCount: 1,
+          eventCount: 0,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-03`,
+          taskCount: 0,
+          eventCount: 1,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-05`,
+          taskCount: 0,
+          eventCount: 0,
+          reminderCount: 1,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-09`,
+          taskCount: 1,
+          eventCount: 1,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-10`,
+          taskCount: 0,
+          eventCount: 0,
+          reminderCount: 1,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-12`,
+          taskCount: 1,
+          eventCount: 0,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-14`,
+          taskCount: 0,
+          eventCount: 1,
+          reminderCount: 1,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-16`,
+          taskCount: 0,
+          eventCount: 1,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-17`,
+          taskCount: 1,
+          eventCount: 0,
+          reminderCount: 1,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-19`,
+          taskCount: 0,
+          eventCount: 0,
+          reminderCount: 1,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-23`,
+          taskCount: 1,
+          eventCount: 1,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-26`,
+          taskCount: 1,
+          eventCount: 1,
+          reminderCount: 1,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-27`,
+          taskCount: 0,
+          eventCount: 1,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+        {
+          dateKey: `${prefix}-28`,
+          taskCount: 2,
+          eventCount: 0,
+          reminderCount: 0,
+          deadlineCount: 1,
+        },
+        {
+          dateKey: `${prefix}-30`,
+          taskCount: 1,
+          eventCount: 0,
+          reminderCount: 0,
+          deadlineCount: 0,
+        },
+      ],
+      tasks: [
+        {
+          id: 1,
+          title: "Invoice",
+          dueDate: `${prefix}-26`,
+          dueTime: "9:00",
+          estimateMin: 15,
+          doneAt: `${prefix}-26T09:10:00Z`,
+          client: null,
+          projectId: null,
+          isDeadline: false,
+          createdAt: `${prefix}-20T08:00:00Z`,
+        },
+        {
+          id: 2,
+          title: "Design review",
+          dueDate: `${prefix}-26`,
+          dueTime: "2:30",
+          estimateMin: 25,
+          doneAt: null,
+          client: null,
+          projectId: null,
+          isDeadline: false,
+          createdAt: `${prefix}-20T08:00:00Z`,
+        },
+        {
+          id: 3,
+          title: "Reply mail",
+          dueDate: `${prefix}-26`,
+          dueTime: null,
+          estimateMin: 15,
+          doneAt: null,
+          client: null,
+          projectId: null,
+          isDeadline: false,
+          createdAt: `${prefix}-20T08:00:00Z`,
+        },
+        {
+          id: 4,
+          title: "Review PRs",
+          dueDate: `${prefix}-26`,
+          dueTime: null,
+          estimateMin: 25,
+          doneAt: null,
+          client: null,
+          projectId: null,
+          isDeadline: false,
+          createdAt: `${prefix}-20T08:00:00Z`,
+        },
+      ],
+      events: [
+        {
+          id: 1,
+          sourceId: "local",
+          title: "Team standup",
+          start: `${prefix}-26T16:12:00`,
+          end: `${prefix}-26T16:42:00`,
+          allDay: false,
+          color: "#30d158",
+          meetingUrl: "https://meet.google.com/lumen-standup",
+          location: "Google Meet",
+          readOnly: false,
+        },
+        {
+          id: 2,
+          sourceId: "local",
+          title: "Client call",
+          start: `${prefix}-26T18:30:00`,
+          end: `${prefix}-26T19:00:00`,
+          allDay: false,
+          color: "#7a78ff",
+          meetingUrl: null,
+          location: null,
+          readOnly: false,
+        },
+        {
+          id: 3,
+          sourceId: "local",
+          title: "Sprint review",
+          start: `${prefix}-27T10:00:00`,
+          end: `${prefix}-27T11:00:00`,
+          allDay: false,
+          color: "#30d158",
+          meetingUrl: null,
+          location: null,
+          readOnly: false,
+        },
+      ],
+      reminders: [
+        {
+          id: 1,
+          title: "Call supplier",
+          kind: "once",
+          at: `${prefix}-26T17:00:00`,
+          repeatRule: "5:00 PM · once",
+          prayerAnchor: null,
+          snoozeCount: 0,
+          active: true,
+          importance: "normal",
+          missed: false,
+          createdAt: `${prefix}-26T08:00:00Z`,
+        },
+        {
+          id: 2,
+          title: "Read 10 pages",
+          kind: "daily",
+          at: `${prefix}-26T21:00:00`,
+          repeatRule: "Daily · 9:00 PM",
+          prayerAnchor: null,
+          snoozeCount: 0,
+          active: true,
+          importance: "normal",
+          missed: false,
+          createdAt: `${prefix}-26T08:00:00Z`,
+        },
+        {
+          id: 3,
+          title: "Review notes",
+          kind: "prayer",
+          at: `${prefix}-26T17:01:00`,
+          repeatRule: null,
+          prayerAnchor: { prayer: "Maghrib", offsetMin: 10, relation: "before" },
+          snoozeCount: 0,
+          active: true,
+          importance: "normal",
+          missed: false,
+          createdAt: `${prefix}-26T08:00:00Z`,
+        },
+      ],
+      sources: [
+        {
+          id: "local",
+          provider: "local",
+          accountLabel: "Local calendar",
+          icsUrl: null,
+          lastSyncedAt: null,
+          lastError: null,
+          connected: true,
+        },
+      ],
+      recentFocusSessions: [],
+      focusTaskId: 2,
+    };
   }
-  return invoke<WaqtTimelineState>("waqt_accept_suggestion", {
-    suggestionId: input.suggestionId,
-    text: input.text,
-    blockId: input.blockId,
-    kind: input.kind,
-    estimateMin: input.estimateMin,
-    taskId: input.taskId,
+  return invoke<CalendarHubSnapshot>("calendar_hub_get_snapshot", { year, month });
+}
+
+export async function calendarHubAddTask(input: {
+  title: string;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  estimateMin?: number | null;
+  isDeadline?: boolean;
+}): Promise<CalendarTask | null> {
+  if (!isTauriRuntime()) {
+    return {
+      id: Date.now(),
+      title: input.title,
+      dueDate: input.dueDate ?? null,
+      dueTime: input.dueTime ?? null,
+      estimateMin: input.estimateMin ?? 25,
+      doneAt: null,
+      client: null,
+      projectId: null,
+      isDeadline: Boolean(input.isDeadline),
+      createdAt: new Date().toISOString(),
+    };
+  }
+  return invoke<CalendarTask>("calendar_hub_add_task", {
+    title: input.title,
+    dueDate: input.dueDate ?? null,
+    dueTime: input.dueTime ?? null,
+    estimateMin: input.estimateMin ?? null,
+    isDeadline: input.isDeadline ?? false,
   });
 }
 
-export async function waqtDismissSuggestion(
-  suggestionId: string,
-  text: string,
-): Promise<WaqtTimelineState | null> {
+export async function calendarHubToggleTask(id: number): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    return new Date().toISOString();
+  }
+  return invoke<string | null>("calendar_hub_toggle_task", { id });
+}
+
+export async function calendarHubAddLocalEvent(input: {
+  title: string;
+  start: string;
+  end: string;
+  allDay?: boolean;
+  color?: string;
+  meetingUrl?: string | null;
+  location?: string | null;
+}): Promise<CalendarHubEvent | null> {
   if (!isTauriRuntime()) {
     return null;
   }
-  return invoke<WaqtTimelineState>("waqt_dismiss_suggestion", { suggestionId, text });
+  return invoke<CalendarHubEvent>("calendar_hub_add_local_event", {
+    title: input.title,
+    start: input.start,
+    end: input.end,
+    allDay: input.allDay ?? false,
+    color: input.color ?? "#30d158",
+    meetingUrl: input.meetingUrl ?? null,
+    location: input.location ?? null,
+  });
 }
 
-export async function waqtDismissFirstRun(): Promise<void> {
+export async function calendarHubAddReminder(input: {
+  title: string;
+  kind: string;
+  at?: string | null;
+  repeatRule?: string | null;
+  prayerAnchor?: PrayerAnchorSpec | null;
+  importance?: string;
+}): Promise<CalendarReminder | null> {
   if (!isTauriRuntime()) {
+    return {
+      id: Date.now(),
+      title: input.title,
+      kind: input.kind,
+      at: input.at ?? null,
+      repeatRule: input.repeatRule ?? null,
+      prayerAnchor: input.prayerAnchor ?? null,
+      snoozeCount: 0,
+      active: true,
+      importance: input.importance ?? "normal",
+      missed: false,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  return invoke<CalendarReminder>("calendar_hub_add_reminder", {
+    title: input.title,
+    kind: input.kind,
+    at: input.at ?? null,
+    repeatRule: input.repeatRule ?? null,
+    prayerAnchor: input.prayerAnchor ?? null,
+    importance: input.importance ?? "normal",
+  });
+}
+
+export async function calendarHubParseQuickAdd(
+  raw: string,
+  mode: "task" | "reminder",
+): Promise<ParsedQuickAdd | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<ParsedQuickAdd>("calendar_hub_parse_quick_add", { raw, mode });
+}
+
+export async function calendarHubMoveTaskDue(id: number, dueDate: string | null): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_move_task_due", { id, dueDate });
+}
+
+export async function calendarHubDeleteTask(id: number): Promise<CalendarTask | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<CalendarTask | null>("calendar_hub_delete_task", { id });
+}
+
+export async function calendarHubRestoreTask(task: CalendarTask): Promise<CalendarTask | null> {
+  if (!isTauriRuntime()) return task;
+  return invoke<CalendarTask>("calendar_hub_restore_task", { task });
+}
+
+export async function calendarHubSetFocusTask(taskId: number | null): Promise<number | null> {
+  if (!isTauriRuntime()) return taskId;
+  return invoke<number | null>("calendar_hub_set_focus_task", { taskId });
+}
+
+export async function calendarHubCompleteReminder(id: number): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_complete_reminder", { id });
+}
+
+export async function calendarHubSnoozeReminder(id: number, minutes = 10): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_snooze_reminder", { id, minutes });
+}
+
+export async function calendarHubDismissMissed(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_dismiss_missed");
+}
+
+export async function subscribeCalendarReminderAlert(
+  onAlert: (alert: DueCalendarReminderAlert) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) return () => {};
+  return listen<DueCalendarReminderAlert>("lumen://calendar-reminder-alert", (event) => {
+    onAlert(event.payload);
+  });
+}
+
+export async function subscribeCalendarHubUpdated(onUpdated: () => void): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) return () => {};
+  return listen("lumen://calendar-hub-updated", () => onUpdated());
+}
+
+export type PrayerArrivalMode = "ask" | "auto_pause" | "ignore";
+
+export interface FocusConfig {
+  focusMin: number;
+  shortBreakMin: number;
+  longBreakMin: number;
+  rounds: number;
+  socialBlockedArmed: boolean;
+  syncDnd: boolean;
+  syncTimeLedger: boolean;
+  prayerArrivalMode: PrayerArrivalMode;
+}
+
+export interface PrayerArrivalPrompt {
+  prayerKey: string;
+  prayerName: string;
+}
+
+export interface FreeFocusLogPrompt {
+  durationMin: number;
+  completedAt: string;
+  suggestedTitle: string;
+}
+
+export interface FocusFlowState {
+  config: FocusConfig;
+  boundTaskId: number | null;
+  boundTaskTitle: string | null;
+  pausedForPrayer: string | null;
+  prayerPrompt: PrayerArrivalPrompt | null;
+  freeFocusLogPrompt: FreeFocusLogPrompt | null;
+  lumiCompanionMode: "idle" | "body_double_focus" | "prayer_pause" | "celebrate_focus" | string;
+  socialBlockActive: boolean;
+  dndActive: boolean;
+  timeLedgerActive: boolean;
+}
+
+export async function calendarHubConnectIcs(label: string, url: string): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_connect_ics", { label, url });
+}
+
+export async function calendarHubConnectOAuth(
+  provider: "google" | "microsoft",
+  clientId: string,
+  writeScope = false,
+): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_connect_oauth", { provider, clientId, writeScope });
+}
+
+export async function calendarHubSyncNow(sourceId?: string | null): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_sync_now", { sourceId: sourceId ?? null });
+}
+
+export async function calendarHubDisconnectSource(sourceId: string): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_disconnect_source", { sourceId });
+}
+
+export async function calendarHubDeleteAllData(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("calendar_hub_delete_all_data");
+}
+
+export async function calendarHubOpenExternalUrl(url: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    window.open(url, "_blank", "noopener,noreferrer");
     return;
   }
-  await invoke("waqt_dismiss_first_run");
+  await invoke("calendar_hub_open_external_url", { url });
 }
 
-export async function waqtSeedSampleTask(): Promise<WaqtTimelineState | null> {
-  if (!isTauriRuntime()) {
-    return null;
-  }
-  return invoke<WaqtTimelineState>("waqt_seed_sample_task");
+export async function calendarHubPushTaskEvent(
+  title: string,
+  startRfc3339: string,
+  endRfc3339: string,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<string>("calendar_hub_push_task_event", { title, startRfc3339, endRfc3339 });
 }
 
-export async function subscribeWaqtUpdated(
-  onUpdate: (state: WaqtTimelineState) => void,
+export async function calendarHubFocusGetState(): Promise<FocusFlowState | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<FocusFlowState>("calendar_hub_focus_get_state");
+}
+
+export async function calendarHubFocusRespondPrayer(
+  pause: boolean,
+): Promise<FocusFlowState | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<FocusFlowState>("calendar_hub_focus_respond_prayer", { pause });
+}
+
+export async function calendarHubFocusDismissFreeLog(): Promise<FocusFlowState | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<FocusFlowState>("calendar_hub_focus_dismiss_free_log");
+}
+
+export async function calendarHubFocusLogFreeTask(title: string): Promise<CalendarTask | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<CalendarTask>("calendar_hub_focus_log_free_task", { title });
+}
+
+export async function subscribeFocusFlowUpdated(
+  onUpdate: (state: FocusFlowState) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauriRuntime()) {
-    return () => {};
-  }
-  return listen<WaqtTimelineState>("lumen://waqt-updated", (event) => {
+  if (!isTauriRuntime()) return () => {};
+  return listen<FocusFlowState>("lumen://focus-flow-updated", (event) => {
     onUpdate(event.payload);
   });
 }

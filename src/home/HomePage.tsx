@@ -181,7 +181,7 @@ export function HomePage(props: HomePageProps) {
         isVisible={props.isVisible}
         onToggleZoom={() => setZoomMode((z) => (z === "day" ? "next3h" : "day"))}
         onSelectCity={props.onSelectPrayerCity}
-        onOpenAgenda={() => props.onNavigateWidget("calendar")}
+        onOpenAgenda={() => props.onNavigateWidget("calendar_hub")}
         onIncrementTasbih={props.onIncrementTasbih}
         onResetTasbih={props.onResetTasbih}
       />
@@ -212,7 +212,7 @@ export function HomePage(props: HomePageProps) {
           language={props.language}
           banglaDigits={props.banglaDigits}
           reduceMotion={props.reduceMotion}
-          onOpenAgenda={() => props.onNavigateWidget("reminders")}
+          onOpenAgenda={() => props.onNavigateWidget("calendar_hub")}
         />
 
         <WaterCard
@@ -240,7 +240,7 @@ export function HomePage(props: HomePageProps) {
         onToggleFocusTimer={props.onToggleFocusTimer}
         onToggleLedger={props.onToggleLedger}
         onCopyClipboard={props.onCopyClipboard}
-        onOpenPomodoro={() => props.onNavigateWidget("pomodoro")}
+        onOpenPomodoro={() => props.onNavigateWidget("calendar_hub")}
         onSelectPage={props.onSelectPage}
       />
     </div>

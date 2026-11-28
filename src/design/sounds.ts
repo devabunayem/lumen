@@ -8,6 +8,10 @@ export type UiSoundName =
   | "water_add"
   | "task_done"
   | "arc_scrub_tick"
+  | "day_select"
+  | "drop_on_day"
+  | "focus_start"
+  | "focus_end"
   | "reminder_chime"
   | "reminder_alarm"
   | "mail_arrival"
@@ -105,6 +109,43 @@ export const SOUND_PRESETS: Record<UiSoundName, SoundPresetSpec> = {
     gain: 0.1,
     attackMs: 3,
     minIntervalMs: 40,
+  },
+  day_select: {
+    name: "day_select",
+    category: "interface",
+    waveform: "sine",
+    frequenciesHz: [1500],
+    durationMs: 10,
+    gain: 0.09,
+    attackMs: 2,
+    minIntervalMs: 24,
+  },
+  drop_on_day: {
+    name: "drop_on_day",
+    category: "interface",
+    waveform: "sine",
+    frequenciesHz: [320, 240],
+    durationMs: 60,
+    gain: 0.12,
+    attackMs: 3,
+  },
+  focus_start: {
+    name: "focus_start",
+    category: "interface",
+    waveform: "sine",
+    frequenciesHz: [520, 780],
+    durationMs: 75,
+    gain: 0.11,
+    attackMs: 3,
+  },
+  focus_end: {
+    name: "focus_end",
+    category: "reminders",
+    waveform: "sine",
+    frequenciesHz: [523, 659, 784],
+    durationMs: 320,
+    gain: 0.13,
+    attackMs: 4,
   },
   reminder_chime: {
     name: "reminder_chime",

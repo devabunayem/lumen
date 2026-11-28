@@ -399,7 +399,7 @@ export function LumiRig({
         {/* Optional Boishakh tiny hat */}
         {isFull && accessories.includes("boishakhHat") && (
           <g data-testid="lumi-acc-boishakh-hat" transform="translate(124 44) rotate(18)">
-            <path d="M-14 14 L0 -6 L14 14 Z" fill={COLOR_TOKENS.waqtDeadline} />
+            <path d="M-14 14 L0 -6 L14 14 Z" fill={COLOR_TOKENS.calDeadline} />
             <rect
               x="-15"
               y="12"
