@@ -52,7 +52,7 @@ export function TodoCard({
   const [moveMenuTaskId, setMoveMenuTaskId] = useState<number | null>(null);
   const swipeStartXRef = useRef<{ id: number; x: number } | null>(null);
   const pendingCount = tasks.filter((t) => !t.doneAt).length;
-  const visible = tasks.slice(0, quickAddOpen ? 3 : 4);
+  const visible = tasks.slice(0, quickAddOpen ? 2 : 4);
   const overflow = Math.max(0, tasks.length - visible.length);
 
   const tomorrowDate = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1);
@@ -61,19 +61,19 @@ export function TodoCard({
   return (
     <section
       data-testid="cal-todo-card"
-      className="cal-glass-card relative flex h-[149px] w-[200px] flex-col px-[14px] py-[12px]"
+      className="cal-glass-card relative flex h-[125px] w-[170px] flex-col px-[11px] py-[8px]"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1.5">
         <h3
-          className="m-0 text-[13px] font-semibold tracking-tight"
+          className="m-0 text-[12px] font-semibold tracking-tight"
           style={{ color: COLOR_TOKENS.textPrimary }}
         >
           {msg.calendarHub.todoTitle}
         </h3>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <span
-            className="text-[11px] font-normal tabular-nums"
+            className="text-[10px] font-normal tabular-nums"
             style={{ color: COLOR_TOKENS.textSecondary }}
           >
             {formatDigits(
@@ -87,17 +87,17 @@ export function TodoCard({
             data-testid="cal-todo-add-btn"
             aria-label={msg.calendarHub.addTodo}
             onClick={onOpenQuickAdd}
-            className="-m-1 flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
+            className="-m-1 flex h-[28px] w-[28px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
           >
             <span
-              className="flex h-[22px] w-[22px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
+              className="flex h-[20px] w-[20px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
                 color: COLOR_TOKENS.textPrimary,
               }}
             >
-              <PlusIcon size={11} />
+              <PlusIcon size={10} />
             </span>
           </button>
         </div>
@@ -121,14 +121,14 @@ export function TodoCard({
       {visible.length === 0 && !quickAddOpen ? (
         <div
           data-testid="cal-todo-empty"
-          className="flex flex-1 items-center justify-center text-center text-[11px]"
+          className="flex flex-1 items-center justify-center text-center text-[10.5px]"
           style={{ color: COLOR_TOKENS.textSecondary }}
         >
           {msg.calendarHub.emptyTodo}
         </div>
       ) : (
-        <div className="mt-1.5 flex flex-1 flex-col justify-between">
-          <ul className="m-0 flex list-none flex-col gap-[5px] p-0">
+        <div className="mt-1 flex flex-1 flex-col justify-between">
+          <ul className="m-0 flex list-none flex-col gap-[3px] p-0">
             {visible.map((task) => {
               const isDone = Boolean(task.doneAt);
               const isOverdue = Boolean(!isDone && task.dueDate && task.dueDate < todayDateKey);
@@ -162,7 +162,7 @@ export function TodoCard({
                     }
                     swipeStartXRef.current = null;
                   }}
-                  className="relative flex items-center justify-between gap-2 text-[11.5px]"
+                  className="relative flex items-center justify-between gap-1.5 text-[10.5px]"
                 >
                   <button
                     type="button"
@@ -188,13 +188,13 @@ export function TodoCard({
                         setMoveMenuTaskId(null);
                       }
                     }}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left"
                   >
                     <motion.span
                       initial={false}
                       animate={{ scale: isDone && !reduceMotion ? [0.85, 1.12, 1] : 1 }}
                       transition={MOTION_PRESETS.snappy}
-                      className="flex h-[13px] w-[13px] shrink-0 items-center justify-center rounded-full transition-colors"
+                      className="flex h-[12px] w-[12px] shrink-0 items-center justify-center rounded-full transition-colors"
                       style={{
                         backgroundColor: isDone ? COLOR_TOKENS.calEvent : "transparent",
                         border: isDone
@@ -203,7 +203,7 @@ export function TodoCard({
                         color: COLOR_TOKENS.calTodayText,
                       }}
                     >
-                      {isDone && <CheckIcon size={8} />}
+                      {isDone && <CheckIcon size={7} />}
                     </motion.span>
                     <span
                       className="truncate font-medium"
@@ -219,7 +219,7 @@ export function TodoCard({
 
                   {dueLabel && (
                     <span
-                      className="shrink-0 text-[10.5px] font-normal tabular-nums"
+                      className="shrink-0 text-[9.5px] font-normal tabular-nums"
                       style={{
                         color: isOverdue ? COLOR_TOKENS.calDeadline : COLOR_TOKENS.textSecondary,
                       }}

@@ -62,7 +62,7 @@ function renderMarkGlyph(kind: CalendarMarkKind, colorBlindMarks: boolean, keyId
   return (
     <span
       key={`${kind}-${keyIdx}`}
-      className="block h-[5px] w-[5px] rounded-full"
+      className="block h-[4px] w-[4px] rounded-full"
       style={{ backgroundColor: color }}
     />
   );
@@ -103,7 +103,7 @@ export function DayCell({
         const parsedId = raw ? Number(raw) : null;
         onDropTaskOnDay?.(Number.isFinite(parsedId) ? parsedId : null, cell.dateKey);
       }}
-      className={`flex items-center justify-center ${compactRow ? "h-[34px]" : "h-[38px]"}`}
+      className={`flex items-center justify-center ${compactRow ? "h-[26px]" : "h-[30px]"}`}
     >
       <motion.button
         type="button"
@@ -115,8 +115,8 @@ export function DayCell({
         whileTap={
           reduceMotion ? undefined : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
         }
-        className={`relative flex w-[34px] cursor-pointer flex-col items-center justify-center rounded-xl border-0 bg-transparent p-0 transition-colors focus-visible:outline-none ${
-          compactRow ? "h-[32px]" : "h-[35px]"
+        className={`relative flex w-[30px] cursor-pointer flex-col items-center justify-center rounded-lg border-0 bg-transparent p-0 transition-colors focus-visible:outline-none ${
+          compactRow ? "h-[25px]" : "h-[28px]"
         } ${selected && cell.isToday ? "lumen-today-ring-pulse" : ""}`}
         style={{
           opacity: mutedDay ? 0.5 : 1,
@@ -129,7 +129,9 @@ export function DayCell({
         }}
       >
         <span
-          className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11.5px] leading-none tabular-nums"
+          className={`flex items-center justify-center rounded-full leading-none tabular-nums ${
+            compactRow ? "h-[17px] w-[17px] text-[9.5px]" : "h-[18px] w-[18px] text-[10.5px]"
+          }`}
           style={{
             backgroundColor: cell.isToday ? COLOR_TOKENS.calToday : "transparent",
             color: cell.isToday ? COLOR_TOKENS.calTodayText : COLOR_TOKENS.textPrimary,
@@ -141,7 +143,7 @@ export function DayCell({
 
         <span
           aria-hidden="true"
-          className="mt-[2px] flex h-[6px] items-center justify-center gap-[3px]"
+          className="mt-[1.5px] flex h-[5px] items-center justify-center gap-[2.5px]"
         >
           {showMarks && (
             <>

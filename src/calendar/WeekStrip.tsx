@@ -100,11 +100,11 @@ export function WeekStrip({
   return (
     <section
       data-testid="cal-week-strip"
-      className="cal-glass-card flex h-[308px] w-[308px] flex-col justify-between px-[12px] py-[12px]"
+      className="cal-glass-card flex h-[258px] w-[256px] flex-col justify-between px-[10px] py-[8px]"
     >
-      <div className="flex items-center justify-between gap-2 px-0.5">
+      <div className="flex items-center justify-between gap-1.5 px-0.5">
         <h2
-          className="m-0 text-[13.5px] font-semibold tracking-tight"
+          className="m-0 text-[12px] font-semibold tracking-tight"
           style={{ color: COLOR_TOKENS.textPrimary }}
         >
           {titleRange}
@@ -113,7 +113,7 @@ export function WeekStrip({
           <button
             type="button"
             onClick={onJumpToday}
-            className="flex h-[24px] cursor-pointer items-center rounded-full px-2.5 text-[11px] font-medium"
+            className="flex h-[20px] cursor-pointer items-center rounded-full px-2 text-[10px] font-medium"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
@@ -126,32 +126,32 @@ export function WeekStrip({
             type="button"
             aria-label="Previous week"
             onClick={() => shiftWeek(-7)}
-            className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-full"
+            className="flex h-[20px] w-[20px] cursor-pointer items-center justify-center rounded-full"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
               color: COLOR_TOKENS.textPrimary,
             }}
           >
-            <ChevronLeftIcon size={12} />
+            <ChevronLeftIcon size={10} />
           </button>
           <button
             type="button"
             aria-label="Next week"
             onClick={() => shiftWeek(7)}
-            className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-full"
+            className="flex h-[20px] w-[20px] cursor-pointer items-center justify-center rounded-full"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
               color: COLOR_TOKENS.textPrimary,
             }}
           >
-            <ChevronRightIcon size={12} />
+            <ChevronRightIcon size={10} />
           </button>
         </div>
       </div>
 
-      <div role="grid" aria-label={titleRange} className="mt-2 grid flex-1 grid-cols-7 gap-1">
+      <div role="grid" aria-label={titleRange} className="mt-1.5 grid flex-1 grid-cols-7 gap-0.5">
         {weekDays.map((col) => {
           const isSelected = col.key === selectedDateKey;
           const isToday = col.key === todayKey;
@@ -163,7 +163,7 @@ export function WeekStrip({
               role="gridcell"
               aria-selected={isSelected}
               onClick={() => onSelectDay(col.key)}
-              className="flex cursor-pointer flex-col items-center rounded-xl px-0.5 py-1.5 transition-colors"
+              className="flex cursor-pointer flex-col items-center rounded-lg px-0.5 py-1 transition-colors"
               style={{
                 backgroundColor: isSelected ? COLOR_TOKENS.calPillBg : "transparent",
                 border: isSelected
@@ -172,13 +172,13 @@ export function WeekStrip({
               }}
             >
               <span
-                className="text-[10px] font-medium"
+                className="text-[9px] font-medium"
                 style={{ color: COLOR_TOKENS.textSecondary }}
               >
                 {col.label}
               </span>
               <span
-                className="mt-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11px] font-semibold tabular-nums"
+                className="mt-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-semibold tabular-nums"
                 style={{
                   backgroundColor: isToday ? COLOR_TOKENS.calToday : "transparent",
                   color: isToday ? COLOR_TOKENS.calTodayText : COLOR_TOKENS.textPrimary,
@@ -187,7 +187,7 @@ export function WeekStrip({
                 {formatDigits(String(col.dt.getDate()), banglaDigits)}
               </span>
 
-              <div className="mt-2 flex w-full flex-col gap-1">
+              <div className="mt-1.5 flex w-full flex-col gap-0.5">
                 {visibleItems.map((it) => (
                   <button
                     key={it.id}
@@ -198,7 +198,7 @@ export function WeekStrip({
                       else onSelectDay(col.key);
                     }}
                     title={it.title}
-                    className="w-full cursor-pointer truncate rounded px-1 py-0.5 text-left text-[9px] font-medium text-white"
+                    className="w-full cursor-pointer truncate rounded px-0.5 py-0.5 text-left text-[8.5px] font-medium text-white"
                     style={{
                       backgroundColor: COLOR_TOKENS.calGlassBg,
                       borderLeft: `2px solid ${it.color}`,
@@ -209,7 +209,7 @@ export function WeekStrip({
                 ))}
                 {extra > 0 && (
                   <span
-                    className="text-center text-[9px] font-medium tabular-nums"
+                    className="text-center text-[8.5px] font-medium tabular-nums"
                     style={{ color: COLOR_TOKENS.textSecondary }}
                   >
                     +{formatDigits(String(extra), banglaDigits)}

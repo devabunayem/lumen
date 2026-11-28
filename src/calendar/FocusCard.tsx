@@ -83,14 +83,14 @@ export function FocusCard({
         const parsedId = raw ? Number(raw) : null;
         onDropTaskOnFocus?.(Number.isFinite(parsedId) ? parsedId : null);
       }}
-      className="cal-glass-card flex h-[149px] w-[200px] flex-col justify-between px-[14px] py-[12px]"
+      className="cal-glass-card flex h-[125px] w-[170px] flex-col justify-between px-[11px] py-[8px]"
       style={{
         borderColor: dragOverFocus ? COLOR_TOKENS.calToday : undefined,
       }}
     >
-      <div className="flex items-center justify-between gap-1.5">
+      <div className="flex items-center justify-between gap-1">
         <h3
-          className="m-0 text-[13px] font-semibold tracking-tight"
+          className="m-0 text-[12px] font-semibold tracking-tight"
           style={{ color: COLOR_TOKENS.textPrimary }}
         >
           {msg.calendarHub.focusTitle}
@@ -99,7 +99,7 @@ export function FocusCard({
         {socialBlockedArmed && (
           <span
             data-testid="cal-social-blocked-chip"
-            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+            className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
             style={{
               backgroundColor: COLOR_TOKENS.calSocialBg,
               border: `1px solid ${COLOR_TOKENS.calSocialBorder}`,
@@ -107,7 +107,7 @@ export function FocusCard({
             }}
           >
             <span style={{ color: COLOR_TOKENS.calDeadline }}>
-              <ShieldIcon size={10} />
+              <ShieldIcon size={9} />
             </span>
             <span className="truncate">{msg.calendarHub.socialBlocked}</span>
           </span>
@@ -117,21 +117,24 @@ export function FocusCard({
       {prayerPrompt ? (
         <div
           data-testid="cal-focus-prayer-prompt"
-          className="flex flex-col gap-1.5 rounded-xl px-2 py-1.5"
+          className="flex flex-col gap-1 rounded-lg px-1.5 py-1"
           style={{
             backgroundColor: COLOR_TOKENS.calSocialBg,
             border: `1px solid ${COLOR_TOKENS.calReminder}`,
           }}
         >
-          <span className="text-[11px] font-semibold" style={{ color: COLOR_TOKENS.textPrimary }}>
+          <span
+            className="truncate text-[9px] font-semibold"
+            style={{ color: COLOR_TOKENS.textPrimary }}
+          >
             {msg.calendarHub.prayerPromptAsk.replace("{{prayer}}", prayerPrompt.prayerName)}
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               data-testid="cal-prayer-pause-btn"
               onClick={() => onRespondPrayerPrompt?.(true)}
-              className="flex-1 cursor-pointer rounded-full py-0.5 text-[10.5px] font-semibold"
+              className="flex-1 cursor-pointer rounded-full py-0.5 text-[9.5px] font-semibold"
               style={{
                 backgroundColor: COLOR_TOKENS.calCtaBg,
                 color: COLOR_TOKENS.calCtaText,
@@ -143,7 +146,7 @@ export function FocusCard({
               type="button"
               data-testid="cal-prayer-continue-btn"
               onClick={() => onRespondPrayerPrompt?.(false)}
-              className="flex-1 cursor-pointer rounded-full py-0.5 text-[10.5px] font-medium"
+              className="flex-1 cursor-pointer rounded-full py-0.5 text-[9.5px] font-medium"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
@@ -157,14 +160,14 @@ export function FocusCard({
       ) : freePrompt ? (
         <div
           data-testid="cal-free-focus-log-prompt"
-          className="flex flex-col gap-1 rounded-xl px-2 py-1"
+          className="flex flex-col gap-1 rounded-lg px-2 py-1"
           style={{
             backgroundColor: COLOR_TOKENS.calPillBg,
             border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
           }}
         >
           <span
-            className="truncate text-[10.5px] font-medium"
+            className="truncate text-[9.5px] font-medium"
             style={{ color: COLOR_TOKENS.textPrimary }}
           >
             {msg.calendarHub.freeFocusPromptTitle}
@@ -176,7 +179,7 @@ export function FocusCard({
               value={freeTitle}
               onChange={(e) => setFreeTitle(e.target.value)}
               placeholder={freePrompt.suggestedTitle}
-              className="min-w-0 flex-1 rounded px-1.5 py-0.5 text-[10px] outline-none"
+              className="min-w-0 flex-1 rounded px-1 py-0.5 text-[9.5px] outline-none"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
@@ -190,7 +193,7 @@ export function FocusCard({
                 onLogFreeFocusTask?.(freeTitle.trim() || freePrompt.suggestedTitle);
                 setFreeTitle("");
               }}
-              className="cursor-pointer rounded px-2 py-0.5 text-[10px] font-semibold"
+              className="cursor-pointer rounded px-1.5 py-0.5 text-[9.5px] font-semibold"
               style={{
                 backgroundColor: COLOR_TOKENS.calCtaBg,
                 color: COLOR_TOKENS.calCtaText,
@@ -202,7 +205,7 @@ export function FocusCard({
               type="button"
               data-testid="cal-free-focus-dismiss-btn"
               onClick={() => onDismissFreeFocusLog?.()}
-              className="cursor-pointer border-0 bg-transparent px-1 text-[10px]"
+              className="cursor-pointer border-0 bg-transparent px-0.5 text-[9.5px]"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               ×
@@ -210,16 +213,16 @@ export function FocusCard({
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-[60px] w-[60px] shrink-0 items-center justify-center">
-            <svg width="60" height="60" viewBox="0 0 64 64" aria-hidden="true">
+        <div className="flex items-center gap-2.5">
+          <div className="relative flex h-[46px] w-[46px] shrink-0 items-center justify-center">
+            <svg width="46" height="46" viewBox="0 0 64 64" aria-hidden="true">
               <circle
                 cx="32"
                 cy="32"
                 r={r}
                 fill="none"
                 stroke={COLOR_TOKENS.calRingTrack}
-                strokeWidth="4.5"
+                strokeWidth="5"
               />
               <circle
                 cx="32"
@@ -227,7 +230,7 @@ export function FocusCard({
                 r={r}
                 fill="none"
                 stroke={COLOR_TOKENS.calToday}
-                strokeWidth="4.5"
+                strokeWidth="5"
                 strokeLinecap="round"
                 strokeDasharray={circ}
                 strokeDashoffset={dashOffset}
@@ -235,7 +238,7 @@ export function FocusCard({
               />
             </svg>
             <span
-              className="absolute text-[13.5px] font-semibold leading-none tabular-nums"
+              className="absolute text-[11px] font-semibold leading-none tabular-nums"
               style={{ color: COLOR_TOKENS.textPrimary }}
             >
               <DigitRoll value={timeText} reduceMotion={reduceMotion} />
@@ -244,7 +247,7 @@ export function FocusCard({
 
           <div className="flex min-w-0 flex-1 flex-col">
             <span
-              className="truncate text-[12px] font-semibold"
+              className="truncate text-[11px] font-semibold"
               style={{ color: COLOR_TOKENS.textPrimary }}
             >
               {effectivePausedPrayer
@@ -252,7 +255,7 @@ export function FocusCard({
                 : (effectiveTaskTitle ?? msg.calendarHub.freeFocus)}
             </span>
             <span
-              className="truncate text-[11px] font-normal tabular-nums"
+              className="truncate text-[9.5px] font-normal tabular-nums"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               {pomodoro.running && focusFlow?.lumiCompanionMode === "body_double_focus"
@@ -263,18 +266,18 @@ export function FocusCard({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <button
           type="button"
           data-testid="cal-focus-cta"
           onClick={onToggleFocus}
-          className="flex h-[28px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full text-[11.5px] font-semibold transition-transform active:scale-[0.98]"
+          className="flex h-[24px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full text-[10.5px] font-semibold transition-transform active:scale-[0.98]"
           style={{
             backgroundColor: COLOR_TOKENS.calCtaBg,
             color: COLOR_TOKENS.calCtaText,
           }}
         >
-          {pomodoro.running ? <PauseIcon size={10} /> : <PlayIcon size={10} />}
+          {pomodoro.running ? <PauseIcon size={9} /> : <PlayIcon size={9} />}
           <span>{pomodoro.running ? msg.calendarHub.pauseFocus : msg.calendarHub.startFocus}</span>
         </button>
         {pomodoro.running && onSkipFocus && (
@@ -282,7 +285,7 @@ export function FocusCard({
             type="button"
             data-testid="cal-focus-skip"
             onClick={onSkipFocus}
-            className="flex h-[28px] cursor-pointer items-center rounded-full px-2.5 text-[10.5px] font-medium"
+            className="flex h-[24px] cursor-pointer items-center rounded-full px-2 text-[9.5px] font-medium"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               border: `1px solid ${COLOR_TOKENS.calPillBorder}`,

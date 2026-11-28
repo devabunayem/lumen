@@ -71,7 +71,7 @@ export function CalendarSyncSheet({
       initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={getMotionTransition("smooth", reduceMotion)}
-      className="cal-glass-card flex h-[308px] w-[308px] flex-col justify-between overflow-y-auto px-[14px] py-[12px]"
+      className="cal-glass-card flex h-[258px] w-[256px] flex-col justify-between overflow-y-auto px-[11px] py-[9px]"
     >
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">

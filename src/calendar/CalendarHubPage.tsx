@@ -306,7 +306,7 @@ export function CalendarHubPage({
       data-reduce-transparency={reduceTransparency ? "true" : "false"}
       data-reduce-motion={reduceMotion ? "true" : "false"}
       dir="ltr"
-      className="relative flex flex-col justify-between overflow-hidden px-[16px] py-[14px]"
+      className="relative flex flex-col justify-between overflow-hidden px-[14px] py-[10px]"
       style={{
         width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
         height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
@@ -316,36 +316,31 @@ export function CalendarHubPage({
       {glowEnabled && !reduceTransparency && (
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
           <div
-            className="absolute -bottom-16 -left-16 h-[250px] w-[280px] rounded-full opacity-80 blur-3xl"
+            className="absolute -bottom-16 -left-16 h-[210px] w-[240px] rounded-full opacity-80 blur-3xl"
             style={{ backgroundColor: COLOR_TOKENS.calGlowIndigo }}
           />
           <div
-            className="absolute -right-12 -bottom-14 h-[230px] w-[260px] rounded-full opacity-90 blur-3xl"
+            className="absolute -right-12 -bottom-14 h-[190px] w-[220px] rounded-full opacity-90 blur-3xl"
             style={{ backgroundColor: COLOR_TOKENS.calGlowGreen }}
           />
           <div
-            className="absolute -top-12 left-1/2 h-[140px] w-[300px] -translate-x-1/2 rounded-full opacity-90 blur-3xl"
+            className="absolute -top-12 left-1/2 h-[120px] w-[260px] -translate-x-1/2 rounded-full opacity-90 blur-3xl"
             style={{ backgroundColor: COLOR_TOKENS.calGlowAmber }}
           />
         </div>
       )}
 
-      <motion.div
-        initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={getMotionTransition("calendarContentEnter", reduceMotion)}
-        className="relative z-10 flex h-full w-full flex-col justify-between"
-      >
-        <header className="grid h-[30px] w-full grid-cols-[1fr_auto_1fr] items-center">
-          <div className="flex items-center gap-2">
+      <div className="relative z-10 flex h-full w-full flex-col justify-between">
+        <header className="grid h-[26px] w-full grid-cols-[1fr_auto_1fr] items-center">
+          <div className="flex items-center gap-1.5">
             <h1
-              className="m-0 text-[14px] font-semibold tracking-tight"
+              className="m-0 text-[13px] font-semibold tracking-tight"
               style={{ color: COLOR_TOKENS.textPrimary }}
             >
               {msg.calendarHub.title}
             </h1>
             <span
-              className="text-[11px] font-normal tabular-nums"
+              className="text-[10.5px] font-normal tabular-nums"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               {headerDateText}
@@ -355,7 +350,7 @@ export function CalendarHubPage({
                 type="button"
                 data-testid="cal-back-to-today"
                 onClick={handleJumpToday}
-                className="flex h-[20px] cursor-pointer items-center rounded-full px-2 text-[10px] font-medium"
+                className="flex h-[18px] cursor-pointer items-center rounded-full px-1.5 text-[9.5px] font-medium"
                 style={{
                   backgroundColor: COLOR_TOKENS.calPillBg,
                   border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
@@ -370,7 +365,7 @@ export function CalendarHubPage({
           <div
             role="tablist"
             aria-label={msg.calendarHub.title}
-            className="flex h-[26px] items-center rounded-full p-[2px]"
+            className="flex h-[24px] items-center rounded-full p-[2px]"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
@@ -386,7 +381,7 @@ export function CalendarHubPage({
                   aria-selected={active}
                   data-testid={`cal-view-${tab}`}
                   onClick={() => setViewMode(tab)}
-                  className="relative flex h-[20px] cursor-pointer items-center rounded-full px-3.5 text-[11px] font-semibold transition-colors"
+                  className="relative flex h-[18px] cursor-pointer items-center rounded-full px-3 text-[10.5px] font-semibold transition-colors"
                   style={{
                     backgroundColor: active ? COLOR_TOKENS.calCtaBg : "transparent",
                     color: active ? COLOR_TOKENS.calCtaText : COLOR_TOKENS.textSecondary,
@@ -398,12 +393,12 @@ export function CalendarHubPage({
             })}
           </div>
 
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="flex items-center justify-end gap-1">
             <button
               type="button"
               data-testid="cal-sync-chip"
               onClick={() => setSyncSheetOpen((v) => !v)}
-              className={`flex h-[26px] cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11px] font-medium ${
+              className={`flex h-[24px] cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[10.5px] font-medium ${
                 resolvedSyncStatus === "syncing" || syncing ? "lumen-skeleton-shimmer" : ""
               }`}
               style={{
@@ -419,7 +414,7 @@ export function CalendarHubPage({
               }}
             >
               <span
-                className="h-[6px] w-[6px] rounded-full"
+                className="h-[5px] w-[5px] rounded-full"
                 style={{ backgroundColor: syncDotColor }}
               />
               <span className="truncate">{syncChipLabel}</span>
@@ -430,10 +425,10 @@ export function CalendarHubPage({
               data-testid="cal-settings-btn"
               aria-label={msg.calendarHub.settings}
               onClick={onOpenSettings}
-              className="flex h-[28px] w-[28px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-opacity hover:opacity-90"
+              className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-opacity hover:opacity-90"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
-              <SettingsIcon size={15} />
+              <SettingsIcon size={14} />
             </button>
           </div>
         </header>
@@ -441,26 +436,26 @@ export function CalendarHubPage({
         {loading ? (
           <div
             data-testid="cal-loading-skeleton"
-            className="grid h-[308px] w-[728px] grid-cols-[200px_308px_200px] gap-[10px]"
+            className="grid h-[258px] w-[612px] grid-cols-[170px_256px_170px] gap-[8px]"
           >
-            <div className="flex flex-col gap-[10px]">
-              <div className="cal-glass-card lumen-skeleton-shimmer h-[149px] w-[200px]" />
-              <div className="cal-glass-card lumen-skeleton-shimmer h-[149px] w-[200px]" />
+            <div className="flex flex-col gap-[8px]">
+              <div className="cal-glass-card lumen-skeleton-shimmer h-[125px] w-[170px]" />
+              <div className="cal-glass-card lumen-skeleton-shimmer h-[125px] w-[170px]" />
             </div>
-            <div className="cal-glass-card lumen-skeleton-shimmer h-[308px] w-[308px]" />
-            <div className="flex flex-col gap-[10px]">
-              <div className="cal-glass-card lumen-skeleton-shimmer h-[149px] w-[200px]" />
-              <div className="cal-glass-card lumen-skeleton-shimmer h-[149px] w-[200px]" />
+            <div className="cal-glass-card lumen-skeleton-shimmer h-[258px] w-[256px]" />
+            <div className="flex flex-col gap-[8px]">
+              <div className="cal-glass-card lumen-skeleton-shimmer h-[125px] w-[170px]" />
+              <div className="cal-glass-card lumen-skeleton-shimmer h-[125px] w-[170px]" />
             </div>
           </div>
         ) : (
-          <div className="relative grid h-[308px] w-[728px] grid-cols-[200px_308px_200px] gap-[10px]">
+          <div className="relative grid h-[258px] w-[612px] grid-cols-[170px_256px_170px] gap-[8px]">
             <motion.div
               key={`left-${selectedDateKey}`}
               initial={{ opacity: reduceMotion ? 1 : 0.72 }}
               animate={{ opacity: 1 }}
               transition={sideCrossfade}
-              className="flex flex-col gap-[10px]"
+              className="flex flex-col gap-[8px]"
             >
               <TodoCard
                 tasks={filteredTasks}
@@ -593,7 +588,7 @@ export function CalendarHubPage({
               initial={{ opacity: reduceMotion ? 1 : 0.72 }}
               animate={{ opacity: 1 }}
               transition={sideCrossfade}
-              className="flex flex-col gap-[10px]"
+              className="flex flex-col gap-[8px]"
             >
               <RemindersCard
                 reminders={filteredReminders}
@@ -664,7 +659,7 @@ export function CalendarHubPage({
             )}
           </div>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }

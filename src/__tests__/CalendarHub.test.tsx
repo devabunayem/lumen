@@ -256,7 +256,7 @@ describe("Calendar Hub Phases 1–2 (Layout, Marks, Parser, Filtering, Week, Qui
     expect(screen.getByTestId("cal-week-strip")).toBeInTheDocument();
   });
 
-  it("renders all Phase 1 & 2 Calendar Hub states in /dev/states including 150% scale (1140x564)", () => {
+  it("renders all Phase 1 & 2 Calendar Hub states in /dev/states including 150% scale (960x468)", () => {
     render(<DevStatesPage />);
     fireEvent.click(screen.getByRole("button", { name: "Calendar Hub (All States)" }));
     for (const id of [
@@ -280,7 +280,7 @@ describe("Calendar Hub Phases 1–2 (Layout, Marks, Parser, Filtering, Week, Qui
     ]) {
       expect(screen.getByTestId(`dev-cal-hub-state-${id}`)).toBeInTheDocument();
     }
-    expect(screen.getByTestId("dev-cal-hub-state-scale-150")).toHaveTextContent("1140×564 px");
+    expect(screen.getByTestId("dev-cal-hub-state-scale-150")).toHaveTextContent("960×468 px");
   });
 
   it("opens CalendarSyncSheet on sync chip click, connects ICS, disconnects, and confirms Delete All data", async () => {

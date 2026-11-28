@@ -69,21 +69,21 @@ export function EventSheet({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.96 }}
       transition={getMotionTransition("snappy", reduceMotion)}
-      className="cal-glass-card flex h-[308px] w-[308px] flex-col justify-between p-[16px]"
+      className="cal-glass-card flex h-[258px] w-[256px] flex-col justify-between p-[12px]"
     >
       <div>
         <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-start gap-2.5">
+          <div className="flex min-w-0 items-start gap-2">
             <span
-              className="mt-1 h-[28px] w-[3px] shrink-0 rounded-full"
+              className="mt-1 h-[24px] w-[3px] shrink-0 rounded-full"
               style={{ backgroundColor: event.color || COLOR_TOKENS.calEvent }}
             />
             <div className="min-w-0">
               <div
-                className="flex items-center gap-1.5 text-[10.5px]"
+                className="flex items-center gap-1 text-[10px]"
                 style={{ color: COLOR_TOKENS.textSecondary }}
               >
-                <CalendarIcon size={11} />
+                <CalendarIcon size={10} />
                 <span>
                   {event.sourceId === "local"
                     ? language === "bn"
@@ -93,7 +93,7 @@ export function EventSheet({
                 </span>
               </div>
               <h3
-                className="mt-0.5 text-[15px] font-semibold leading-snug"
+                className="mt-0.5 text-[13.5px] font-semibold leading-snug"
                 style={{ color: COLOR_TOKENS.textPrimary }}
               >
                 {event.title}
@@ -105,17 +105,17 @@ export function EventSheet({
             data-testid="cal-event-sheet-close"
             aria-label="Close"
             onClick={onClose}
-            className="flex h-[28px] w-[28px] cursor-pointer items-center justify-center rounded-full"
+            className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-full"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               color: COLOR_TOKENS.textSecondary,
             }}
           >
-            <CloseIcon size={12} />
+            <CloseIcon size={11} />
           </button>
         </div>
 
-        <div className="mt-4 space-y-2.5 text-[12px]" style={{ color: COLOR_TOKENS.textSecondary }}>
+        <div className="mt-3 space-y-2 text-[11px]" style={{ color: COLOR_TOKENS.textSecondary }}>
           <div className="tabular-nums text-white/90">{timeRange}</div>
           {event.location && (
             <div className="flex items-center gap-1.5">
@@ -131,7 +131,7 @@ export function EventSheet({
             type="button"
             data-testid="cal-event-sheet-join"
             onClick={() => onJoin?.(event.meetingUrl!)}
-            className="flex h-[32px] flex-1 cursor-pointer items-center justify-center rounded-full text-[12px] font-semibold"
+            className="flex h-[28px] flex-1 cursor-pointer items-center justify-center rounded-full text-[11px] font-semibold"
             style={{
               backgroundColor: COLOR_TOKENS.calCtaBg,
               color: COLOR_TOKENS.calCtaText,
@@ -144,7 +144,7 @@ export function EventSheet({
           type="button"
           data-testid="cal-event-sheet-open"
           onClick={() => onOpenCalendar?.(event)}
-          className="flex h-[32px] flex-1 cursor-pointer items-center justify-center rounded-full text-[12px] font-medium"
+          className="flex h-[28px] flex-1 cursor-pointer items-center justify-center rounded-full text-[11px] font-medium"
           style={{
             backgroundColor: COLOR_TOKENS.calPillBg,
             border: `1px solid ${COLOR_TOKENS.calPillBorder}`,

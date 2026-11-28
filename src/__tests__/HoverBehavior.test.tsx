@@ -59,11 +59,11 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 
-    // Wheel #1 from Home -> Calendar Hub (760x376), Wheel #2 -> Control (560x172) where Pin button lives
+    // Wheel #1 from Home -> Calendar Hub (same 640x312), Wheel #2 -> Control (560x172) where Pin button lives
     fireEvent.wheel(pill, { deltaY: 120 });
     expect(screen.getByTestId("calendar-hub-page")).toBeInTheDocument();
-    expect(pill).toHaveAttribute("data-target-width", "760");
-    expect(pill).toHaveAttribute("data-target-height", "376");
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
 
     act(() => {
       vi.advanceTimersByTime(300);
@@ -122,5 +122,25 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     fireEvent.wheel(pill, { deltaY: 120 });
     expect(screen.getByText("Tracker")).toBeInTheDocument();
+  });
+
+  it("matches Home and Calendar Hub dimensions (640x312) and slides smoothly between them", () => {
+    render(<IslandShell hoverToOpen />);
+    const pill = screen.getByTestId("lumen-island-pill");
+
+    fireEvent.click(pill);
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByTestId("calendar-hub-page")).toBeInTheDocument();
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
   });
 });

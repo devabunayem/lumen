@@ -590,7 +590,7 @@ function buildCalendarHubPhase1States(): CalendarHubStateEntry[] {
   };
 
   return [
-    { id: "default", label: "Calendar Hub · Default (760×376)", props: baseProps },
+    { id: "default", label: "Calendar Hub · Default (640×312)", props: baseProps },
     {
       id: "color-blind",
       label: "Color-blind friendly marks",
@@ -668,7 +668,7 @@ function buildCalendarHubPhase1States(): CalendarHubStateEntry[] {
     },
     {
       id: "scale-150",
-      label: "150% DPI Scale (1140×564)",
+      label: "150% DPI Scale (960×468)",
       scale: 1.5,
       props: baseProps,
     },

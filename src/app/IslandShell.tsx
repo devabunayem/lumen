@@ -1942,928 +1942,1013 @@ export function IslandShell({
                   </>
                 )}
               </motion.div>
-            ) : isHomePage ? (
-              <motion.div
-                key="expanded-home"
-                initial={{ opacity: 0 }}
-                animate={{
-                  opacity: 1,
-                  transition: prefersReducedMotion
-                    ? getMotionTransition("reducedMotionFade", true)
-                    : {
-                        duration: 0.14,
-                        ease: "easeOut",
-                      },
-                }}
-                exit={{
-                  opacity: 0,
-                  transition: { duration: 0.08 },
-                }}
-                className="absolute top-0 origin-top"
-                style={{
-                  left: "50%",
-                  x: "-50%",
-                  scale: scaleFactor,
-                  width: `${BASE_GEOMETRY.homeExpanded.width}px`,
-                  height: `${BASE_GEOMETRY.homeExpanded.height}px`,
-                }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <HomePage
-                  nowDate={nowDate}
-                  schedule={prayerSchedule}
-                  prayerCities={prayerCities}
-                  onSelectPrayerCity={(cityId) => {
-                    void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
-                  }}
-                  media={
-                    media ?? {
-                      active: null,
-                      sessions: [],
-                      volume_percent: 50,
-                      muted: false,
-                    }
-                  }
-                  lastPlayedTrack={lastPlayedTrack}
-                  calendarEvents={homeEvents}
-                  tasks={homeTasks}
-                  reminders={homeReminders}
-                  water={
-                    waterSummary ?? {
-                      today_ml: 0,
-                      goal_ml: waterGoalMl,
-                      percentage: 0,
-                      goal_reached: false,
-                      last_entry_id: null,
-                      weekly: [],
-                    }
-                  }
-                  pomodoro={
-                    pomodoro ?? {
-                      phase: "focus",
-                      remaining_secs: 25 * 60,
-                      total_secs: 25 * 60,
-                      running: false,
-                      cycle_index: 0,
-                      cycles_before_long: 4,
-                      daily_focus_minutes: 0,
-                      chime_tick: 0,
-                    }
-                  }
-                  weather={weather}
-                  weatherLoading={weatherLoading}
-                  tasbih={tasbih}
-                  ledger={ledger}
-                  clipboard={clipboard}
-                  devPulse={devPulse}
-                  toggles={{
-                    focus: Boolean(focusOn || (pomodoro?.running && pomodoro.phase === "focus")),
-                    micMuted,
-                    cameraEnabled,
-                    silentMode: silentModeOn,
-                  }}
-                  batteryPct={batteryState ? batteryState[0] : null}
-                  isCharging={batteryState ? batteryState[1] : false}
-                  language={language}
-                  banglaDigits={banglaDigits}
-                  reduceMotion={prefersReducedMotion}
-                  reduceTransparency={reduceTransparency}
-                  glowEnabled={glowEnabled}
-                  parallaxEnabled={parallaxEnabled}
-                  chipsConfig={{
-                    focus: chipFocusEnabled,
-                    ledger: chipLedgerEnabled,
-                    clipboard: chipClipboardEnabled,
-                    devPulse: chipDevPulseEnabled,
-                  }}
-                  pagesCount={pages.length}
-                  activePageIndex={safePageIndex}
-                  isVisible={homeVisibleNow}
-                  isFirstOpenOfDay={isFirstOpenOfDay}
-                  onNavigateWidget={(targetId) => {
-                    const targetIndex = pages.findIndex((p) => p.id === targetId);
-                    if (targetIndex >= 0) {
-                      setOpenedViaHomeCard(true);
-                      setSlideDirection(1);
-                      setActivePageIndex(targetIndex);
-                    }
-                  }}
-                  onSelectPage={(idx) => {
-                    setOpenedViaHomeCard(false);
-                    setSlideDirection(idx >= safePageIndex ? 1 : -1);
-                    setActivePageIndex(idx);
-                  }}
-                  onOpenSettings={() => {
-                    if (onOpenSettings) {
-                      onOpenSettings();
-                    } else {
-                      void openSettingsWindow();
-                    }
-                  }}
-                  onLaunchScreenshot={() => {
-                    triggerLumiReaction("confirm", 1800);
-                    return systemLaunchSnippingScreenshot();
-                  }}
-                  onLaunchScreenRecord={() => {
-                    triggerLumiReaction("confirm", 1800);
-                    return systemLaunchScreenRecording();
-                  }}
-                  onToggleFocus={() => {
-                    const currentlyFocused = Boolean(
-                      focusOn || (pomodoro?.running && pomodoro.phase === "focus"),
-                    );
-                    const nextFocus = !currentlyFocused;
-                    setFocusOn(nextFocus);
-                    triggerLumiReaction(nextFocus ? "sleep" : "celebrate", 2000);
-                    const shouldTogglePomodoro = Boolean(pomodoro?.running) !== nextFocus;
-                    if (shouldTogglePomodoro) {
-                      void pomodoroToggle().then((p) => p && setPomodoro(p));
-                    }
-                  }}
-                  onToggleMic={() => {
-                    setMicMuted((m) => !m);
-                    triggerLumiReaction("confirm", 1800);
-                    void systemToggleMicMute().then((m) => setMicMuted(m));
-                  }}
-                  onToggleCamera={async () => {
-                    const next = await systemToggleCamera();
-                    setCameraEnabled(next);
-                    triggerLumiReaction("confirm", 1800);
-                    return next;
-                  }}
-                  onLockWorkstation={() => void systemLockWorkstation()}
-                  onToggleSilentMode={() => {
-                    const next = !silentModeOn;
-                    setSilentModeOn(next);
-                    triggerLumiReaction(next ? "sleep" : "confirm", 1800);
-                    void systemToggleSilentMode(next).then((s) => setSilentModeOn(s));
-                  }}
-                  onIncrementTasbih={() => {
-                    setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
-                    triggerLumiReaction("celebrate", 2000);
-                    void tasbihIncrement().then((ts) => ts && setTasbih(ts));
-                  }}
-                  onResetTasbih={() => {
-                    setTasbih((cur) => ({ ...cur, count: 0 }));
-                    void tasbihReset().then((ts) => ts && setTasbih(ts));
-                  }}
-                  onMediaPlayPause={() =>
-                    void sendMediaCommand("play_pause").then((n) => n && setMedia(n))
-                  }
-                  onMediaPrev={() =>
-                    void sendMediaCommand("previous").then((n) => n && setMedia(n))
-                  }
-                  onMediaNext={() => void sendMediaCommand("next").then((n) => n && setMedia(n))}
-                  onMediaSeek={(pos) => void seekMedia(pos).then((n) => n && setMedia(n))}
-                  onMediaMuteToggle={() =>
-                    void sendMediaCommand("toggle_mute").then((n) => n && setMedia(n))
-                  }
-                  onMediaVolumeDelta={(pct) =>
-                    void setSystemVolume(pct).then((n) => n && setMedia(n))
-                  }
-                  onMediaSelectSession={(appId) =>
-                    void selectMediaSession(appId).then((n) => n && setMedia(n))
-                  }
-                  onLogWater={(ml) => {
-                    triggerLumiEvent("water", {
-                      legacyMood: "celebrate",
-                      durationMs: 2200,
-                      playChirp: "lumi_happy",
-                    });
-                    void waterLog(ml, waterGoalMl, 4).then((w) => {
-                      if (w) {
-                        setWaterSummary(w);
-                      } else {
-                        const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
-                        const pct = (nextTotal / waterGoalMl) * 100;
-                        setWaterSummary({
-                          today_ml: nextTotal,
-                          goal_ml: waterGoalMl,
-                          percentage: pct,
-                          goal_reached: pct >= 100,
-                          last_entry_id: Date.now(),
-                          weekly: [],
-                        });
-                      }
-                    });
-                  }}
-                  onToggleFocusTimer={() => {
-                    triggerLumiReaction("sleep", 2200);
-                    void pomodoroToggle().then((p) => p && setPomodoro(p));
-                  }}
-                  onToggleLedger={() => {
-                    triggerLumiReaction("confirm", 1800);
-                    void ledgerToggle().then((l) => l && setLedger(l));
-                  }}
-                  onCopyClipboard={async () => {
-                    triggerLumiReaction("confirm", 2000);
-                    const next = await clipboardCopyLatest();
-                    setClipboard(next);
-                  }}
-                  onToggleShape={() => onShapeChange?.(nextShape)}
-                />
-              </motion.div>
-            ) : isCalendarHubPage ? (
-              <motion.div
-                key="expanded-calendar-hub"
-                initial={{ opacity: 0 }}
-                animate={{
-                  opacity: 1,
-                  transition: prefersReducedMotion
-                    ? getMotionTransition("reducedMotionFade", true)
-                    : {
-                        duration: 0.14,
-                        ease: "easeOut",
-                      },
-                }}
-                exit={{
-                  opacity: 0,
-                  transition: { duration: 0.08 },
-                }}
-                className="absolute top-0 origin-top"
-                style={{
-                  left: "50%",
-                  x: "-50%",
-                  scale: scaleFactor,
-                  width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
-                  height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
-                }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <CalendarHubPage
-                  snapshot={calendarHubSnapshot}
-                  loading={calendarHubLoading}
-                  nowDate={nowDate}
-                  pomodoro={
-                    pomodoro ?? {
-                      phase: "focus",
-                      remaining_secs: 25 * 60,
-                      total_secs: 25 * 60,
-                      running: false,
-                      cycle_index: 0,
-                      cycles_before_long: 4,
-                      daily_focus_minutes: 0,
-                      chime_tick: 0,
-                    }
-                  }
-                  focusFlow={focusFlow}
-                  firstDayOfWeek={calendarFirstDayOfWeek}
-                  colorBlindMarks={calendarColorBlindMarks}
-                  socialBlockedArmed={calendarSocialBlockArmed}
-                  googleClientId={calendarGoogleClientId}
-                  microsoftClientId={calendarMicrosoftClientId}
-                  writebackTasks={calendarWritebackTasks}
-                  syncing={calSyncing}
-                  language={language}
-                  banglaDigits={banglaDigits}
-                  reduceMotion={prefersReducedMotion}
-                  reduceTransparency={reduceTransparency}
-                  glowEnabled={glowEnabled}
-                  onOpenSettings={() => {
-                    if (onOpenSettings) {
-                      onOpenSettings();
-                    } else {
-                      void openSettingsWindow();
-                    }
-                  }}
-                  onToggleTask={(taskId) => {
-                    setCalendarHubSnapshot((cur) => {
-                      if (!cur) return cur;
-                      return {
-                        ...cur,
-                        tasks: cur.tasks.map((t) =>
-                          t.id === taskId
-                            ? { ...t, doneAt: t.doneAt ? null : new Date().toISOString() }
-                            : t,
-                        ),
-                      };
-                    });
-                    void calendarHubToggleTask(taskId);
-                  }}
-                  onCreateTask={async (parsed) => {
-                    const created = await calendarHubAddTask({
-                      title: parsed.title,
-                      dueDate: parsed.dueDate,
-                      dueTime: parsed.dueTime,
-                      isDeadline: parsed.isDeadline,
-                    });
-                    if (created) {
-                      setCalendarHubSnapshot((cur) =>
-                        cur ? { ...cur, tasks: [...cur.tasks, created] } : cur,
-                      );
-                    }
-                  }}
-                  onDeleteTask={(taskId) => {
-                    const found = calendarHubSnapshot?.tasks.find((t) => t.id === taskId) ?? null;
-                    lastDeletedCalendarTaskRef.current = found;
-                    setCalendarHubSnapshot((cur) =>
-                      cur ? { ...cur, tasks: cur.tasks.filter((t) => t.id !== taskId) } : cur,
-                    );
-                    void calendarHubDeleteTask(taskId);
-                  }}
-                  onRestoreLastDeleted={() => {
-                    const saved = lastDeletedCalendarTaskRef.current;
-                    if (!saved) return;
-                    lastDeletedCalendarTaskRef.current = null;
-                    setCalendarHubSnapshot((cur) =>
-                      cur ? { ...cur, tasks: [...cur.tasks, saved] } : cur,
-                    );
-                    void calendarHubRestoreTask(saved);
-                  }}
-                  onMoveTaskDue={(taskId, dueDate) => {
-                    setCalendarHubSnapshot((cur) =>
-                      cur
-                        ? {
-                            ...cur,
-                            tasks: cur.tasks.map((t) => (t.id === taskId ? { ...t, dueDate } : t)),
-                          }
-                        : cur,
-                    );
-                    void calendarHubMoveTaskDue(taskId, dueDate);
-                  }}
-                  onSetFocusTask={(taskId) => {
-                    setCalendarHubSnapshot((cur) => (cur ? { ...cur, focusTaskId: taskId } : cur));
-                    void calendarHubSetFocusTask(taskId);
-                  }}
-                  onCreateReminder={async (parsed) => {
-                    const created = await calendarHubAddReminder({
-                      title: parsed.title,
-                      kind: parsed.reminderKind,
-                      at: parsed.at,
-                      repeatRule: parsed.repeatRule,
-                      prayerAnchor: parsed.prayerAnchor,
-                      importance: parsed.importance,
-                    });
-                    if (created) {
-                      setCalendarHubSnapshot((cur) =>
-                        cur ? { ...cur, reminders: [...cur.reminders, created] } : cur,
-                      );
-                    }
-                  }}
-                  onCompleteReminder={(id) => {
-                    setCalendarHubSnapshot((cur) =>
-                      cur
-                        ? {
-                            ...cur,
-                            reminders: cur.reminders.map((r) =>
-                              r.id === id ? { ...r, missed: false } : r,
-                            ),
-                          }
-                        : cur,
-                    );
-                    void calendarHubCompleteReminder(id);
-                  }}
-                  onDismissMissed={() => {
-                    setCalendarHubSnapshot((cur) =>
-                      cur
-                        ? {
-                            ...cur,
-                            reminders: cur.reminders.map((r) => ({ ...r, missed: false })),
-                          }
-                        : cur,
-                    );
-                    void calendarHubDismissMissed();
-                  }}
-                  onToggleFocus={() => {
-                    void pomodoroToggle().then((p) => {
-                      if (p) setPomodoro(p);
-                      void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
-                    });
-                  }}
-                  onSkipFocus={() => {
-                    void pomodoroSkip().then((p) => {
-                      if (p) setPomodoro(p);
-                      void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
-                    });
-                  }}
-                  onRespondPrayerPrompt={(pause) => {
-                    void calendarHubFocusRespondPrayer(pause).then((f) => f && setFocusFlow(f));
-                  }}
-                  onDismissFreeFocusLog={() => {
-                    void calendarHubFocusDismissFreeLog().then((f) => f && setFocusFlow(f));
-                  }}
-                  onLogFreeFocusTask={async (title) => {
-                    await calendarHubFocusLogFreeTask(title);
-                    const { year, month } = calendarCursorRef.current;
-                    const snap = await calendarHubGetSnapshot(year, month);
-                    if (snap) setCalendarHubSnapshot(snap);
-                    const f = await calendarHubFocusGetState();
-                    if (f) setFocusFlow(f);
-                  }}
-                  onSyncNow={async () => {
-                    setCalSyncing(true);
-                    try {
-                      await calendarHubSyncNow();
-                      const { year, month } = calendarCursorRef.current;
-                      const snap = await calendarHubGetSnapshot(year, month);
-                      if (snap) setCalendarHubSnapshot(snap);
-                    } finally {
-                      setCalSyncing(false);
-                    }
-                  }}
-                  onConnectIcs={async (label, url) => {
-                    setCalSyncing(true);
-                    try {
-                      await calendarHubConnectIcs(label, url);
-                      const { year, month } = calendarCursorRef.current;
-                      const snap = await calendarHubGetSnapshot(year, month);
-                      if (snap) setCalendarHubSnapshot(snap);
-                    } finally {
-                      setCalSyncing(false);
-                    }
-                  }}
-                  onConnectOAuth={async (provider, clientId, writeScope) => {
-                    setCalSyncing(true);
-                    try {
-                      await calendarHubConnectOAuth(provider, clientId, writeScope);
-                      const { year, month } = calendarCursorRef.current;
-                      const snap = await calendarHubGetSnapshot(year, month);
-                      if (snap) setCalendarHubSnapshot(snap);
-                    } finally {
-                      setCalSyncing(false);
-                    }
-                  }}
-                  onDisconnectSource={async (sourceId) => {
-                    await calendarHubDisconnectSource(sourceId);
-                    const { year, month } = calendarCursorRef.current;
-                    const snap = await calendarHubGetSnapshot(year, month);
-                    if (snap) setCalendarHubSnapshot(snap);
-                  }}
-                  onDeleteAllData={async () => {
-                    await calendarHubDeleteAllData();
-                    const { year, month } = calendarCursorRef.current;
-                    const snap = await calendarHubGetSnapshot(year, month);
-                    if (snap) setCalendarHubSnapshot(snap);
-                  }}
-                  onToggleWriteback={(enabled) => {
-                    onUpdateCalendarSettings?.({ calendarWritebackTasks: enabled });
-                  }}
-                  onJoinMeeting={(url) => {
-                    void calendarHubOpenExternalUrl(url);
-                  }}
-                  onOpenEventExternal={(ev) => {
-                    void calendarHubOpenExternalUrl(ev.meetingUrl ?? "https://calendar.google.com");
-                  }}
-                  onMonthChange={(year, month) => setCalendarMonthCursor({ year, month })}
-                />
-              </motion.div>
             ) : (
               <motion.div
-                key="expanded-island"
-                initial={{ opacity: 0, scale: 0.94 }}
+                key="expanded-stage"
+                initial={{ opacity: 0, scale: prefersReducedMotion ? 1 : 0.96 }}
                 animate={{
                   opacity: 1,
                   scale: 1,
-                  transition: {
-                    delay: prefersReducedMotion ? 0 : CONTENT_STAGGER.expandDelayMs / 1000,
-                    duration: 0.16,
-                    ease: [0.22, 1, 0.36, 1],
-                  },
+                  transition: getMotionTransition("homeContentEnter", prefersReducedMotion),
                 }}
                 exit={{
                   opacity: 0,
-                  scale: 0.95,
+                  scale: prefersReducedMotion ? 1 : 0.96,
                   transition: { duration: CONTENT_STAGGER.collapseFadeMs / 1000 },
                 }}
-                className="group absolute top-0 flex flex-col justify-between"
-                style={{
-                  left: "50%",
-                  x: "-50%",
-                  width: `${Math.round(BASE_GEOMETRY.expanded.width * scaleFactor)}px`,
-                  height: `${Math.round(BASE_GEOMETRY.expanded.height * scaleFactor)}px`,
-                  padding: "var(--island-padding)",
-                  paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
-                  paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
-                  gap: "var(--island-gap)",
-                }}
-                onClick={(event) => event.stopPropagation()}
+                className="absolute inset-0 h-full w-full overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
-                    <span className="truncate" style={{ color: "var(--text-primary)" }}>
-                      {activePage.titleLead}
-                    </span>
-                    <span className="truncate" style={{ color: activePage.accentVar }}>
-                      {activePage.titleAccent}
-                    </span>
-                  </h1>
-
-                  <button
-                    type="button"
-                    onClick={() => setClockDateOverride(!showHeaderClock)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      onShapeChange?.(nextShape);
-                    }}
-                    className="type-header-clock min-w-0 shrink cursor-pointer truncate rounded-full border-0 bg-transparent px-1.5 py-0.5 text-[11px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                    style={{ color: "var(--text-title-accent)" }}
-                    title={isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"}
-                  >
-                    {showHeaderClock ? (
-                      <>
-                        {clock.dateText.replace(/,\s*\d{4}$/, "")}{" "}
-                        <strong style={{ color: "var(--text-primary)" }}>{clock.timeText}</strong>
-                      </>
-                    ) : (
-                      <span>{clock.timeText}</span>
-                    )}
-                  </button>
-
-                  <div className="flex items-center justify-self-end gap-1">
-                    <div
-                      className={`flex items-center gap-1 transition-opacity duration-150 ${
-                        activePage.id === "control"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
-                        title={isPinned ? msg.pill.unpin : msg.pill.pin}
-                        aria-pressed={isPinned}
-                        onClick={() => {
-                          const next = !isPinned;
-                          isPinnedRef.current = next;
-                          setIsPinned(next);
-                          if (next && leaveTimerRef.current !== null) {
-                            window.clearTimeout(leaveTimerRef.current);
-                            leaveTimerRef.current = null;
-                          }
-                        }}
-                        className={`type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
-                          isPinned ? "" : "bg-transparent hover:bg-[var(--surface-button)]"
-                        }`}
-                        style={{
-                          backgroundColor: isPinned ? "var(--accent-orange)" : undefined,
-                          color: isPinned ? "#000000" : "var(--text-secondary)",
-                        }}
-                      >
-                        <PinIcon size={13} />
-                      </button>
-
-                      <button
-                        type="button"
-                        aria-label={msg.pill.openSettings}
-                        title={msg.pill.openSettings}
-                        onClick={() => {
-                          if (onOpenSettings) {
-                            onOpenSettings();
-                          } else {
-                            void openSettingsWindow();
-                          }
-                        }}
-                        className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                        style={{
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        <SettingsIcon size={13} />
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      aria-label={msg.pill.collapse}
-                      title={msg.pill.collapse}
-                      onClick={() => {
-                        clearHoverTimers();
-                        editingLockRef.current = false;
-                        isPinnedRef.current = false;
-                        setIsPinned(false);
-                        setSlimReturnActive(false);
-                        setPageGalleryOpen(false);
-                        dispatch({ type: "CLICK" });
-                      }}
-                      className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
-                        activePage.id === "control"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                      }`}
-                      style={{
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {liveTrack?.is_playing ? (
-                        <LiveWaveform playing accentColor={mediaAccent} />
-                      ) : (
-                        <ChevronUpIcon size={14} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative flex min-h-0 flex-1 items-center overflow-hidden">
-                  <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
+                <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
+                  {isHomePage ? (
                     <motion.div
-                      key={activePage.id}
+                      key="page-home"
                       custom={slideDirection}
                       variants={{
                         enter: (direction: number) => ({
-                          x: prefersReducedMotion ? 0 : direction > 0 ? 60 : -60,
+                          x: prefersReducedMotion ? 0 : direction > 0 ? 72 : -72,
                           opacity: 0,
-                          scale: 0.98,
+                          scale: prefersReducedMotion ? 1 : 0.985,
                         }),
                         center: {
                           x: 0,
                           opacity: 1,
                           scale: 1,
+                          transition: getMotionTransition("pageSwitch", prefersReducedMotion),
                         },
                         exit: (direction: number) => ({
-                          x: prefersReducedMotion ? 0 : direction > 0 ? -60 : 60,
+                          x: prefersReducedMotion ? 0 : direction > 0 ? -72 : 72,
                           opacity: 0,
-                          scale: 0.98,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                          transition: {
+                            duration: prefersReducedMotion ? 0.08 : 0.16,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
                         }),
                       }}
                       initial="enter"
                       animate="center"
                       exit="exit"
-                      transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
-                      className="flex h-full w-full items-center"
+                      className="absolute inset-0 flex items-start justify-center"
+                      onClick={(event) => event.stopPropagation()}
                     >
-                      {activePage.id === "control" && (
-                        <ControlPanelWidget
-                          media={media}
-                          pomodoro={pomodoro}
-                          waterGoalMl={initialWaterGoalMl}
-                          cameraActive={privacyDevices[0]}
-                          micActive={privacyDevices[1]}
+                      <div
+                        className="origin-top shrink-0"
+                        style={{
+                          width: `${BASE_GEOMETRY.homeExpanded.width}px`,
+                          height: `${BASE_GEOMETRY.homeExpanded.height}px`,
+                          transform: scaleFactor !== 1 ? `scale(${scaleFactor})` : undefined,
+                        }}
+                      >
+                        <HomePage
+                          nowDate={nowDate}
+                          schedule={prayerSchedule}
+                          prayerCities={prayerCities}
+                          onSelectPrayerCity={(cityId) => {
+                            void prayerSetCity(cityId).then((s) => s && setPrayerSchedule(s));
+                          }}
+                          media={
+                            media ?? {
+                              active: null,
+                              sessions: [],
+                              volume_percent: 50,
+                              muted: false,
+                            }
+                          }
+                          lastPlayedTrack={lastPlayedTrack}
+                          calendarEvents={homeEvents}
+                          tasks={homeTasks}
+                          reminders={homeReminders}
+                          water={
+                            waterSummary ?? {
+                              today_ml: 0,
+                              goal_ml: waterGoalMl,
+                              percentage: 0,
+                              goal_reached: false,
+                              last_entry_id: null,
+                              weekly: [],
+                            }
+                          }
+                          pomodoro={
+                            pomodoro ?? {
+                              phase: "focus",
+                              remaining_secs: 25 * 60,
+                              total_secs: 25 * 60,
+                              running: false,
+                              cycle_index: 0,
+                              cycles_before_long: 4,
+                              daily_focus_minutes: 0,
+                              chime_tick: 0,
+                            }
+                          }
+                          weather={weather}
+                          weatherLoading={weatherLoading}
+                          tasbih={tasbih}
+                          ledger={ledger}
+                          clipboard={clipboard}
+                          devPulse={devPulse}
+                          toggles={{
+                            focus: Boolean(
+                              focusOn || (pomodoro?.running && pomodoro.phase === "focus"),
+                            ),
+                            micMuted,
+                            cameraEnabled,
+                            silentMode: silentModeOn,
+                          }}
+                          batteryPct={batteryState ? batteryState[0] : null}
+                          isCharging={batteryState ? batteryState[1] : false}
                           language={language}
-                          onPomodoroChange={(nextPom) => setPomodoro(nextPom)}
-                          onNavigatePage={(targetId) => {
+                          banglaDigits={banglaDigits}
+                          reduceMotion={prefersReducedMotion}
+                          reduceTransparency={reduceTransparency}
+                          glowEnabled={glowEnabled}
+                          parallaxEnabled={parallaxEnabled}
+                          chipsConfig={{
+                            focus: chipFocusEnabled,
+                            ledger: chipLedgerEnabled,
+                            clipboard: chipClipboardEnabled,
+                            devPulse: chipDevPulseEnabled,
+                          }}
+                          pagesCount={pages.length}
+                          activePageIndex={safePageIndex}
+                          isVisible={homeVisibleNow}
+                          isFirstOpenOfDay={isFirstOpenOfDay}
+                          onNavigateWidget={(targetId) => {
                             const targetIndex = pages.findIndex((p) => p.id === targetId);
                             if (targetIndex >= 0) {
-                              setPageGalleryOpen(false);
-                              setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
+                              setOpenedViaHomeCard(true);
+                              setSlideDirection(1);
                               setActivePageIndex(targetIndex);
                             }
                           }}
-                        />
-                      )}
-
-                      {activePage.id === "water" && (
-                        <div className="h-full w-full">
-                          <WaterWidget
-                            summary={waterSummary}
-                            servingMl={250}
-                            remindersEnabled={waterReminders}
-                            onDrink={(ml) => {
-                              triggerLumiEvent("water", {
-                                legacyMood: "celebrate",
-                                durationMs: 2200,
-                                playChirp: "lumi_happy",
-                              });
-                              void waterLog(ml, waterGoalMl, 4).then((w) => {
-                                if (w) {
-                                  setWaterSummary(w);
-                                } else {
-                                  const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
-                                  const pct = (nextTotal / waterGoalMl) * 100;
-                                  setWaterSummary({
-                                    today_ml: nextTotal,
-                                    goal_ml: waterGoalMl,
-                                    percentage: pct,
-                                    goal_reached: pct >= 100,
-                                    last_entry_id: Date.now(),
-                                    weekly: [],
-                                  });
-                                }
-                              });
-                            }}
-                            onUndo={(entryId) => {
-                              void waterUndo(entryId, waterGoalMl, 4).then(
-                                (w) => w && setWaterSummary(w),
-                              );
-                            }}
-                            onToggleReminders={() => setWaterReminders((v) => !v)}
-                            onChangeGoal={(goal) => {
-                              setWaterGoalOverride(goal);
-                              void waterGetSummary(goal, 4).then((w) => w && setWaterSummary(w));
-                            }}
-                          />
-                        </div>
-                      )}
-
-                      {activePage.id === "shelf" && (
-                        <ShelfWidget
-                          items={shelfItems}
-                          onAdd={(kind, val) => {
-                            void shelfAdd(kind, val).then((items) => {
-                              if (isTauriRuntime()) {
-                                setShelfItems(items);
-                              } else {
-                                setShelfItems((prev) => [
-                                  {
-                                    id: Date.now(),
-                                    kind,
-                                    path_or_text: val,
-                                    display_name: val.slice(0, 40),
-                                    available: true,
-                                    added_at: new Date().toISOString(),
-                                  },
-                                  ...prev,
-                                ]);
-                              }
-                            });
+                          onSelectPage={(idx) => {
+                            setOpenedViaHomeCard(false);
+                            setSlideDirection(idx >= safePageIndex ? 1 : -1);
+                            setActivePageIndex(idx);
                           }}
-                          onOpen={(target) => {
-                            void shelfOpen(target);
+                          onOpenSettings={() => {
+                            if (onOpenSettings) {
+                              onOpenSettings();
+                            } else {
+                              void openSettingsWindow();
+                            }
                           }}
-                          onRemove={(id) => {
-                            void shelfRemove(id).then((items) => {
-                              if (isTauriRuntime()) {
-                                setShelfItems(items);
-                              } else {
-                                setShelfItems((prev) => prev.filter((i) => i.id !== id));
-                              }
-                            });
+                          onLaunchScreenshot={() => {
+                            triggerLumiReaction("confirm", 1800);
+                            return systemLaunchSnippingScreenshot();
                           }}
-                          onClear={() => {
-                            void shelfClear().then(() => setShelfItems([]));
+                          onLaunchScreenRecord={() => {
+                            triggerLumiReaction("confirm", 1800);
+                            return systemLaunchScreenRecording();
                           }}
-                        />
-                      )}
-
-                      {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
-                    </motion.div>
-                  </AnimatePresence>
-
-                  {pageGalleryOpen && (
-                    <div
-                      role="region"
-                      aria-label={isBn ? "সব পেজ গ্যালারি" : "All Pages Gallery"}
-                      className="absolute inset-0 z-30 grid grid-cols-4 gap-1.5 p-0.5"
-                      style={{ backgroundColor: "var(--surface)" }}
-                    >
-                      {pages.map((page, index) => {
-                        const active = index === safePageIndex;
-                        return (
-                          <button
-                            key={page.id}
-                            type="button"
-                            onClick={() => {
-                              setSlideDirection(index >= safePageIndex ? 1 : -1);
-                              setActivePageIndex(index);
-                              setPageGalleryOpen(false);
-                            }}
-                            className="flex cursor-pointer items-center gap-1.5 overflow-hidden border-0 px-2.5 py-1.5 text-left transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                            style={{
-                              backgroundColor: active
-                                ? "var(--surface-button)"
-                                : "var(--surface-raised)",
-                              borderRadius: "12px",
-                              border: active
-                                ? `1px solid ${page.accentVar}`
-                                : "1px solid var(--hairline)",
-                              color: "var(--text-primary)",
-                            }}
-                          >
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: page.accentVar }}
-                            />
-                            <span className="type-caption truncate font-medium">
-                              {page.titleLead}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  onMouseEnter={() => setDockHovered(true)}
-                  onMouseLeave={() => setDockHovered(false)}
-                  className="relative flex min-h-[24px] items-center justify-center px-6"
-                >
-                  {dockHovered ? (
-                    <motion.div
-                      key="shortcut-dock"
-                      initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={
-                        prefersReducedMotion
-                          ? { duration: 0.08 }
-                          : { type: "spring", stiffness: 480, damping: 30 }
-                      }
-                      role="navigation"
-                      aria-label={isBn ? "কুইক পেজ শর্টকাট" : "Quick page shortcuts"}
-                      className="flex items-center gap-1 rounded-full px-2.5 py-1 shadow-lg"
-                      style={{
-                        backgroundColor: "var(--surface-raised)",
-                        border: "1px solid var(--hairline-top)",
-                      }}
-                    >
-                      {pages.map((page, index) => {
-                        const active = index === safePageIndex && !pageGalleryOpen;
-                        const icon =
-                          page.id === "calendar_hub" ? (
-                            <CalendarIcon size={13} />
-                          ) : page.id === "control" ? (
-                            <GridIcon size={13} />
-                          ) : page.id === "water" ? (
-                            <DropletIcon size={13} />
-                          ) : page.id === "shelf" ? (
-                            <InboxIcon size={13} />
-                          ) : (
-                            <BoltIcon size={13} />
-                          );
-                        return (
-                          <button
-                            key={page.id}
-                            type="button"
-                            aria-label={`${page.titleLead} ${page.titleAccent}`.trim()}
-                            title={`${page.titleLead} ${page.titleAccent}`.trim()}
-                            onClick={() => {
-                              setPageGalleryOpen(false);
-                              setSlideDirection(index >= safePageIndex ? 1 : -1);
-                              setActivePageIndex(index);
-                            }}
-                            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                            style={{
-                              backgroundColor: active ? "rgba(255,255,255,0.08)" : "transparent",
-                              color: active ? page.accentVar : "var(--text-secondary)",
-                            }}
-                          >
-                            {icon}
-                          </button>
-                        );
-                      })}
-                      <span className="mx-0.5 h-3.5 w-px bg-white/15" aria-hidden="true" />
-                      <button
-                        type="button"
-                        aria-label={msg.pill.openSettings}
-                        title={msg.pill.openSettings}
-                        onClick={() => {
-                          if (onOpenSettings) {
-                            onOpenSettings();
-                          } else {
-                            void openSettingsWindow();
+                          onToggleFocus={() => {
+                            const currentlyFocused = Boolean(
+                              focusOn || (pomodoro?.running && pomodoro.phase === "focus"),
+                            );
+                            const nextFocus = !currentlyFocused;
+                            setFocusOn(nextFocus);
+                            triggerLumiReaction(nextFocus ? "sleep" : "celebrate", 2000);
+                            const shouldTogglePomodoro = Boolean(pomodoro?.running) !== nextFocus;
+                            if (shouldTogglePomodoro) {
+                              void pomodoroToggle().then((p) => p && setPomodoro(p));
+                            }
+                          }}
+                          onToggleMic={() => {
+                            setMicMuted((m) => !m);
+                            triggerLumiReaction("confirm", 1800);
+                            void systemToggleMicMute().then((m) => setMicMuted(m));
+                          }}
+                          onToggleCamera={async () => {
+                            const next = await systemToggleCamera();
+                            setCameraEnabled(next);
+                            triggerLumiReaction("confirm", 1800);
+                            return next;
+                          }}
+                          onLockWorkstation={() => void systemLockWorkstation()}
+                          onToggleSilentMode={() => {
+                            const next = !silentModeOn;
+                            setSilentModeOn(next);
+                            triggerLumiReaction(next ? "sleep" : "confirm", 1800);
+                            void systemToggleSilentMode(next).then((s) => setSilentModeOn(s));
+                          }}
+                          onIncrementTasbih={() => {
+                            setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
+                            triggerLumiReaction("celebrate", 2000);
+                            void tasbihIncrement().then((ts) => ts && setTasbih(ts));
+                          }}
+                          onResetTasbih={() => {
+                            setTasbih((cur) => ({ ...cur, count: 0 }));
+                            void tasbihReset().then((ts) => ts && setTasbih(ts));
+                          }}
+                          onMediaPlayPause={() =>
+                            void sendMediaCommand("play_pause").then((n) => n && setMedia(n))
                           }
+                          onMediaPrev={() =>
+                            void sendMediaCommand("previous").then((n) => n && setMedia(n))
+                          }
+                          onMediaNext={() =>
+                            void sendMediaCommand("next").then((n) => n && setMedia(n))
+                          }
+                          onMediaSeek={(pos) => void seekMedia(pos).then((n) => n && setMedia(n))}
+                          onMediaMuteToggle={() =>
+                            void sendMediaCommand("toggle_mute").then((n) => n && setMedia(n))
+                          }
+                          onMediaVolumeDelta={(pct) =>
+                            void setSystemVolume(pct).then((n) => n && setMedia(n))
+                          }
+                          onMediaSelectSession={(appId) =>
+                            void selectMediaSession(appId).then((n) => n && setMedia(n))
+                          }
+                          onLogWater={(ml) => {
+                            triggerLumiEvent("water", {
+                              legacyMood: "celebrate",
+                              durationMs: 2200,
+                              playChirp: "lumi_happy",
+                            });
+                            void waterLog(ml, waterGoalMl, 4).then((w) => {
+                              if (w) {
+                                setWaterSummary(w);
+                              } else {
+                                const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
+                                const pct = (nextTotal / waterGoalMl) * 100;
+                                setWaterSummary({
+                                  today_ml: nextTotal,
+                                  goal_ml: waterGoalMl,
+                                  percentage: pct,
+                                  goal_reached: pct >= 100,
+                                  last_entry_id: Date.now(),
+                                  weekly: [],
+                                });
+                              }
+                            });
+                          }}
+                          onToggleFocusTimer={() => {
+                            triggerLumiReaction("sleep", 2200);
+                            void pomodoroToggle().then((p) => p && setPomodoro(p));
+                          }}
+                          onToggleLedger={() => {
+                            triggerLumiReaction("confirm", 1800);
+                            void ledgerToggle().then((l) => l && setLedger(l));
+                          }}
+                          onCopyClipboard={async () => {
+                            triggerLumiReaction("confirm", 2000);
+                            const next = await clipboardCopyLatest();
+                            setClipboard(next);
+                          }}
+                          onToggleShape={() => onShapeChange?.(nextShape)}
+                        />
+                      </div>
+                    </motion.div>
+                  ) : isCalendarHubPage ? (
+                    <motion.div
+                      key="page-calendar_hub"
+                      custom={slideDirection}
+                      variants={{
+                        enter: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? 72 : -72,
+                          opacity: 0,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                        }),
+                        center: {
+                          x: 0,
+                          opacity: 1,
+                          scale: 1,
+                          transition: getMotionTransition("pageSwitch", prefersReducedMotion),
+                        },
+                        exit: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? -72 : 72,
+                          opacity: 0,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                          transition: {
+                            duration: prefersReducedMotion ? 0.08 : 0.16,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                        }),
+                      }}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      className="absolute inset-0 flex items-start justify-center"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div
+                        className="origin-top shrink-0"
+                        style={{
+                          width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
+                          height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
+                          transform: scaleFactor !== 1 ? `scale(${scaleFactor})` : undefined,
                         }}
-                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                        style={{ color: "var(--text-secondary)" }}
                       >
-                        <SettingsIcon size={13} />
-                      </button>
+                        <CalendarHubPage
+                          snapshot={calendarHubSnapshot}
+                          loading={calendarHubLoading}
+                          nowDate={nowDate}
+                          pomodoro={
+                            pomodoro ?? {
+                              phase: "focus",
+                              remaining_secs: 25 * 60,
+                              total_secs: 25 * 60,
+                              running: false,
+                              cycle_index: 0,
+                              cycles_before_long: 4,
+                              daily_focus_minutes: 0,
+                              chime_tick: 0,
+                            }
+                          }
+                          focusFlow={focusFlow}
+                          firstDayOfWeek={calendarFirstDayOfWeek}
+                          colorBlindMarks={calendarColorBlindMarks}
+                          socialBlockedArmed={calendarSocialBlockArmed}
+                          googleClientId={calendarGoogleClientId}
+                          microsoftClientId={calendarMicrosoftClientId}
+                          writebackTasks={calendarWritebackTasks}
+                          syncing={calSyncing}
+                          language={language}
+                          banglaDigits={banglaDigits}
+                          reduceMotion={prefersReducedMotion}
+                          reduceTransparency={reduceTransparency}
+                          glowEnabled={glowEnabled}
+                          onOpenSettings={() => {
+                            if (onOpenSettings) {
+                              onOpenSettings();
+                            } else {
+                              void openSettingsWindow();
+                            }
+                          }}
+                          onToggleTask={(taskId) => {
+                            setCalendarHubSnapshot((cur) => {
+                              if (!cur) return cur;
+                              return {
+                                ...cur,
+                                tasks: cur.tasks.map((t) =>
+                                  t.id === taskId
+                                    ? { ...t, doneAt: t.doneAt ? null : new Date().toISOString() }
+                                    : t,
+                                ),
+                              };
+                            });
+                            void calendarHubToggleTask(taskId);
+                          }}
+                          onCreateTask={async (parsed) => {
+                            const created = await calendarHubAddTask({
+                              title: parsed.title,
+                              dueDate: parsed.dueDate,
+                              dueTime: parsed.dueTime,
+                              isDeadline: parsed.isDeadline,
+                            });
+                            if (created) {
+                              setCalendarHubSnapshot((cur) =>
+                                cur ? { ...cur, tasks: [...cur.tasks, created] } : cur,
+                              );
+                            }
+                          }}
+                          onDeleteTask={(taskId) => {
+                            const found =
+                              calendarHubSnapshot?.tasks.find((t) => t.id === taskId) ?? null;
+                            lastDeletedCalendarTaskRef.current = found;
+                            setCalendarHubSnapshot((cur) =>
+                              cur
+                                ? { ...cur, tasks: cur.tasks.filter((t) => t.id !== taskId) }
+                                : cur,
+                            );
+                            void calendarHubDeleteTask(taskId);
+                          }}
+                          onRestoreLastDeleted={() => {
+                            const saved = lastDeletedCalendarTaskRef.current;
+                            if (!saved) return;
+                            lastDeletedCalendarTaskRef.current = null;
+                            setCalendarHubSnapshot((cur) =>
+                              cur ? { ...cur, tasks: [...cur.tasks, saved] } : cur,
+                            );
+                            void calendarHubRestoreTask(saved);
+                          }}
+                          onMoveTaskDue={(taskId, dueDate) => {
+                            setCalendarHubSnapshot((cur) =>
+                              cur
+                                ? {
+                                    ...cur,
+                                    tasks: cur.tasks.map((t) =>
+                                      t.id === taskId ? { ...t, dueDate } : t,
+                                    ),
+                                  }
+                                : cur,
+                            );
+                            void calendarHubMoveTaskDue(taskId, dueDate);
+                          }}
+                          onSetFocusTask={(taskId) => {
+                            setCalendarHubSnapshot((cur) =>
+                              cur ? { ...cur, focusTaskId: taskId } : cur,
+                            );
+                            void calendarHubSetFocusTask(taskId);
+                          }}
+                          onCreateReminder={async (parsed) => {
+                            const created = await calendarHubAddReminder({
+                              title: parsed.title,
+                              kind: parsed.reminderKind,
+                              at: parsed.at,
+                              repeatRule: parsed.repeatRule,
+                              prayerAnchor: parsed.prayerAnchor,
+                              importance: parsed.importance,
+                            });
+                            if (created) {
+                              setCalendarHubSnapshot((cur) =>
+                                cur ? { ...cur, reminders: [...cur.reminders, created] } : cur,
+                              );
+                            }
+                          }}
+                          onCompleteReminder={(id) => {
+                            setCalendarHubSnapshot((cur) =>
+                              cur
+                                ? {
+                                    ...cur,
+                                    reminders: cur.reminders.map((r) =>
+                                      r.id === id ? { ...r, missed: false } : r,
+                                    ),
+                                  }
+                                : cur,
+                            );
+                            void calendarHubCompleteReminder(id);
+                          }}
+                          onDismissMissed={() => {
+                            setCalendarHubSnapshot((cur) =>
+                              cur
+                                ? {
+                                    ...cur,
+                                    reminders: cur.reminders.map((r) => ({ ...r, missed: false })),
+                                  }
+                                : cur,
+                            );
+                            void calendarHubDismissMissed();
+                          }}
+                          onToggleFocus={() => {
+                            void pomodoroToggle().then((p) => {
+                              if (p) setPomodoro(p);
+                              void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
+                            });
+                          }}
+                          onSkipFocus={() => {
+                            void pomodoroSkip().then((p) => {
+                              if (p) setPomodoro(p);
+                              void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
+                            });
+                          }}
+                          onRespondPrayerPrompt={(pause) => {
+                            void calendarHubFocusRespondPrayer(pause).then(
+                              (f) => f && setFocusFlow(f),
+                            );
+                          }}
+                          onDismissFreeFocusLog={() => {
+                            void calendarHubFocusDismissFreeLog().then((f) => f && setFocusFlow(f));
+                          }}
+                          onLogFreeFocusTask={async (title) => {
+                            await calendarHubFocusLogFreeTask(title);
+                            const { year, month } = calendarCursorRef.current;
+                            const snap = await calendarHubGetSnapshot(year, month);
+                            if (snap) setCalendarHubSnapshot(snap);
+                            const f = await calendarHubFocusGetState();
+                            if (f) setFocusFlow(f);
+                          }}
+                          onSyncNow={async () => {
+                            setCalSyncing(true);
+                            try {
+                              await calendarHubSyncNow();
+                              const { year, month } = calendarCursorRef.current;
+                              const snap = await calendarHubGetSnapshot(year, month);
+                              if (snap) setCalendarHubSnapshot(snap);
+                            } finally {
+                              setCalSyncing(false);
+                            }
+                          }}
+                          onConnectIcs={async (label, url) => {
+                            setCalSyncing(true);
+                            try {
+                              await calendarHubConnectIcs(label, url);
+                              const { year, month } = calendarCursorRef.current;
+                              const snap = await calendarHubGetSnapshot(year, month);
+                              if (snap) setCalendarHubSnapshot(snap);
+                            } finally {
+                              setCalSyncing(false);
+                            }
+                          }}
+                          onConnectOAuth={async (provider, clientId, writeScope) => {
+                            setCalSyncing(true);
+                            try {
+                              await calendarHubConnectOAuth(provider, clientId, writeScope);
+                              const { year, month } = calendarCursorRef.current;
+                              const snap = await calendarHubGetSnapshot(year, month);
+                              if (snap) setCalendarHubSnapshot(snap);
+                            } finally {
+                              setCalSyncing(false);
+                            }
+                          }}
+                          onDisconnectSource={async (sourceId) => {
+                            await calendarHubDisconnectSource(sourceId);
+                            const { year, month } = calendarCursorRef.current;
+                            const snap = await calendarHubGetSnapshot(year, month);
+                            if (snap) setCalendarHubSnapshot(snap);
+                          }}
+                          onDeleteAllData={async () => {
+                            await calendarHubDeleteAllData();
+                            const { year, month } = calendarCursorRef.current;
+                            const snap = await calendarHubGetSnapshot(year, month);
+                            if (snap) setCalendarHubSnapshot(snap);
+                          }}
+                          onToggleWriteback={(enabled) => {
+                            onUpdateCalendarSettings?.({ calendarWritebackTasks: enabled });
+                          }}
+                          onJoinMeeting={(url) => {
+                            void calendarHubOpenExternalUrl(url);
+                          }}
+                          onOpenEventExternal={(ev) => {
+                            void calendarHubOpenExternalUrl(
+                              ev.meetingUrl ?? "https://calendar.google.com",
+                            );
+                          }}
+                          onMonthChange={(year, month) => setCalendarMonthCursor({ year, month })}
+                        />
+                      </div>
                     </motion.div>
                   ) : (
-                    <div className="flex items-center justify-center gap-1.5">
-                      {(pages.length <= 6
-                        ? pages.map((page, index) => ({ page, index }))
-                        : (() => {
-                            const maxDots = 5;
-                            const start = Math.min(
-                              Math.max(0, safePageIndex - 2),
-                              Math.max(0, pages.length - maxDots),
-                            );
-                            return pages
-                              .slice(start, start + maxDots)
-                              .map((page, offset) => ({ page, index: start + offset }));
-                          })()
-                      ).map(({ page, index }) => {
-                        const active = index === safePageIndex && !pageGalleryOpen;
-                        return (
+                    <motion.div
+                      key="page-secondary"
+                      custom={slideDirection}
+                      variants={{
+                        enter: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? 72 : -72,
+                          opacity: 0,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                        }),
+                        center: {
+                          x: 0,
+                          opacity: 1,
+                          scale: 1,
+                          transition: getMotionTransition("pageSwitch", prefersReducedMotion),
+                        },
+                        exit: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? -72 : 72,
+                          opacity: 0,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                          transition: {
+                            duration: prefersReducedMotion ? 0.08 : 0.16,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                        }),
+                      }}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      className="absolute inset-0 flex items-start justify-center"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div
+                        className="group relative flex flex-col justify-between"
+                        style={{
+                          width: `${Math.round(BASE_GEOMETRY.expanded.width * scaleFactor)}px`,
+                          height: `${Math.round(BASE_GEOMETRY.expanded.height * scaleFactor)}px`,
+                          padding: "var(--island-padding)",
+                          paddingLeft: isFloatingPill ? "var(--island-padding)" : "14px",
+                          paddingRight: isFloatingPill ? "var(--island-padding)" : "14px",
+                          gap: "var(--island-gap)",
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <h1 className="type-title m-0 flex min-w-0 items-center gap-1 truncate text-[13px]">
+                            <span className="truncate" style={{ color: "var(--text-primary)" }}>
+                              {activePage.titleLead}
+                            </span>
+                            <span className="truncate" style={{ color: activePage.accentVar }}>
+                              {activePage.titleAccent}
+                            </span>
+                          </h1>
+
                           <button
-                            key={page.id}
                             type="button"
-                            aria-label={`Page ${index + 1}`}
-                            onClick={() => {
-                              setPageGalleryOpen(false);
-                              setActivePageIndex(index);
+                            onClick={() => setClockDateOverride(!showHeaderClock)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              onShapeChange?.(nextShape);
                             }}
-                            className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                            style={{
-                              width: active ? "18px" : "6px",
-                              backgroundColor: active
-                                ? activePage.accentVar
-                                : "var(--text-tertiary)",
-                            }}
-                          />
-                        );
-                      })}
-                      {pages.length > 6 && (
-                        <button
-                          type="button"
-                          aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
-                          title={isBn ? "সব পেজ দেখুন" : "All pages"}
-                          aria-expanded={pageGalleryOpen}
-                          onClick={() => setPageGalleryOpen((v) => !v)}
-                          className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-                          style={{
-                            backgroundColor: "transparent",
-                            color: pageGalleryOpen
-                              ? "var(--text-primary)"
-                              : "var(--text-secondary)",
-                          }}
+                            className="type-header-clock min-w-0 shrink cursor-pointer truncate rounded-full border-0 bg-transparent px-1.5 py-0.5 text-[11px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                            style={{ color: "var(--text-title-accent)" }}
+                            title={
+                              isBn ? "তারিখ/সময় পরিবর্তন (রাইট-ক্লিকে শেপ)" : "Toggle date & time"
+                            }
+                          >
+                            {showHeaderClock ? (
+                              <>
+                                {clock.dateText.replace(/,\s*\d{4}$/, "")}{" "}
+                                <strong style={{ color: "var(--text-primary)" }}>
+                                  {clock.timeText}
+                                </strong>
+                              </>
+                            ) : (
+                              <span>{clock.timeText}</span>
+                            )}
+                          </button>
+
+                          <div className="flex items-center justify-self-end gap-1">
+                            <div
+                              className={`flex items-center gap-1 transition-opacity duration-150 ${
+                                activePage.id === "control"
+                                  ? "opacity-100"
+                                  : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
+                                title={isPinned ? msg.pill.unpin : msg.pill.pin}
+                                aria-pressed={isPinned}
+                                onClick={() => {
+                                  const next = !isPinned;
+                                  isPinnedRef.current = next;
+                                  setIsPinned(next);
+                                  if (next && leaveTimerRef.current !== null) {
+                                    window.clearTimeout(leaveTimerRef.current);
+                                    leaveTimerRef.current = null;
+                                  }
+                                }}
+                                className={`type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+                                  isPinned ? "" : "bg-transparent hover:bg-[var(--surface-button)]"
+                                }`}
+                                style={{
+                                  backgroundColor: isPinned ? "var(--accent-orange)" : undefined,
+                                  color: isPinned ? "#000000" : "var(--text-secondary)",
+                                }}
+                              >
+                                <PinIcon size={13} />
+                              </button>
+
+                              <button
+                                type="button"
+                                aria-label={msg.pill.openSettings}
+                                title={msg.pill.openSettings}
+                                onClick={() => {
+                                  if (onOpenSettings) {
+                                    onOpenSettings();
+                                  } else {
+                                    void openSettingsWindow();
+                                  }
+                                }}
+                                className="type-caption flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                                style={{
+                                  color: "var(--text-secondary)",
+                                }}
+                              >
+                                <SettingsIcon size={13} />
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              aria-label={msg.pill.collapse}
+                              title={msg.pill.collapse}
+                              onClick={() => {
+                                clearHoverTimers();
+                                editingLockRef.current = false;
+                                isPinnedRef.current = false;
+                                setIsPinned(false);
+                                setSlimReturnActive(false);
+                                setPageGalleryOpen(false);
+                                dispatch({ type: "CLICK" });
+                              }}
+                              className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+                                activePage.id === "control"
+                                  ? "opacity-100"
+                                  : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                              }`}
+                              style={{
+                                color: "var(--text-secondary)",
+                              }}
+                            >
+                              {liveTrack?.is_playing ? (
+                                <LiveWaveform playing accentColor={mediaAccent} />
+                              ) : (
+                                <ChevronUpIcon size={14} />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="relative flex min-h-0 flex-1 items-center overflow-hidden">
+                          <AnimatePresence custom={slideDirection} initial={false} mode="popLayout">
+                            <motion.div
+                              key={activePage.id}
+                              custom={slideDirection}
+                              variants={{
+                                enter: (direction: number) => ({
+                                  x: prefersReducedMotion ? 0 : direction > 0 ? 60 : -60,
+                                  opacity: 0,
+                                  scale: 0.98,
+                                }),
+                                center: {
+                                  x: 0,
+                                  opacity: 1,
+                                  scale: 1,
+                                },
+                                exit: (direction: number) => ({
+                                  x: prefersReducedMotion ? 0 : direction > 0 ? -60 : 60,
+                                  opacity: 0,
+                                  scale: 0.98,
+                                }),
+                              }}
+                              initial="enter"
+                              animate="center"
+                              exit="exit"
+                              transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
+                              className="flex h-full w-full items-center"
+                            >
+                              {activePage.id === "control" && (
+                                <ControlPanelWidget
+                                  media={media}
+                                  pomodoro={pomodoro}
+                                  waterGoalMl={initialWaterGoalMl}
+                                  cameraActive={privacyDevices[0]}
+                                  micActive={privacyDevices[1]}
+                                  language={language}
+                                  onPomodoroChange={(nextPom) => setPomodoro(nextPom)}
+                                  onNavigatePage={(targetId) => {
+                                    const targetIndex = pages.findIndex((p) => p.id === targetId);
+                                    if (targetIndex >= 0) {
+                                      setPageGalleryOpen(false);
+                                      setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
+                                      setActivePageIndex(targetIndex);
+                                    }
+                                  }}
+                                />
+                              )}
+
+                              {activePage.id === "water" && (
+                                <div className="h-full w-full">
+                                  <WaterWidget
+                                    summary={waterSummary}
+                                    servingMl={250}
+                                    remindersEnabled={waterReminders}
+                                    onDrink={(ml) => {
+                                      triggerLumiEvent("water", {
+                                        legacyMood: "celebrate",
+                                        durationMs: 2200,
+                                        playChirp: "lumi_happy",
+                                      });
+                                      void waterLog(ml, waterGoalMl, 4).then((w) => {
+                                        if (w) {
+                                          setWaterSummary(w);
+                                        } else {
+                                          const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
+                                          const pct = (nextTotal / waterGoalMl) * 100;
+                                          setWaterSummary({
+                                            today_ml: nextTotal,
+                                            goal_ml: waterGoalMl,
+                                            percentage: pct,
+                                            goal_reached: pct >= 100,
+                                            last_entry_id: Date.now(),
+                                            weekly: [],
+                                          });
+                                        }
+                                      });
+                                    }}
+                                    onUndo={(entryId) => {
+                                      void waterUndo(entryId, waterGoalMl, 4).then(
+                                        (w) => w && setWaterSummary(w),
+                                      );
+                                    }}
+                                    onToggleReminders={() => setWaterReminders((v) => !v)}
+                                    onChangeGoal={(goal) => {
+                                      setWaterGoalOverride(goal);
+                                      void waterGetSummary(goal, 4).then(
+                                        (w) => w && setWaterSummary(w),
+                                      );
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              {activePage.id === "shelf" && (
+                                <ShelfWidget
+                                  items={shelfItems}
+                                  onAdd={(kind, val) => {
+                                    void shelfAdd(kind, val).then((items) => {
+                                      if (isTauriRuntime()) {
+                                        setShelfItems(items);
+                                      } else {
+                                        setShelfItems((prev) => [
+                                          {
+                                            id: Date.now(),
+                                            kind,
+                                            path_or_text: val,
+                                            display_name: val.slice(0, 40),
+                                            available: true,
+                                            added_at: new Date().toISOString(),
+                                          },
+                                          ...prev,
+                                        ]);
+                                      }
+                                    });
+                                  }}
+                                  onOpen={(target) => {
+                                    void shelfOpen(target);
+                                  }}
+                                  onRemove={(id) => {
+                                    void shelfRemove(id).then((items) => {
+                                      if (isTauriRuntime()) {
+                                        setShelfItems(items);
+                                      } else {
+                                        setShelfItems((prev) => prev.filter((i) => i.id !== id));
+                                      }
+                                    });
+                                  }}
+                                  onClear={() => {
+                                    void shelfClear().then(() => setShelfItems([]));
+                                  }}
+                                />
+                              )}
+
+                              {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
+                            </motion.div>
+                          </AnimatePresence>
+
+                          {pageGalleryOpen && (
+                            <div
+                              role="region"
+                              aria-label={isBn ? "সব পেজ গ্যালারি" : "All Pages Gallery"}
+                              className="absolute inset-0 z-30 grid grid-cols-4 gap-1.5 p-0.5"
+                              style={{ backgroundColor: "var(--surface)" }}
+                            >
+                              {pages.map((page, index) => {
+                                const active = index === safePageIndex;
+                                return (
+                                  <button
+                                    key={page.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSlideDirection(index >= safePageIndex ? 1 : -1);
+                                      setActivePageIndex(index);
+                                      setPageGalleryOpen(false);
+                                    }}
+                                    className="flex cursor-pointer items-center gap-1.5 overflow-hidden border-0 px-2.5 py-1.5 text-left transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                                    style={{
+                                      backgroundColor: active
+                                        ? "var(--surface-button)"
+                                        : "var(--surface-raised)",
+                                      borderRadius: "12px",
+                                      border: active
+                                        ? `1px solid ${page.accentVar}`
+                                        : "1px solid var(--hairline)",
+                                      color: "var(--text-primary)",
+                                    }}
+                                  >
+                                    <span
+                                      className="h-2 w-2 shrink-0 rounded-full"
+                                      style={{ backgroundColor: page.accentVar }}
+                                    />
+                                    <span className="type-caption truncate font-medium">
+                                      {page.titleLead}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          onMouseEnter={() => setDockHovered(true)}
+                          onMouseLeave={() => setDockHovered(false)}
+                          className="relative flex min-h-[24px] items-center justify-center px-6"
                         >
-                          <GridIcon size={10} />
-                        </button>
-                      )}
-                    </div>
+                          {dockHovered ? (
+                            <motion.div
+                              key="shortcut-dock"
+                              initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              transition={
+                                prefersReducedMotion
+                                  ? { duration: 0.08 }
+                                  : { type: "spring", stiffness: 480, damping: 30 }
+                              }
+                              role="navigation"
+                              aria-label={isBn ? "কুইক পেজ শর্টকাট" : "Quick page shortcuts"}
+                              className="flex items-center gap-1 rounded-full px-2.5 py-1 shadow-lg"
+                              style={{
+                                backgroundColor: "var(--surface-raised)",
+                                border: "1px solid var(--hairline-top)",
+                              }}
+                            >
+                              {pages.map((page, index) => {
+                                const active = index === safePageIndex && !pageGalleryOpen;
+                                const icon =
+                                  page.id === "calendar_hub" ? (
+                                    <CalendarIcon size={13} />
+                                  ) : page.id === "control" ? (
+                                    <GridIcon size={13} />
+                                  ) : page.id === "water" ? (
+                                    <DropletIcon size={13} />
+                                  ) : page.id === "shelf" ? (
+                                    <InboxIcon size={13} />
+                                  ) : (
+                                    <BoltIcon size={13} />
+                                  );
+                                return (
+                                  <button
+                                    key={page.id}
+                                    type="button"
+                                    aria-label={`${page.titleLead} ${page.titleAccent}`.trim()}
+                                    title={`${page.titleLead} ${page.titleAccent}`.trim()}
+                                    onClick={() => {
+                                      setPageGalleryOpen(false);
+                                      setSlideDirection(index >= safePageIndex ? 1 : -1);
+                                      setActivePageIndex(index);
+                                    }}
+                                    className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                                    style={{
+                                      backgroundColor: active
+                                        ? "rgba(255,255,255,0.08)"
+                                        : "transparent",
+                                      color: active ? page.accentVar : "var(--text-secondary)",
+                                    }}
+                                  >
+                                    {icon}
+                                  </button>
+                                );
+                              })}
+                              <span className="mx-0.5 h-3.5 w-px bg-white/15" aria-hidden="true" />
+                              <button
+                                type="button"
+                                aria-label={msg.pill.openSettings}
+                                title={msg.pill.openSettings}
+                                onClick={() => {
+                                  if (onOpenSettings) {
+                                    onOpenSettings();
+                                  } else {
+                                    void openSettingsWindow();
+                                  }
+                                }}
+                                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-transform hover:scale-110 hover:text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                                style={{ color: "var(--text-secondary)" }}
+                              >
+                                <SettingsIcon size={13} />
+                              </button>
+                            </motion.div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1.5">
+                              {(pages.length <= 6
+                                ? pages.map((page, index) => ({ page, index }))
+                                : (() => {
+                                    const maxDots = 5;
+                                    const start = Math.min(
+                                      Math.max(0, safePageIndex - 2),
+                                      Math.max(0, pages.length - maxDots),
+                                    );
+                                    return pages
+                                      .slice(start, start + maxDots)
+                                      .map((page, offset) => ({ page, index: start + offset }));
+                                  })()
+                              ).map(({ page, index }) => {
+                                const active = index === safePageIndex && !pageGalleryOpen;
+                                return (
+                                  <button
+                                    key={page.id}
+                                    type="button"
+                                    aria-label={`Page ${index + 1}`}
+                                    onClick={() => {
+                                      setSlideDirection(index >= safePageIndex ? 1 : -1);
+                                      setPageGalleryOpen(false);
+                                      setActivePageIndex(index);
+                                    }}
+                                    className="h-1.5 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                                    style={{
+                                      width: active ? "18px" : "6px",
+                                      backgroundColor: active
+                                        ? activePage.accentVar
+                                        : "var(--text-tertiary)",
+                                    }}
+                                  />
+                                );
+                              })}
+                              {pages.length > 6 && (
+                                <button
+                                  type="button"
+                                  aria-label={isBn ? "সব পেজ দেখুন" : "All pages"}
+                                  title={isBn ? "সব পেজ দেখুন" : "All pages"}
+                                  aria-expanded={pageGalleryOpen}
+                                  onClick={() => setPageGalleryOpen((v) => !v)}
+                                  className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded border-0 p-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
+                                  style={{
+                                    backgroundColor: "transparent",
+                                    color: pageGalleryOpen
+                                      ? "var(--text-primary)"
+                                      : "var(--text-secondary)",
+                                  }}
+                                >
+                                  <GridIcon size={10} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
                   )}
-                </div>
+                </AnimatePresence>
               </motion.div>
             )}
           </AnimatePresence>

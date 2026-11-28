@@ -99,12 +99,12 @@ export function CalendarGrid({
     <section
       data-testid="calendar-grid-card"
       aria-label={monthTitle}
-      className="cal-glass-card flex h-[308px] w-[308px] flex-col justify-between px-[14px] py-[12px]"
+      className="cal-glass-card flex h-[258px] w-[256px] flex-col justify-between px-[11px] py-[8px]"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1.5">
         <h2
           data-testid="cal-month-title"
-          className="m-0 text-[14px] font-semibold tracking-tight"
+          className="m-0 text-[12.5px] font-semibold tracking-tight"
           style={{ color: COLOR_TOKENS.textPrimary }}
         >
           {monthTitle}
@@ -115,10 +115,10 @@ export function CalendarGrid({
             type="button"
             data-testid="cal-today-btn"
             onClick={onJumpToday}
-            className="flex h-[32px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent px-0.5"
+            className="flex h-[26px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent px-0.5"
           >
             <span
-              className="flex h-[24px] items-center rounded-full px-2.5 text-[11px] font-medium transition-opacity hover:opacity-90"
+              className="flex h-[20px] items-center rounded-full px-2 text-[10px] font-medium transition-opacity hover:opacity-90"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
@@ -134,17 +134,17 @@ export function CalendarGrid({
             data-testid="cal-prev-month"
             aria-label={msg.calendarHub.prevMonth}
             onClick={onPrevMonth}
-            className="flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
+            className="flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
           >
             <span
-              className="flex h-[24px] w-[24px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
+              className="flex h-[20px] w-[20px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
                 color: COLOR_TOKENS.textPrimary,
               }}
             >
-              <ChevronLeftIcon size={12} />
+              <ChevronLeftIcon size={10} />
             </span>
           </button>
 
@@ -153,28 +153,28 @@ export function CalendarGrid({
             data-testid="cal-next-month"
             aria-label={msg.calendarHub.nextMonth}
             onClick={onNextMonth}
-            className="flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
+            className="flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
           >
             <span
-              className="flex h-[24px] w-[24px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
+              className="flex h-[20px] w-[20px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
                 color: COLOR_TOKENS.textPrimary,
               }}
             >
-              <ChevronRightIcon size={12} />
+              <ChevronRightIcon size={10} />
             </span>
           </button>
         </div>
       </div>
 
-      <div className="mt-1 flex flex-1 flex-col justify-between">
+      <div className="mt-0.5 flex flex-1 flex-col justify-between">
         <div className="grid grid-cols-7 text-center">
           {weekdays.map((wd, idx) => (
             <div
               key={`${wd}-${idx}`}
-              className="py-0.5 text-[10.5px] font-medium"
+              className="py-0.5 text-[9.5px] font-medium"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               {wd}
@@ -214,7 +214,7 @@ export function CalendarGrid({
 
       <div
         data-testid="cal-legend-row"
-        className="mt-1 flex items-center justify-center gap-3 text-[10.5px]"
+        className="mt-0.5 flex items-center justify-center gap-2.5 text-[9.5px]"
         style={{ color: COLOR_TOKENS.textSecondary }}
       >
         <span className="flex items-center gap-1">

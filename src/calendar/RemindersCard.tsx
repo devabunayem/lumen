@@ -77,11 +77,11 @@ export function RemindersCard({
   return (
     <section
       data-testid="cal-reminders-card"
-      className="cal-glass-card relative flex h-[149px] w-[200px] flex-col px-[14px] py-[12px]"
+      className="cal-glass-card relative flex h-[125px] w-[170px] flex-col px-[11px] py-[8px]"
     >
-      <div className="flex items-center justify-between gap-1.5">
+      <div className="flex items-center justify-between gap-1">
         <h3
-          className="m-0 text-[13px] font-semibold tracking-tight"
+          className="m-0 text-[12px] font-semibold tracking-tight"
           style={{ color: COLOR_TOKENS.textPrimary }}
         >
           {msg.calendarHub.remindersTitle}
@@ -93,7 +93,7 @@ export function RemindersCard({
               type="button"
               data-testid="cal-missed-pill"
               onClick={() => setShowMissedDrawer((v) => !v)}
-              className="flex h-[20px] cursor-pointer items-center rounded-full px-2 text-[10px] font-semibold"
+              className="flex h-[18px] cursor-pointer items-center rounded-full px-1.5 text-[9.5px] font-semibold"
               style={{
                 backgroundColor: COLOR_TOKENS.calSocialBg,
                 border: `1px solid ${COLOR_TOKENS.calSocialBorder}`,
@@ -112,43 +112,40 @@ export function RemindersCard({
             data-testid="cal-reminders-add-btn"
             aria-label={msg.calendarHub.addReminder}
             onClick={onOpenQuickAdd}
-            className="-m-1 flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
+            className="-m-1 flex h-[28px] w-[28px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0"
           >
             <span
-              className="flex h-[22px] w-[22px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
+              className="flex h-[20px] w-[20px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
               style={{
                 backgroundColor: COLOR_TOKENS.calPillBg,
                 border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
                 color: COLOR_TOKENS.textPrimary,
               }}
             >
-              <PlusIcon size={11} />
+              <PlusIcon size={10} />
             </span>
           </button>
         </div>
       </div>
 
       {showMissedDrawer && missedList.length > 0 ? (
-        <div
-          data-testid="cal-missed-drawer"
-          className="mt-1.5 flex flex-1 flex-col justify-between"
-        >
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+        <div data-testid="cal-missed-drawer" className="mt-1 flex flex-1 flex-col justify-between">
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {missedList.slice(0, 2).map((rem) => (
-              <li key={rem.id} className="flex items-center justify-between gap-2 text-[11px]">
+              <li key={rem.id} className="flex items-center justify-between gap-1.5 text-[10px]">
                 <span className="truncate font-medium" style={{ color: COLOR_TOKENS.calDeadline }}>
                   {rem.title}
                 </span>
                 <button
                   type="button"
                   onClick={() => onCompleteReminder?.(rem.id)}
-                  className="flex h-[20px] shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-[10px] font-medium"
+                  className="flex h-[18px] shrink-0 cursor-pointer items-center gap-1 rounded-full px-1.5 text-[9.5px] font-medium"
                   style={{
                     backgroundColor: COLOR_TOKENS.calPillBg,
                     color: COLOR_TOKENS.calEvent,
                   }}
                 >
-                  <CheckIcon size={9} />
+                  <CheckIcon size={8} />
                   <span>{language === "bn" ? "হয়েছে" : "Done"}</span>
                 </button>
               </li>
@@ -161,7 +158,7 @@ export function RemindersCard({
               onDismissMissed?.();
               setShowMissedDrawer(false);
             }}
-            className="w-full cursor-pointer rounded-full py-1 text-[10.5px] font-medium"
+            className="w-full cursor-pointer rounded-full py-0.5 text-[9.5px] font-medium"
             style={{
               backgroundColor: COLOR_TOKENS.calPillBg,
               color: COLOR_TOKENS.textSecondary,
@@ -194,37 +191,37 @@ export function RemindersCard({
           {visible.length === 0 && !quickAddOpen ? (
             <div
               data-testid="cal-reminders-empty"
-              className="flex flex-1 items-center justify-center text-center text-[11px]"
+              className="flex flex-1 items-center justify-center text-center text-[10.5px]"
               style={{ color: COLOR_TOKENS.textSecondary }}
             >
               {msg.calendarHub.emptyReminders}
             </div>
           ) : (
-            <ul className="mt-1.5 flex list-none flex-col gap-[6px] p-0">
+            <ul className="mt-1 flex list-none flex-col gap-[4px] p-0">
               {visible.map((rem) => {
                 const isPrayer = rem.kind === "prayer";
                 const isRecurring =
                   rem.kind === "daily" || rem.kind === "weekly" || rem.kind === "monthly";
 
                 return (
-                  <li key={rem.id} className="flex items-start gap-2">
+                  <li key={rem.id} className="flex items-start gap-1.5">
                     <span
-                      className="mt-[2px] flex h-[16px] w-[16px] shrink-0 items-center justify-center"
+                      className="mt-[1px] flex h-[14px] w-[14px] shrink-0 items-center justify-center"
                       style={{
                         color: isPrayer ? COLOR_TOKENS.calPrayer : COLOR_TOKENS.calReminder,
                       }}
                     >
                       {isPrayer ? (
-                        <CrescentIcon size={13} />
+                        <CrescentIcon size={11} />
                       ) : isRecurring ? (
-                        <RepeatIcon size={12} />
+                        <RepeatIcon size={11} />
                       ) : (
-                        <BellIcon size={13} />
+                        <BellIcon size={11} />
                       )}
                     </span>
-                    <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                    <div className="flex min-w-0 flex-1 flex-col leading-[1.15]">
                       <span
-                        className="truncate text-[11.5px] font-semibold"
+                        className="truncate text-[10.5px] font-semibold"
                         style={{
                           color: rem.missed ? COLOR_TOKENS.calDeadline : COLOR_TOKENS.textPrimary,
                         }}
@@ -232,7 +229,7 @@ export function RemindersCard({
                         {rem.title}
                       </span>
                       <span
-                        className="truncate text-[10.5px] font-normal"
+                        className="truncate text-[9px] font-normal"
                         style={{ color: COLOR_TOKENS.textSecondary }}
                       >
                         {formatReminderSubtext(rem, language, banglaDigits)}

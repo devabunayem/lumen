@@ -226,7 +226,7 @@ fn recenter_window(
     base_height: f64,
     settings: &LumenSettings,
 ) {
-    // Keep canvas zero-resize across scale changes: fits 150% Home (1140x564) + 16px margin + ears.
+    // Keep canvas zero-resize across scale changes: fits 150% Home & Calendar Hub (960x468) + 16px margin + ears.
     let logical_width = base_width.round();
     let logical_height = base_height.round();
 

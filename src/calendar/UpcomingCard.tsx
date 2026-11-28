@@ -76,17 +76,17 @@ export function UpcomingCard({
   return (
     <section
       data-testid="cal-upcoming-card"
-      className="cal-glass-card flex h-[149px] w-[200px] flex-col justify-between px-[14px] py-[12px]"
+      className="cal-glass-card flex h-[125px] w-[170px] flex-col justify-between px-[11px] py-[8px]"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1.5">
         <h3
-          className="m-0 text-[13px] font-semibold tracking-tight"
+          className="m-0 text-[12px] font-semibold tracking-tight"
           style={{ color: COLOR_TOKENS.textPrimary }}
         >
           {isDayFiltered ? msg.calendarHub.eventsTitle : msg.calendarHub.upcomingTitle}
         </h3>
 
-        <span className="truncate text-[10.5px]" style={{ color: COLOR_TOKENS.textSecondary }}>
+        <span className="truncate text-[9.5px]" style={{ color: COLOR_TOKENS.textSecondary }}>
           {msg.calendarHub.fromCalendar}
         </span>
       </div>
@@ -96,12 +96,12 @@ export function UpcomingCard({
           data-testid="cal-upcoming-empty"
           className="flex flex-1 flex-col items-center justify-center gap-1 text-center"
         >
-          <span className="text-[11.5px] font-medium" style={{ color: COLOR_TOKENS.textSecondary }}>
+          <span className="text-[10.5px] font-medium" style={{ color: COLOR_TOKENS.textSecondary }}>
             {msg.calendarHub.emptyEvents}
           </span>
           {!hasSyncedCalendar && (
             <span
-              className="text-[10px] leading-tight"
+              className="text-[9.5px] leading-tight"
               style={{ color: COLOR_TOKENS.textTertiary }}
             >
               {msg.calendarHub.emptyLocalHint}
@@ -109,12 +109,12 @@ export function UpcomingCard({
           )}
         </div>
       ) : (
-        <div className="mt-1.5 flex flex-1 flex-col justify-between">
-          <div className="flex items-center justify-between gap-2">
+        <div className="mt-1 flex flex-1 flex-col justify-between">
+          <div className="flex items-center justify-between gap-1.5">
             <button
               type="button"
               onClick={() => onSelectEvent?.(hero)}
-              className="flex min-w-0 flex-1 cursor-pointer items-stretch gap-2 border-0 bg-transparent p-0 text-left"
+              className="flex min-w-0 flex-1 cursor-pointer items-stretch gap-1.5 border-0 bg-transparent p-0 text-left"
             >
               <span
                 className="w-[3px] shrink-0 rounded-full"
@@ -122,13 +122,13 @@ export function UpcomingCard({
               />
               <div className="flex min-w-0 flex-col justify-center">
                 <span
-                  className="truncate text-[11.5px] font-semibold"
+                  className="truncate text-[10.5px] font-semibold"
                   style={{ color: COLOR_TOKENS.textPrimary }}
                 >
                   {hero.title}
                 </span>
                 <div
-                  className="text-[20px] font-semibold leading-tight tracking-tight tabular-nums"
+                  className="text-[17px] font-semibold leading-tight tracking-tight tabular-nums"
                   style={{ color: COLOR_TOKENS.textPrimary }}
                 >
                   <DigitRoll
@@ -144,7 +144,7 @@ export function UpcomingCard({
                 type="button"
                 data-testid="cal-join-btn"
                 onClick={() => onJoinMeeting?.(hero.meetingUrl!)}
-                className="flex h-[24px] shrink-0 cursor-pointer items-center rounded-full px-3 text-[11px] font-semibold transition-transform active:scale-95"
+                className="flex h-[21px] shrink-0 cursor-pointer items-center rounded-full px-2.5 text-[10px] font-semibold transition-transform active:scale-95"
                 style={{
                   backgroundColor: COLOR_TOKENS.calCtaBg,
                   color: COLOR_TOKENS.calCtaText,
@@ -156,13 +156,13 @@ export function UpcomingCard({
           </div>
 
           {secondary.length > 0 && (
-            <ul className="m-0 flex list-none flex-col gap-[3px] p-0">
+            <ul className="m-0 flex list-none flex-col gap-[2px] p-0">
               {secondary.map((ev) => (
                 <li key={ev.id}>
                   <button
                     type="button"
                     onClick={() => onSelectEvent?.(ev)}
-                    className="flex w-full cursor-pointer items-center justify-between gap-1.5 border-0 bg-transparent p-0 text-left text-[11px]"
+                    className="flex w-full cursor-pointer items-center justify-between gap-1 border-0 bg-transparent p-0 text-left text-[10px]"
                   >
                     <span
                       className="truncate font-medium"
@@ -171,7 +171,7 @@ export function UpcomingCard({
                       {ev.title}
                     </span>
                     <span
-                      className="shrink-0 text-[10.5px] tabular-nums"
+                      className="shrink-0 text-[9.5px] tabular-nums"
                       style={{ color: COLOR_TOKENS.textSecondary }}
                     >
                       {formatEventTimeShort(

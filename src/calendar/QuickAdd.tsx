@@ -77,10 +77,10 @@ export function QuickAdd({
     <form
       data-testid={`cal-quick-add-${mode}`}
       onSubmit={(e) => void handleSubmit(e)}
-      className="mt-1.5 flex flex-col gap-1"
+      className="mt-1 flex flex-col gap-0.5"
     >
       <div
-        className="flex h-[26px] items-center gap-1 rounded-lg px-2"
+        className="flex h-[22px] items-center gap-1 rounded-md px-1.5"
         style={{
           backgroundColor: COLOR_TOKENS.calPillBg,
           border: `1px solid ${COLOR_TOKENS.calPillBorder}`,
