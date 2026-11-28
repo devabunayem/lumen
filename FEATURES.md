@@ -19,24 +19,20 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 - **Real-Time Browser & Desktop Audio/Video Player Sync:** Windows SMTC background interpolation (`LastUpdatedTime` anchor math at `2 Hz` + `250 ms` UI interpolation) automatically switching to active playing audio/video sources across browsers and desktop players (`Chrome`, `Edge`, `VLC`, `Spotify`, `mpv`), with delayed YouTube artwork re-validation, auto letterbox black-bar cropping, `MediaGraceStabilizer` zero-flash track-skip holding, and 3D directional side-flip transitions (`Right → Left` Next / `Left → Right` Previous) in Home `MusicCard`
 - **Screenshot & Offline Screen OCR:** Capture PNG screenshots directly into the File Shelf, and extract on-screen text offline via `Windows.Media.Ocr` to clipboard with 1-click Calendar Hub task creation
 - **Control Panel Quick Hub:** Compact control page with one-tap Global Mic Mute (`Core Audio`), Quiet/DND mode, Lock PC (`LockWorkStation`), and connected live summary cards that jump directly to Calendar Hub, Water, Focus, and Home pages
-- **Apple-Style System Settings:** Pure `#000000` OLED black macOS-inspired dark settings window matching the Notch, featuring traffic light controls, vibrant Apple gradient squircle sidebar icons, grouped preference cards, segmented notch scaling (`Auto`, `100%`, `115%`, `130%`, `150%`), toggle switches, and full live IPC synchronization
-- **Apple-Style Music Player (`580×208`):** Rounded `96px` squircle artwork with multi-stop album glow, output device/session pill, 2-line live synced lyrics preview, 46-bar interactive waveform scrubber, pure-white circular play/pause button, shuffle toggle, and inline capsule volume slider
-- **Prayer Times Solar Dashboard (`580×208`):** Dual emerald/amber ambient wash, crisp next-prayer countdown & progress track, SQLite-synced **Tasbih** counter pill, offline spherical-trigonometry **Qibla** bearing toggle, and parabolic de Casteljau solar arc with green checkmark completion dots for all 5 daily prayers
-- **Carousel Slide Page Transitions:** Directional horizontal slide animations when switching pages via mouse wheel or arrows
-- **Standardized Proportions:** Streamlined resting notch (`184×30`), minimal notch (`110×26`), slim line (`84×12`), and expanded island (`560×172`) for a balanced, premium look
+- **Apple-Style System Settings:** Pure `#000000` OLED black macOS-inspired dark settings window matching the Notch, featuring traffic light controls, vibrant Apple gradient squircle sidebar icons (`General`, `Appearance`, `Pages`, `Notifications`, `Widgets`, `Plugins`, `About`), grouped preference cards (including **Calendar Hub, Sync & Focus** and BYO OAuth Client IDs), segmented notch scaling (`Auto`, `100%`, `115%`, `130%`, `150%`), toggle switches, and full live IPC synchronization
+- **Carousel Slide + Crossfade Page Transitions:** Directional horizontal slide and crossfade animations (`MOTION_PRESETS.pageSwitch`) across **Home**, **Calendar Hub**, **Control**, **Water**, **File Shelf**, and plugins via mouse wheel, keyboard arrows, Home card shortcuts, or page dots
+- **Standardized Proportions:** Streamlined resting notch (`184×30`), minimal notch (`110×26`), slim line (`84×12`), unified Home & Calendar Hub (`640×312`, `r=32`), and compact secondary widgets (`560×172`, `r=24`)
 - **Hover Auto-Open & Ultra-Slim Notch Return:** Hovering expands directly without any legacy "Click to open" state (`60 ms` intent delay with zero-resize fixed transparent canvas architecture and reflow-free spring morphing), leaving shrinks into an ultra-slim `84×12` notch indicator (`350 ms`), and restores the resting clock pill after `5s` (configurable in Settings)
 - **Strict Notch-Bounds Click Pass-Through:** Dynamic 30 Hz hit-testing that sets Win32 `WS_EX_TRANSPARENT` whenever the cursor is outside the physical notch/island boundaries, allowing clicks to pass through completely to background windows, browser tabs, and desktop icons with zero obstruction
 - **Zero-Resize Window Architecture:** Windows OS-level window resizing is completely eliminated during hover transitions by maintaining a transparent GPU canvas, enabling 100% silk-smooth 60fps/120fps CSS transform morphing without DWM coordinate lag or cursor displacement
 - **Pin Lock (`📌`), Typing Protection & Wheel Paging:** Lock the expanded island open while pinning or typing inside widgets, and scroll the mouse wheel to switch pages
-- Compact transparent Win32 window sizing (`260×52` ↔ `660×220`) that never blocks adjacent browser tabs
 - Auto-hide in true fullscreen apps/games (`FR-WIN-4`), single-instance lock, Windows Startup (`HKCU\...\Run`), System Tray controls, and global hotkeys (`Ctrl+Alt+L`, `Ctrl+Alt+Space`)
 
 ### Media & Audio Sync
 
-- Universal Windows SMTC media controls (play/pause, next/prev, seek, multi-session switcher)
-- Album artwork preview with contrast-guarded dominant accent color extraction (`lumen-media`)
-- Live animated waveform & master system volume/mute slider
-- Synced `.lrc` lyrics via LRCLIB cached offline in SQLite
+- Universal Windows SMTC media controls integrated directly into Home `MusicCard` (play/pause, next/prev, interactive seek, 3D side-flip transitions, multi-session switcher, mute, and volume slider)
+- Album artwork preview with delayed YouTube re-validation, `4:3` letterbox trim, and contrast-guarded dominant accent color extraction (`lumen-media`)
+- Live WASAPI peak-reactive waveform (`AudioPeakReader`) & master system volume/mute slider
 
 ### Productivity & Faith Widgets
 
@@ -49,7 +45,7 @@ A concise, living overview of shipped capabilities and upcoming additions for **
 
 - Privacy-first Notification Toast with swipe-to-dismiss, OTP/PIN/currency keyword masking, allow/deny lists, and Focus Assist quiet respect
 - Compact `64 px` System HUDs for Volume, Mute, Caps Lock, and Battery/AC
-- Separate on-demand **Settings Window** (General, Multi-Monitor DPI Display, Pages Reorder/Hide, Appearance, Widgets, Plugins, About) + English & Bangla (`বাংলা`) localization + animated **Lumi** mascot
+- Separate on-demand **Settings Window** (General, Appearance, Pages Reorder/Hide, Notifications, Widgets, Plugins, About) + English & Bangla (`বাংলা`) localization + animated **Lumi** mascot
 - Sandboxed third-party **Plugin SDK** (`%APPDATA%\Lumen\plugins`, `<iframe sandbox="allow-scripts">`), crash-safe rotating logs (`%APPDATA%\Lumen\logs\lumen.log`), and automated GitHub Release `.exe`/`.msi`/`.zip` builds
 
 ---
