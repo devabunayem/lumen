@@ -163,8 +163,11 @@ export function MusicCard({
   }, [session?.is_playing, session?.duration_ms]);
 
   const duration = Math.max(1, session?.duration_ms ?? 1);
+  const hasTimeline = Boolean(
+    session && (session.duration_ms ?? 0) > 0 && session.can_seek !== false,
+  );
   const position = Math.min(duration, livePosMs);
-  const pct = session ? Math.round((position / duration) * 100) : 0;
+  const pct = session && hasTimeline ? Math.round((position / duration) * 100) : 0;
   const remaining = Math.max(0, (session?.duration_ms ?? 0) - position);
 
   const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
@@ -318,47 +321,71 @@ export function MusicCard({
             </div>
           </div>
 
-          <div
-            className="w-full"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <div className="relative flex h-[10px] w-full items-center">
-              <div className="h-[3.5px] w-full overflow-hidden rounded-full bg-white/15">
+          {hasTimeline ? (
+            <div
+              className="w-full"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="relative flex h-[10px] w-full items-center">
+                <div className="h-[3.5px] w-full overflow-hidden rounded-full bg-white/15">
+                  <div
+                    className="h-full rounded-full transition-[width,background-color] duration-300 ease-out"
+                    style={{
+                      width: `${pct}%`,
+                      backgroundColor: session.accent_hex || COLOR_TOKENS.textPrimary,
+                    }}
+                  />
+                </div>
+                <input
+                  type="range"
+                  aria-label={msg.home.music.seek}
+                  min={0}
+                  max={duration}
+                  value={position}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    syncRef.current = {
+                      posMs: next,
+                      syncedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+                    };
+                    setLivePosMs(next);
+                    onSeek?.(next);
+                  }}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </div>
+              <div
+                className="type-home-micro flex items-center justify-between leading-none tabular-nums"
+                style={{ color: COLOR_TOKENS.textSecondary }}
+              >
+                <span>{formatTrackTime(position, banglaDigits)}</span>
+                <span>-{formatTrackTime(remaining, banglaDigits)}</span>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex w-full items-center justify-between gap-2 pt-0.5"
+              data-testid="music-live-timeline"
+            >
+              <div className="h-[3.5px] flex-1 overflow-hidden rounded-full bg-white/15">
                 <div
-                  className="h-full rounded-full transition-[width,background-color] duration-300 ease-out"
+                  className="h-full rounded-full transition-all duration-300 ease-out"
                   style={{
-                    width: `${pct}%`,
+                    width: session.is_playing ? "100%" : "36%",
+                    opacity: session.is_playing ? 0.85 : 0.4,
                     backgroundColor: session.accent_hex || COLOR_TOKENS.textPrimary,
                   }}
                 />
               </div>
-              <input
-                type="range"
-                aria-label={msg.home.music.seek}
-                min={0}
-                max={duration}
-                value={position}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  syncRef.current = {
-                    posMs: next,
-                    syncedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
-                  };
-                  setLivePosMs(next);
-                  onSeek?.(next);
-                }}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              />
+              <span
+                className="type-home-micro shrink-0 leading-none tracking-wide uppercase"
+                style={{ color: COLOR_TOKENS.textSecondary }}
+              >
+                {session.is_playing ? "LIVE" : "PAUSED"}
+              </span>
             </div>
-            <div
-              className="type-home-micro flex items-center justify-between leading-none tabular-nums"
-              style={{ color: COLOR_TOKENS.textSecondary }}
-            >
-              <span>{formatTrackTime(position, banglaDigits)}</span>
-              <span>-{formatTrackTime(remaining, banglaDigits)}</span>
-            </div>
-          </div>
+          )}
 
           <div
             className="flex items-center justify-between gap-1.5"

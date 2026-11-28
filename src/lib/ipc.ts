@@ -54,6 +54,8 @@ export interface MediaSessionSummary {
   title: string;
   artist: string;
   is_playing: boolean;
+  control_mode?: "smtc" | "audio_window" | string;
+  pid?: number;
 }
 
 export interface MediaSessionInfo {
@@ -66,6 +68,9 @@ export interface MediaSessionInfo {
   duration_ms: number;
   album_art_data_url: string | null;
   accent_hex: string;
+  control_mode?: "smtc" | "audio_window" | string;
+  pid?: number;
+  can_seek?: boolean;
 }
 
 export interface MediaStateSnapshot {
@@ -460,6 +465,13 @@ export async function shelfOpen(target: string): Promise<void> {
     return;
   }
   await invoke("shelf_open", { target });
+}
+
+export async function shelfPickFiles(): Promise<ShelfItem[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return invoke<ShelfItem[]>("shelf_pick_files");
 }
 
 export async function subscribeFullscreenChange(
@@ -1494,6 +1506,87 @@ export async function subscribeFocusFlowUpdated(
 ): Promise<UnlistenFn> {
   if (!isTauriRuntime()) return () => {};
   return listen<FocusFlowState>("lumen://focus-flow-updated", (event) => {
+    onUpdate(event.payload);
+  });
+}
+
+export interface SystemTelemetrySnapshot {
+  cpuPercent: number;
+  cpuCores: number;
+  ramPercent: number;
+  ramUsedGb: number;
+  ramTotalGb: number;
+  gpuPercent: number | null;
+  gpuName: string | null;
+  vramUsedGb: number | null;
+  vramTotalGb: number | null;
+  netDownBps: number;
+  netUpBps: number;
+  netSessionRxBytes: number;
+  netSessionTxBytes: number;
+  netOnline: boolean;
+  netInterfaceName: string | null;
+}
+
+export interface ClipboardHistoryItem {
+  id: number;
+  preview: string;
+  kind: "link" | "code" | "color" | "text" | "secret" | string;
+  rawHash: string;
+  pinned: boolean;
+  sensitive: boolean;
+  copiedAt: string;
+}
+
+export async function systemShelfSetVisible(visible: boolean): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("system_shelf_set_visible", { visible });
+}
+
+export async function systemTelemetryGetSnapshot(): Promise<SystemTelemetrySnapshot | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<SystemTelemetrySnapshot>("system_telemetry_get_snapshot");
+}
+
+export async function subscribeSystemTelemetry(
+  onSample: (snapshot: SystemTelemetrySnapshot) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) return () => {};
+  return listen<SystemTelemetrySnapshot>("lumen://system-telemetry", (event) => {
+    onSample(event.payload);
+  });
+}
+
+export async function clipboardHistoryList(): Promise<ClipboardHistoryItem[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<ClipboardHistoryItem[]>("clipboard_history_list");
+}
+
+export async function clipboardHistoryCopy(id: number): Promise<ClipboardChipSnapshot | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<ClipboardChipSnapshot>("clipboard_history_copy", { id });
+}
+
+export async function clipboardHistoryTogglePin(id: number): Promise<ClipboardHistoryItem[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<ClipboardHistoryItem[]>("clipboard_history_toggle_pin", { id });
+}
+
+export async function clipboardHistoryDelete(id: number): Promise<ClipboardHistoryItem[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<ClipboardHistoryItem[]>("clipboard_history_delete", { id });
+}
+
+export async function clipboardHistoryClear(keepPinned = true): Promise<ClipboardHistoryItem[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<ClipboardHistoryItem[]>("clipboard_history_clear", { keepPinned });
+}
+
+export async function subscribeClipboardHistoryUpdated(
+  onUpdate: (items: ClipboardHistoryItem[]) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) return () => {};
+  return listen<ClipboardHistoryItem[]>("lumen://clipboard-history-updated", (event) => {
     onUpdate(event.payload);
   });
 }

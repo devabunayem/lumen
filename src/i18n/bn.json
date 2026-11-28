@@ -16,12 +16,8 @@
     "homeAccent": "হোম",
     "calendarHubLead": "ক্যালেন্ডার",
     "calendarHubAccent": "হাব",
-    "controlLead": "কন্ট্রোল",
-    "controlAccent": "প্যানেল",
-    "waterLead": "পানি",
-    "waterAccent": "ট্র্যাকার",
-    "shelfLead": "ফাইল",
-    "shelfAccent": "শেলফ",
+    "systemShelfLead": "সিস্টেম ও",
+    "systemShelfAccent": "শেলফ",
     "pluginAccent": "প্লাগইন"
   },
   "settings": {
@@ -208,5 +204,50 @@
     "dismissBtn": "বাদ দিন",
     "skipBtn": "স্কিপ",
     "lumiBodyDouble": "লুমি সাথে আছে"
+  },
+  "systemShelf": {
+    "title": "সিস্টেম ও শেলফ",
+    "fileLabel": "ফাইল",
+    "filesLabel": "ফাইল",
+    "clipLabel": "ক্লিপ",
+    "clipsLabel": "ক্লিপ",
+    "shelf": {
+      "title": "ফাইল শেলফ",
+      "browse": "ফাইল যোগ করুন",
+      "clear": "মুছুন",
+      "dropHint": "ফাইল ছাড়ুন বা বেছে নিন",
+      "dropActive": "শেলফে যোগ করতে ছাড়ুন",
+      "inputPlaceholder": "লিংক বা নোট পেস্ট করুন...",
+      "emptyHint": "উইন্ডোজ থেকে ফাইল টেনে আনুন বা লিংক পেস্ট করুন",
+      "kindFile": "ফাইল",
+      "kindLink": "লিংক",
+      "kindNote": "নোট",
+      "missingFile": "ফাইল নেই",
+      "copyPath": "পাথ কপি",
+      "remove": "সরান"
+    },
+    "telemetry": {
+      "title": "সিস্টেম",
+      "ram": "RAM",
+      "cpu": "CPU",
+      "cores": "কোর",
+      "gpu": "GPU",
+      "vram": "VRAM",
+      "internet": "ইন্টারনেট",
+      "online": "অনলাইন",
+      "offline": "অফলাইন",
+      "session": "সেশন"
+    },
+    "clipboard": {
+      "title": "ক্লিপবোর্ড",
+      "clear": "ক্লিয়ার",
+      "emptyHint": "এখনো কিছু কপি হয়নি। যেকোনো জায়গা থেকে কপি করলে এখানে দেখাবে।",
+      "justNow": "এইমাত্র",
+      "pin": "পিন করুন",
+      "unpin": "আনপিন",
+      "deleteItem": "মুছে ফেলুন",
+      "secretTag": "গোপন",
+      "secretHint": "গোপনীয়তার জন্য মাস্কড · ৩০ সেকেন্ডে অটো-ক্লিয়ার"
+    }
   }
 }

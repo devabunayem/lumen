@@ -221,7 +221,7 @@ export function HomePage(props: HomePageProps) {
           banglaDigits={props.banglaDigits}
           reduceMotion={props.reduceMotion}
           onLogWater={props.onLogWater}
-          onOpenWaterPage={() => props.onNavigateWidget("water")}
+          onOpenWaterPage={props.onOpenSettings}
         />
       </div>
 
@@ -240,6 +240,7 @@ export function HomePage(props: HomePageProps) {
         onToggleFocusTimer={props.onToggleFocusTimer}
         onToggleLedger={props.onToggleLedger}
         onCopyClipboard={props.onCopyClipboard}
+        onOpenClipboardPage={() => props.onNavigateWidget("system_shelf")}
         onOpenPomodoro={() => props.onNavigateWidget("calendar_hub")}
         onSelectPage={props.onSelectPage}
       />

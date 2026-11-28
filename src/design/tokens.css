@@ -99,6 +99,17 @@
   --cal-cta-text: #000000;
   --cal-ring-track: rgba(255, 255, 255, 0.12);
 
+  --sys-glow-cyan: rgba(90, 200, 250, 0.24);
+  --sys-glow-purple: rgba(191, 90, 242, 0.24);
+  --sys-glow-green: rgba(48, 209, 88, 0.2);
+  --sys-glow-warn: rgba(255, 69, 58, 0.26);
+  --sys-dropzone-bg: rgba(255, 255, 255, 0.04);
+  --sys-dropzone-active-bg: rgba(10, 132, 255, 0.14);
+  --sys-dropzone-border: rgba(255, 255, 255, 0.18);
+  --sys-track-bg: rgba(255, 255, 255, 0.1);
+  --sys-subcard-bg: rgba(255, 255, 255, 0.04);
+  --sys-subcard-border: rgba(255, 255, 255, 0.08);
+
   --lumi-body-top: #fff8cf;
   --lumi-body-mid: #ffe083;
   --lumi-body-bot: #ffa93a;

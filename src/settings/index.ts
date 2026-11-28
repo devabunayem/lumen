@@ -90,7 +90,7 @@ export const DEFAULT_SETTINGS: LumenSettings = {
   startWithWindows: false,
   hotkeyHide: "Ctrl+Alt+L",
   hotkeyExpand: "Ctrl+Alt+Space",
-  pageOrder: ["calendar_hub", "control", "water", "shelf"],
+  pageOrder: ["calendar_hub", "system_shelf"],
   hiddenPages: [],
   waterGoalMl: 1500,
   mediaExclusions: [],

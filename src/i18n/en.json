@@ -16,12 +16,8 @@
     "homeAccent": "Home",
     "calendarHubLead": "Calendar",
     "calendarHubAccent": "Hub",
-    "controlLead": "Control",
-    "controlAccent": "Center",
-    "waterLead": "Water",
-    "waterAccent": "Tracker",
-    "shelfLead": "File",
-    "shelfAccent": "Shelf",
+    "systemShelfLead": "System &",
+    "systemShelfAccent": "Shelf",
     "pluginAccent": "Plugin"
   },
   "settings": {
@@ -212,5 +208,50 @@
     "dismissBtn": "Dismiss",
     "skipBtn": "Skip",
     "lumiBodyDouble": "Lumi focusing"
+  },
+  "systemShelf": {
+    "title": "System & Shelf",
+    "fileLabel": "file",
+    "filesLabel": "files",
+    "clipLabel": "clip",
+    "clipsLabel": "clips",
+    "shelf": {
+      "title": "File Shelf",
+      "browse": "Add files",
+      "clear": "Clear",
+      "dropHint": "Drop or browse files",
+      "dropActive": "Release to drop onto shelf",
+      "inputPlaceholder": "Paste link or quick note...",
+      "emptyHint": "Drag files from Windows or paste links/notes above",
+      "kindFile": "File",
+      "kindLink": "Link",
+      "kindNote": "Note",
+      "missingFile": "Missing file",
+      "copyPath": "Copy path",
+      "remove": "Remove"
+    },
+    "telemetry": {
+      "title": "System",
+      "ram": "RAM",
+      "cpu": "CPU",
+      "cores": "cores",
+      "gpu": "GPU",
+      "vram": "VRAM",
+      "internet": "Internet",
+      "online": "Online",
+      "offline": "Offline",
+      "session": "Session"
+    },
+    "clipboard": {
+      "title": "Clipboard",
+      "clear": "Clear",
+      "emptyHint": "Nothing copied yet. Copy text, links or code anywhere.",
+      "justNow": "now",
+      "pin": "Pin clip",
+      "unpin": "Unpin clip",
+      "deleteItem": "Delete clip",
+      "secretTag": "secret",
+      "secretHint": "Masked for privacy · auto-clears in 30s"
+    }
   }
 }

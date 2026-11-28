@@ -13,8 +13,8 @@ use lumen_core::{
 use lumen_media::sounds::{SoundSilenceContext, UiSoundName, try_play_ui_sound};
 use lumen_media::{
     AudioPeakReader, MediaCommand, MediaGraceStabilizer, MediaStateSnapshot, get_mic_muted,
-    get_system_volume, read_media_state, seek_media, send_media_command, set_system_volume,
-    shape_audio_peak, toggle_mic_mute,
+    get_system_volume, read_media_state_with_exclusions, seek_media, send_media_command,
+    set_system_volume, shape_audio_peak, toggle_mic_mute,
 };
 use lumen_notify::{
     NotificationPopup, NotificationPrivacyConfig, SystemNotificationWatcher,
@@ -29,7 +29,9 @@ use lumen_storage::calendar_hub::{
     CalendarHubEvent, CalendarHubSnapshot, CalendarReminder, CalendarTask, PrayerAnchorSpec,
     SyncedEventInput,
 };
-use lumen_storage::{ShelfItem, StorageRepo, TasbihState, TimeLedgerState, WaterSummary};
+use lumen_storage::{
+    ClipboardHistoryItem, ShelfItem, StorageRepo, TasbihState, TimeLedgerState, WaterSummary,
+};
 use lumen_sync::google::connect_google_pkce;
 use lumen_sync::keyring_store::{delete_tokens, save_tokens};
 use lumen_sync::microsoft::connect_microsoft_pkce;
@@ -37,15 +39,16 @@ use lumen_sync::oauth::open_browser_url;
 use lumen_sync::{cache_window_bounds, disconnect_provider, push_task_to_provider, sync_provider};
 use lumen_windows::{
     ClipboardChipSnapshot, GlobalHotkeyManager, HotkeyAction, HudEvent, OpenMeteoWeather,
-    acquire_single_instance_mutex, battery_status, capture_screen_to_png, check_dev_ports,
-    classify_and_mask_clipboard, clear_clipboard_if_matching, compute_pill_screen_rect,
+    SystemTelemetrySampler, SystemTelemetrySnapshot, acquire_single_instance_mutex, battery_status,
+    capture_screen_to_png, check_dev_ports, classify_and_mask_clipboard, classify_clipboard_kind,
+    clear_clipboard_if_matching, clipboard_preview_text, compute_pill_screen_rect,
     compute_top_center_position, cursor_screen_pos, fetch_open_meteo_weather,
     get_windows_location_opt_in, is_autostart_enabled, is_camera_access_allowed, is_caps_lock_on,
     is_keep_awake, is_other_app_fullscreen, launch_screen_recording, launch_snipping_screenshot,
     lock_workstation, ocr_screen_to_clipboard, open_camera_privacy_settings, open_shell_target,
-    privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
-    set_click_through, set_keep_awake, set_window_bounds_atomic, toggle_radio_kind,
-    write_clipboard_text,
+    pick_shelf_files, privacy_device_status, quick_radios_status, read_clipboard_text,
+    set_autostart_enabled, set_click_through, set_keep_awake, set_window_bounds_atomic,
+    toggle_radio_kind, write_clipboard_text,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -114,6 +117,8 @@ struct AppState {
     surface_mode: Mutex<(bool, bool, bool)>,
     hotkeys: Mutex<Option<GlobalHotkeyManager>>,
     home_visible: Arc<AtomicBool>,
+    system_shelf_visible: Arc<AtomicBool>,
+    telemetry_sampler: Arc<Mutex<SystemTelemetrySampler>>,
     clipboard_secret: Arc<Mutex<Option<(String, Instant)>>>,
     is_fullscreen: Arc<AtomicBool>,
     silent_mode: Arc<AtomicBool>,
@@ -335,9 +340,10 @@ fn request_keyboard_focus(focused: bool, app: tauri::AppHandle) -> Result<(), St
 
 fn read_stabilized_media(
     preferred: Option<&str>,
+    exclusions: &[String],
     stabilizer: &Arc<Mutex<MediaGraceStabilizer>>,
 ) -> MediaStateSnapshot {
-    let raw = read_media_state(preferred);
+    let raw = read_media_state_with_exclusions(preferred, exclusions);
     stabilizer
         .lock()
         .map(|mut s| s.stabilize(raw.clone(), Instant::now()))
@@ -351,10 +357,17 @@ async fn media_get_state(state: State<'_, AppState>) -> Result<MediaStateSnapsho
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let exclusions = state
+        .settings
+        .lock()
+        .map(|s| s.media_exclusions.clone())
+        .unwrap_or_default();
     let stabilizer = Arc::clone(&state.media_stabilizer);
-    tokio::task::spawn_blocking(move || read_stabilized_media(preferred.as_deref(), &stabilizer))
-        .await
-        .map_err(|e| format!("media task error: {e}"))
+    tokio::task::spawn_blocking(move || {
+        read_stabilized_media(preferred.as_deref(), &exclusions, &stabilizer)
+    })
+    .await
+    .map_err(|e| format!("media task error: {e}"))
 }
 
 #[tauri::command]
@@ -370,6 +383,11 @@ async fn media_control(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let exclusions = state
+        .settings
+        .lock()
+        .map(|s| s.media_exclusions.clone())
+        .unwrap_or_default();
     let stabilizer = Arc::clone(&state.media_stabilizer);
     if matches!(cmd, MediaCommand::Next | MediaCommand::Previous)
         && let Ok(mut guard) = stabilizer.lock()
@@ -378,7 +396,11 @@ async fn media_control(
     }
     let snap = tokio::task::spawn_blocking(move || {
         send_media_command(cmd, preferred.as_deref())?;
-        Ok::<MediaStateSnapshot, String>(read_stabilized_media(preferred.as_deref(), &stabilizer))
+        Ok::<MediaStateSnapshot, String>(read_stabilized_media(
+            preferred.as_deref(),
+            &exclusions,
+            &stabilizer,
+        ))
     })
     .await
     .map_err(|e| format!("media control join error: {e}"))??;
@@ -399,10 +421,19 @@ async fn media_seek(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let exclusions = state
+        .settings
+        .lock()
+        .map(|s| s.media_exclusions.clone())
+        .unwrap_or_default();
     let stabilizer = Arc::clone(&state.media_stabilizer);
     let snap = tokio::task::spawn_blocking(move || {
         seek_media(position_ms, preferred.as_deref())?;
-        Ok::<MediaStateSnapshot, String>(read_stabilized_media(preferred.as_deref(), &stabilizer))
+        Ok::<MediaStateSnapshot, String>(read_stabilized_media(
+            preferred.as_deref(),
+            &exclusions,
+            &stabilizer,
+        ))
     })
     .await
     .map_err(|e| format!("media seek join error: {e}"))??;
@@ -422,10 +453,19 @@ async fn media_set_volume(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let exclusions = state
+        .settings
+        .lock()
+        .map(|s| s.media_exclusions.clone())
+        .unwrap_or_default();
     let stabilizer = Arc::clone(&state.media_stabilizer);
     tokio::task::spawn_blocking(move || {
         set_system_volume(volume_percent)?;
-        Ok::<MediaStateSnapshot, String>(read_stabilized_media(preferred.as_deref(), &stabilizer))
+        Ok::<MediaStateSnapshot, String>(read_stabilized_media(
+            preferred.as_deref(),
+            &exclusions,
+            &stabilizer,
+        ))
     })
     .await
     .map_err(|e| format!("volume task join error: {e}"))?
@@ -448,10 +488,17 @@ async fn media_select_session(
         .lock()
         .ok()
         .and_then(|g| g.clone());
+    let exclusions = state
+        .settings
+        .lock()
+        .map(|s| s.media_exclusions.clone())
+        .unwrap_or_default();
     let stabilizer = Arc::clone(&state.media_stabilizer);
-    tokio::task::spawn_blocking(move || read_stabilized_media(preferred.as_deref(), &stabilizer))
-        .await
-        .map_err(|e| format!("session select join error: {e}"))
+    tokio::task::spawn_blocking(move || {
+        read_stabilized_media(preferred.as_deref(), &exclusions, &stabilizer)
+    })
+    .await
+    .map_err(|e| format!("session select join error: {e}"))
 }
 
 #[tauri::command]
@@ -718,6 +765,17 @@ fn shelf_clear(state: State<'_, AppState>) -> Result<Vec<ShelfItem>, String> {
 #[tauri::command]
 fn shelf_open(target: String) -> Result<(), String> {
     open_shell_target(&target)
+}
+
+#[tauri::command]
+async fn shelf_pick_files(state: State<'_, AppState>) -> Result<Vec<ShelfItem>, String> {
+    let paths = tokio::task::spawn_blocking(pick_shelf_files)
+        .await
+        .map_err(|e| format!("shelf file picker join error: {e}"))??;
+    for path in paths {
+        let _ = state.storage.add_shelf_item("file", &path, 50);
+    }
+    state.storage.list_shelf()
 }
 
 #[tauri::command]
@@ -1972,9 +2030,162 @@ fn clipboard_copy_latest(state: State<'_, AppState>) -> Result<ClipboardChipSnap
     Err("clipboard empty".into())
 }
 
+fn assemble_clipboard_history_list(
+    storage: &StorageRepo,
+    secret_guard: &Mutex<Option<(String, Instant)>>,
+) -> Result<Vec<ClipboardHistoryItem>, String> {
+    let mut items = storage.list_clipboard_history(30)?;
+    if let Ok(guard) = secret_guard.lock()
+        && let Some((ref secret_raw, started)) = *guard
+        && started.elapsed() < Duration::from_secs(30)
+    {
+        let masked = classify_and_mask_clipboard(secret_raw);
+        if masked.has_content && masked.sensitive {
+            items.insert(
+                0,
+                ClipboardHistoryItem {
+                    id: -1,
+                    preview: masked.display_text,
+                    kind: "secret".into(),
+                    raw_hash: masked.raw_hash,
+                    pinned: false,
+                    sensitive: true,
+                    copied_at: Utc::now().to_rfc3339(),
+                },
+            );
+        }
+    }
+    Ok(items)
+}
+
+#[tauri::command]
+fn clipboard_history_list(state: State<'_, AppState>) -> Result<Vec<ClipboardHistoryItem>, String> {
+    assemble_clipboard_history_list(&state.storage, &state.clipboard_secret)
+}
+
+#[tauri::command]
+fn clipboard_history_copy(
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ClipboardChipSnapshot, String> {
+    let raw = if id < 0 {
+        let mut guard = state
+            .clipboard_secret
+            .lock()
+            .map_err(|_| "clipboard secret mutex poisoned".to_string())?;
+        let Some((ref mut stored, ref mut ts)) = *guard else {
+            return Err("secret clipboard entry expired".into());
+        };
+        *ts = Instant::now();
+        stored.clone()
+    } else {
+        state
+            .storage
+            .get_clipboard_entry_content(id)?
+            .ok_or_else(|| "clipboard entry not found".to_string())?
+    };
+
+    write_clipboard_text(&raw)?;
+    let snap = classify_and_mask_clipboard(&raw);
+    let _ = app.emit("lumen://clipboard-updated", &snap);
+    if !snap.sensitive {
+        let kind = classify_clipboard_kind(&raw, false);
+        let preview = clipboard_preview_text(&raw, 96);
+        let _ = state
+            .storage
+            .record_clipboard_entry(&raw, &preview, kind, &snap.raw_hash, 30);
+    }
+    if let Ok(list) = assemble_clipboard_history_list(&state.storage, &state.clipboard_secret) {
+        let _ = app.emit("lumen://clipboard-history-updated", &list);
+    }
+    Ok(snap)
+}
+
+#[tauri::command]
+fn clipboard_history_toggle_pin(
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ClipboardHistoryItem>, String> {
+    if id < 0 {
+        return assemble_clipboard_history_list(&state.storage, &state.clipboard_secret);
+    }
+    let _ = state.storage.toggle_pin_clipboard_entry(id)?;
+    let list = assemble_clipboard_history_list(&state.storage, &state.clipboard_secret)?;
+    let _ = app.emit("lumen://clipboard-history-updated", &list);
+    Ok(list)
+}
+
+#[tauri::command]
+fn clipboard_history_delete(
+    id: i64,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ClipboardHistoryItem>, String> {
+    if id < 0 {
+        if let Ok(mut guard) = state.clipboard_secret.lock()
+            && let Some((secret, _)) = guard.take()
+        {
+            let _ = clear_clipboard_if_matching(&secret);
+            let _ = app.emit(
+                "lumen://clipboard-updated",
+                ClipboardChipSnapshot {
+                    display_text: String::new(),
+                    sensitive: false,
+                    raw_hash: String::new(),
+                    has_content: false,
+                },
+            );
+        }
+    } else {
+        let _ = state.storage.delete_clipboard_entry(id)?;
+    }
+    let list = assemble_clipboard_history_list(&state.storage, &state.clipboard_secret)?;
+    let _ = app.emit("lumen://clipboard-history-updated", &list);
+    Ok(list)
+}
+
+#[tauri::command]
+fn clipboard_history_clear(
+    keep_pinned: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ClipboardHistoryItem>, String> {
+    if let Ok(mut guard) = state.clipboard_secret.lock()
+        && let Some((secret, _)) = guard.take()
+    {
+        let _ = clear_clipboard_if_matching(&secret);
+    }
+    let _ = state.storage.clear_clipboard_history(keep_pinned)?;
+    let list = assemble_clipboard_history_list(&state.storage, &state.clipboard_secret)?;
+    let _ = app.emit("lumen://clipboard-history-updated", &list);
+    Ok(list)
+}
+
 #[tauri::command]
 fn home_set_visible(visible: bool, state: State<'_, AppState>) {
     state.home_visible.store(visible, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn system_shelf_set_visible(visible: bool, state: State<'_, AppState>) {
+    state.system_shelf_visible.store(visible, Ordering::Relaxed);
+}
+
+#[tauri::command]
+async fn system_telemetry_get_snapshot(
+    state: State<'_, AppState>,
+) -> Result<SystemTelemetrySnapshot, String> {
+    let sampler = Arc::clone(&state.telemetry_sampler);
+    tokio::task::spawn_blocking(move || {
+        sampler
+            .lock()
+            .map(|mut s| s.sample())
+            .map_err(|_| "telemetry sampler mutex poisoned".to_string())
+    })
+    .await
+    .map_err(|e| format!("telemetry task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -2055,6 +2266,8 @@ pub fn run() {
             let mut machine = IslandMachine::new();
             machine.set_minimal_mode(initial_settings.minimal_notch);
             let home_visible = Arc::new(AtomicBool::new(false));
+            let system_shelf_visible = Arc::new(AtomicBool::new(false));
+            let telemetry_sampler = Arc::new(Mutex::new(SystemTelemetrySampler::new()));
             let clipboard_secret: Arc<Mutex<Option<(String, Instant)>>> =
                 Arc::new(Mutex::new(None));
             let is_fullscreen = Arc::new(AtomicBool::new(false));
@@ -2098,6 +2311,8 @@ pub fn run() {
                 surface_mode: Mutex::new((false, false, false)),
                 hotkeys: Mutex::new(hotkeys),
                 home_visible: Arc::clone(&home_visible),
+                system_shelf_visible: Arc::clone(&system_shelf_visible),
+                telemetry_sampler: Arc::clone(&telemetry_sampler),
                 clipboard_secret: Arc::clone(&clipboard_secret),
                 is_fullscreen: Arc::clone(&is_fullscreen),
                 silent_mode: Arc::clone(&silent_mode),
@@ -2236,6 +2451,9 @@ pub fn run() {
             let fs_config = Arc::clone(&shared_config);
             let fs_flag = Arc::clone(&is_fullscreen);
             let fs_home_visible = Arc::clone(&home_visible);
+            let fs_shelf_visible = Arc::clone(&system_shelf_visible);
+            let fs_telemetry = Arc::clone(&telemetry_sampler);
+            let fs_storage = Arc::clone(&storage);
             let fs_clip_secret = Arc::clone(&clipboard_secret);
             tauri::async_runtime::spawn(async move {
                 let mut last_fullscreen = false;
@@ -2325,7 +2543,7 @@ pub fn run() {
                     }
                     last_battery = bat;
 
-                    // Clipboard OTP check every 1s & 30s privacy auto-clear
+                    // Clipboard OTP check every 1s & 30s privacy auto-clear + local history capture
                     if tick_count.is_multiple_of(2) && !fullscreen {
                         let raw = read_clipboard_text().unwrap_or_default();
                         let snap = classify_and_mask_clipboard(&raw);
@@ -2341,6 +2559,22 @@ pub fn run() {
                         if snap.raw_hash != last_clip_hash {
                             last_clip_hash = snap.raw_hash.clone();
                             let _ = fs_window.emit("lumen://clipboard-updated", &snap);
+                            if snap.has_content && !snap.sensitive {
+                                let kind = classify_clipboard_kind(&raw, false);
+                                let preview = clipboard_preview_text(&raw, 96);
+                                let _ = fs_storage.record_clipboard_entry(
+                                    &raw,
+                                    &preview,
+                                    kind,
+                                    &snap.raw_hash,
+                                    30,
+                                );
+                            }
+                            if let Ok(list) =
+                                assemble_clipboard_history_list(&fs_storage, &fs_clip_secret)
+                            {
+                                let _ = fs_window.emit("lumen://clipboard-history-updated", &list);
+                            }
                         }
                         let expired_secret = if let Ok(mut guard) = fs_clip_secret.lock() {
                             if let Some((ref secret, started)) = *guard
@@ -2368,6 +2602,23 @@ pub fn run() {
                                     has_content: false,
                                 },
                             );
+                            if let Ok(list) =
+                                assemble_clipboard_history_list(&fs_storage, &fs_clip_secret)
+                            {
+                                let _ = fs_window.emit("lumen://clipboard-history-updated", &list);
+                            }
+                        }
+
+                        // Real-time CPU/GPU/Network telemetry every 1s ONLY when Page 3 (System & Shelf) is visible
+                        if fs_shelf_visible.load(Ordering::Relaxed) {
+                            let sampler_clone = Arc::clone(&fs_telemetry);
+                            if let Ok(Some(payload)) = tokio::task::spawn_blocking(move || {
+                                sampler_clone.lock().ok().map(|mut s| s.sample())
+                            })
+                            .await
+                            {
+                                let _ = fs_window.emit("lumen://system-telemetry", &payload);
+                            }
                         }
                     }
 
@@ -2474,9 +2725,13 @@ pub fn run() {
                 loop {
                     half_tick = half_tick.wrapping_add(1);
                     let pref = media_pref.lock().ok().and_then(|g| g.clone());
+                    let exclusions = settings_ref
+                        .lock()
+                        .map(|s| s.media_exclusions.clone())
+                        .unwrap_or_default();
                     let stab = Arc::clone(&media_stab_loop);
                     if let Ok(snapshot) = tokio::task::spawn_blocking(move || {
-                        read_stabilized_media(pref.as_deref(), &stab)
+                        read_stabilized_media(pref.as_deref(), &exclusions, &stab)
                     })
                     .await
                     {
@@ -2722,6 +2977,7 @@ pub fn run() {
             shelf_remove,
             shelf_clear,
             shelf_open,
+            shelf_pick_files,
             notify_get_config,
             notify_set_config,
             notify_push_test,
@@ -2755,7 +3011,14 @@ pub fn run() {
             ledger_toggle,
             clipboard_get_latest,
             clipboard_copy_latest,
+            clipboard_history_list,
+            clipboard_history_copy,
+            clipboard_history_toggle_pin,
+            clipboard_history_delete,
+            clipboard_history_clear,
             home_set_visible,
+            system_shelf_set_visible,
+            system_telemetry_get_snapshot,
             system_battery_status,
             monitor_auto_scale_factor,
             calendar_hub_get_snapshot,

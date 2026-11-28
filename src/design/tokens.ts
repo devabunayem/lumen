@@ -107,6 +107,16 @@ export const COLOR_TOKENS = {
   calCtaBg: "var(--cal-cta-bg)",
   calCtaText: "var(--cal-cta-text)",
   calRingTrack: "var(--cal-ring-track)",
+  sysGlowCyan: "var(--sys-glow-cyan)",
+  sysGlowPurple: "var(--sys-glow-purple)",
+  sysGlowGreen: "var(--sys-glow-green)",
+  sysGlowWarn: "var(--sys-glow-warn)",
+  sysDropzoneBg: "var(--sys-dropzone-bg)",
+  sysDropzoneActiveBg: "var(--sys-dropzone-active-bg)",
+  sysDropzoneBorder: "var(--sys-dropzone-border)",
+  sysTrackBg: "var(--sys-track-bg)",
+  sysSubcardBg: "var(--sys-subcard-bg)",
+  sysSubcardBorder: "var(--sys-subcard-border)",
 } as const;
 
 export const BASE_GEOMETRY = {
@@ -117,6 +127,7 @@ export const BASE_GEOMETRY = {
   richExpanded: { width: 580, height: 208 },
   homeExpanded: { width: 640, height: 312 },
   calendarHubExpanded: { width: 640, height: 312 },
+  systemShelfExpanded: { width: 640, height: 312 },
   hud: { width: 240, height: 56 },
   nowPlaying: { width: 320, height: 60 },
   notification: { width: 248, height: 58 },
@@ -125,6 +136,7 @@ export const BASE_GEOMETRY = {
   notchBottomRadius: 24,
   homeBottomRadius: 32,
   calendarHubBottomRadius: 32,
+  systemShelfBottomRadius: 32,
   pillFloatOffset: 8,
   innerPadding: 14,
   blockGap: 6,

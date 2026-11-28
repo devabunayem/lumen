@@ -59,7 +59,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     });
     expect(pill).toHaveAttribute("data-state", "expanded");
 
-    // Wheel #1 from Home -> Calendar Hub (same 640x312), Wheel #2 -> Control (560x172) where Pin button lives
+    // Wheel #1 from Home -> Calendar Hub (640x312), Wheel #2 -> System & Shelf (640x312) where Pin button lives
     fireEvent.wheel(pill, { deltaY: 120 });
     expect(screen.getByTestId("calendar-hub-page")).toBeInTheDocument();
     expect(pill).toHaveAttribute("data-target-width", "640");
@@ -69,8 +69,9 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(300);
     });
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(pill).toHaveAttribute("data-target-width", "560");
-    expect(pill).toHaveAttribute("data-target-height", "172");
+    expect(screen.getByTestId("system-shelf-page")).toBeInTheDocument();
+    expect(pill).toHaveAttribute("data-target-width", "640");
+    expect(pill).toHaveAttribute("data-target-height", "312");
 
     const pinBtn = screen.getByRole("button", { name: "Pin island open" });
     fireEvent.click(pinBtn);
@@ -101,7 +102,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
     expect(pill).toHaveAttribute("data-state", "expanded");
   });
 
-  it("switches expanded pages on mouse wheel scroll from Home -> Calendar Hub -> Control -> Water", () => {
+  it("switches expanded pages on mouse wheel scroll from Home -> Calendar Hub -> System & Shelf", () => {
     render(<IslandShell hoverToOpen />);
     const pill = screen.getByTestId("lumen-island-pill");
 
@@ -115,13 +116,7 @@ describe("Hover Auto-Open, Slim Notch 5s Return, Pin & Scroll Paging", () => {
       vi.advanceTimersByTime(300);
     });
     fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByText("Control")).toBeInTheDocument();
-
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    fireEvent.wheel(pill, { deltaY: 120 });
-    expect(screen.getByText("Tracker")).toBeInTheDocument();
+    expect(screen.getByTestId("system-shelf-page")).toBeInTheDocument();
   });
 
   it("matches Home and Calendar Hub dimensions (640x312) and slides smoothly between them", () => {

@@ -6,6 +6,25 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ### Added
 
+- **System & Shelf Page (`Page 3` — `640×312`, bottom radius `32`, `src/systemShelf/`):**
+  - Built the new unified **System & Shelf** (`system_shelf`) page matching **Home** and **Calendar Hub**'s `640×312` OLED glass geometry and `MOTION_PRESETS.pageSwitch` slide/crossfade paging:
+    - **File Shelf (`FileShelfCard`):** Rectangular drop & quick-paste box supporting URLs/notes/files, Windows native multi-file picker (`shelf_pick_files` -> `IFileOpenDialog`), native Tauri OS drag-drop auto-expand onto Page 3 (`getCurrentWebview().onDragDropEvent`), 1-click shell open, path copy, missing-file badges, remove, and clear.
+    - **System Monitor (`SystemMonitorCard`, `lumen-windows::SystemTelemetrySampler`):** Visibility-gated `1 Hz` sampler (`system_shelf_set_visible`, zero background work when hidden or on other pages) reporting live CPU % & cores (`GetSystemTimes` + `GetSystemInfo`), RAM GB/% (`GlobalMemoryStatusEx`), GPU % + adapter name + VRAM GB (PDH `\GPU Engine` + `DXGI`), and Internet Download/Upload speeds + session totals + Online/Offline state (`GetIfTable2`) with 20-point SVG sparklines and amber high-load rim glow (`CPU >= 85%` or `GPU >= 90%`).
+    - **Clipboard History (`ClipboardCard`, `lumen-storage` + `lumen-windows`):** Automatic multi-type clipboard capture (`link`, `code`, `color` swatch, `text`, `secret`) with SQLite persistence (`clipboard_history`), pinning, 1-click re-copy, delete, Clear (preserving pinned), and memory-only masked secrets that auto-wipe in `30 s` without hitting disk.
+  - Added 8 preview states for **System & Shelf** (`default`, `empty`, `high-load`, `secret-clipboard`, `offline`, `reduce-transparency`, `bangla-locale`, `150%` scale `960×468`) in `/dev/states` (`DevStatesPage.tsx`), full `en`/`bn` strings (`en.json`, `bn.json`), design tokens (`--sys-*`), and unit tests in `SystemShelf.test.tsx`.
+
+- **Universal Online + Offline Player Tracking (`lumen-media`, `MusicCard`):**
+  - Extended `lumen-media` with a hybrid SMTC + WASAPI `IAudioSessionManager2` / `IAudioMeterInformation` / `EnumWindows` fallback scanner (`poll_wasapi_window_players`, `parse_window_media_title`, `merge_and_rank_sessions`) discovering both web browsers and offline desktop video/audio apps (`PotPlayer`, `MPC-HC`/`BE`, `foobar2000`, `AIMP`, `VLC`, `mpv`, `WMP`).
+  - Added `WM_APPCOMMAND` + `SendInput` (`VK_MEDIA_*`) fallback playback dispatch (`control_mode` / `pid` / `can_seek`), and updated Home's `MusicCard` to render a crisp `LIVE` / `PAUSED` timeline bar (`music-live-timeline`) whenever a player lacks seekable duration metadata while keeping Play/Pause, Next, Previous, Session Switcher, and Volume controls interactive.
+
+### Changed & Removed
+
+- **Retired Legacy `Control`, `Water`, & `Shelf` Standalone Pages (Retained `WaterCard` on Home):**
+  - Deleted `ControlPanelWidget`, `WaterWidget`, and `ShelfWidget` along with the standalone `"control"`, `"water"`, and `"shelf"` built-in pages from `IslandShell`, `BUILTIN_WIDGET_IDS`, `BUILTIN_PAGE_ORDER` (now `["calendar_hub", "system_shelf"]` with automatic `LumenSettings::normalize` migration), Settings page list, i18n, and tests.
+  - Kept Home's **WaterCard** (`home-water-card`, `+250 ml` tap + long-press `150/250/500 ml` serving picker) intact on `Page 1` (`HomePage`).
+
+### Added
+
 - **Calendar Hub Unified `640×312` Footprint & Smooth Slide + Crossfade Paging (`IslandShell`, `CalendarHubPage`, `tokens`):**
   - Matched Calendar Hub (`page 1`) cleanly to Home's exact `640×312` footprint (`r=32`, `150%` `960×468`, `170 / 256 / 170` column grid with `8px` gaps, `170×125` side cards, `256×258` center card) so navigating between Home and Calendar Hub never resizes the island shell or overflows the `1040×510` canvas.
   - Wrapped expanded pages in a unified `expanded-stage` `<AnimatePresence mode="popLayout">` carousel using `MOTION_PRESETS.pageSwitch` horizontal Smooth Slide + Crossfade (`x: ±72px`, `opacity`, `scale`) when switching between Home, Calendar Hub, and secondary pages via wheel, keyboard arrows, Home cards, or page dots.

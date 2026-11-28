@@ -1,6 +1,6 @@
 import type { LoadedPlugin } from "../lib/ipc";
 
-export const BUILTIN_WIDGET_IDS = ["calendar_hub", "control", "water", "shelf"] as const;
+export const BUILTIN_WIDGET_IDS = ["calendar_hub", "system_shelf"] as const;
 
 export interface IslandPageMeta {
   id: string;
@@ -33,5 +33,5 @@ export function resolveOrderedWidgetIds(
     }
   }
 
-  return ordered.length > 0 ? ordered : [builtinIds[0] ?? "control"];
+  return ordered.length > 0 ? ordered : [builtinIds[0] ?? "calendar_hub"];
 }

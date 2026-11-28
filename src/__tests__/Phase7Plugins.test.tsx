@@ -29,13 +29,12 @@ describe("Phase 7 Plugin SDK & Widget Registry (FR-PL-1..3)", () => {
     const ordered = resolveOrderedWidgetIds(
       BUILTIN_WIDGET_IDS,
       ["io.etarnity.hello"],
-      ["water", "calendar_hub"],
-      ["shelf"],
+      ["system_shelf", "calendar_hub"],
+      ["calendar_hub"],
     );
 
-    expect(ordered[0]).toBe("water");
-    expect(ordered[1]).toBe("calendar_hub");
-    expect(ordered).not.toContain("shelf");
+    expect(ordered[0]).toBe("system_shelf");
+    expect(ordered).not.toContain("calendar_hub");
     expect(ordered).toContain("io.etarnity.hello");
   });
 });

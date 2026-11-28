@@ -6,6 +6,10 @@ pub mod sounds;
 
 pub const DEFAULT_MEDIA_ACCENT: &str = "#0A84FF";
 
+fn default_control_mode() -> String {
+    "smtc".to_string()
+}
+
 /// Summary entry for multi-session switching (`FR-MUS-7`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MediaSessionSummary {
@@ -13,9 +17,13 @@ pub struct MediaSessionSummary {
     pub title: String,
     pub artist: String,
     pub is_playing: bool,
+    #[serde(default = "default_control_mode")]
+    pub control_mode: String,
+    #[serde(default)]
+    pub pid: u32,
 }
 
-/// Snapshot of the currently active Windows SMTC media session (`FR-MUS-1`).
+/// Snapshot of the currently active media session across SMTC and active desktop/browser players (`FR-MUS-1`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MediaSessionInfo {
     pub app_id: String,
@@ -27,6 +35,12 @@ pub struct MediaSessionInfo {
     pub duration_ms: u64,
     pub album_art_data_url: Option<String>,
     pub accent_hex: String,
+    #[serde(default = "default_control_mode")]
+    pub control_mode: String,
+    #[serde(default)]
+    pub pid: u32,
+    #[serde(default)]
+    pub can_seek: bool,
 }
 
 /// Full media state sent to the frontend over Tauri IPC.
@@ -49,7 +63,7 @@ impl Default for MediaStateSnapshot {
     }
 }
 
-/// Derives a clean display label from a Windows SMTC `SourceAppUserModelId`.
+/// Derives a clean display label from a Windows SMTC `SourceAppUserModelId` or process name.
 #[must_use]
 pub fn friendly_media_app_label(app_id: &str) -> String {
     let lower = app_id.trim().to_ascii_lowercase();
@@ -59,14 +73,48 @@ pub fn friendly_media_app_label(app_id: &str) -> String {
     if lower.contains("msedge") {
         return "Microsoft Edge".into();
     }
-    if lower.contains("firefox") {
-        return "Firefox".into();
+    if lower.contains("firefox") || lower.contains("floorp") {
+        return if lower.contains("floorp") {
+            "Floorp".into()
+        } else {
+            "Firefox".into()
+        };
     }
     if lower.contains("brave") {
         return "Brave".into();
     }
+    if lower.contains("opera") {
+        return "Opera".into();
+    }
+    if lower.contains("vivaldi") {
+        return "Vivaldi".into();
+    }
+    if lower.contains("arc") && lower.ends_with("arc.exe") {
+        return "Arc".into();
+    }
+    if lower.contains("zen.exe") || lower == "zen" {
+        return "Zen Browser".into();
+    }
+    if lower.contains("youtubemusic") || lower.contains("ytmusic") {
+        return "YouTube Music".into();
+    }
     if lower.contains("spotify") {
         return "Spotify".into();
+    }
+    if lower.contains("applemusic") || lower.contains("apple music") {
+        return "Apple Music".into();
+    }
+    if lower.contains("itunes") {
+        return "iTunes".into();
+    }
+    if lower.contains("tidal") {
+        return "Tidal".into();
+    }
+    if lower.contains("deezer") {
+        return "Deezer".into();
+    }
+    if lower.contains("soundcloud") {
+        return "SoundCloud".into();
     }
     if lower.contains("vlc") {
         return "VLC Media Player".into();
@@ -80,6 +128,45 @@ pub fn friendly_media_app_label(app_id: &str) -> String {
     if lower.contains("mpc-hc") || lower.contains("mpc-be") {
         return "Media Player Classic".into();
     }
+    if lower.contains("foobar2000") {
+        return "foobar2000".into();
+    }
+    if lower.contains("aimp") {
+        return "AIMP".into();
+    }
+    if lower.contains("musicbee") {
+        return "MusicBee".into();
+    }
+    if lower.contains("winamp") {
+        return "Winamp".into();
+    }
+    if lower.contains("kmplayer") {
+        return "KMPlayer".into();
+    }
+    if lower.contains("gom") && lower.contains("player") {
+        return "GOM Player".into();
+    }
+    if lower.contains("wmplayer") {
+        return "Windows Media Player".into();
+    }
+    if lower.contains("zunevideo") {
+        return "Movies & TV".into();
+    }
+    if lower.contains("zunemusic") || lower.contains("microsoft.mediaplayer") {
+        return "Media Player".into();
+    }
+    if lower.contains("kodi") {
+        return "Kodi".into();
+    }
+    if lower.contains("stremio") {
+        return "Stremio".into();
+    }
+    if lower.contains("plex") {
+        return "Plex".into();
+    }
+    if lower.contains("jellyfin") {
+        return "Jellyfin".into();
+    }
     let tail = app_id
         .trim()
         .rsplit(['\\', '/', '!'])
@@ -92,6 +179,278 @@ pub fn friendly_media_app_label(app_id: &str) -> String {
     } else {
         tail.to_string()
     }
+}
+
+/// Returns `true` for OS shell/audio infrastructure executables that should never pose as media players.
+#[must_use]
+pub fn is_system_audio_noise(exe_name: &str) -> bool {
+    let lower = exe_name
+        .trim()
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(exe_name)
+        .to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "" | "audiodg.exe"
+            | "svchost.exe"
+            | "explorer.exe"
+            | "shellexperiencehost.exe"
+            | "startmenuexperiencehost.exe"
+            | "searchhost.exe"
+            | "runtimebroker.exe"
+            | "lumen.exe"
+            | "system"
+            | "idle"
+            | "sihost.exe"
+            | "ctfmon.exe"
+            | "lockapp.exe"
+            | "textinputhost.exe"
+            | "applicationframehost.exe"
+            | "backgroundtaskhost.exe"
+            | "pickerhost.exe"
+            | "dllhost.exe"
+    )
+}
+
+/// Recognizes dedicated offline audio/video players and browsers capable of online playback.
+#[must_use]
+pub fn is_known_media_process(exe_name: &str) -> bool {
+    let lower = exe_name
+        .trim()
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(exe_name)
+        .to_ascii_lowercase();
+    const KNOWN: [&str; 36] = [
+        "vlc",
+        "potplayer",
+        "mpc-hc",
+        "mpc-be",
+        "mpv",
+        "foobar2000",
+        "aimp",
+        "musicbee",
+        "winamp",
+        "kmplayer",
+        "gom",
+        "wmplayer",
+        "zunevideo",
+        "zunemusic",
+        "microsoft.media.player",
+        "spotify",
+        "applemusic",
+        "itunes",
+        "tidal",
+        "deezer",
+        "qobuz",
+        "kodi",
+        "stremio",
+        "plex",
+        "jellyfin",
+        "dopamine",
+        "strawberry",
+        "clementine",
+        "chrome",
+        "msedge",
+        "firefox",
+        "brave",
+        "opera",
+        "vivaldi",
+        "arc",
+        "zen",
+    ];
+    KNOWN.iter().any(|needle| lower.contains(needle))
+}
+
+/// Cleans desktop player & browser window titles into `(track_title, source_or_artist)`.
+#[must_use]
+pub fn parse_window_media_title(raw_title: &str, exe_or_app: &str) -> (String, String) {
+    let friendly = friendly_media_app_label(exe_or_app);
+    let mut cleaned = raw_title.trim().to_string();
+    if cleaned.is_empty() {
+        return (friendly.clone(), friendly);
+    }
+
+    const APP_SUFFIXES: [&str; 17] = [
+        " - Google Chrome",
+        " - Microsoft Edge",
+        " — Mozilla Firefox",
+        " - Mozilla Firefox",
+        " - Brave",
+        " - Opera",
+        " - Vivaldi",
+        " - Arc",
+        " — Zen Browser",
+        " - VLC media player",
+        " - PotPlayer",
+        " - Media Player Classic Home Cinema",
+        " - MPC-HC",
+        " - MPC-BE",
+        " - foobar2000",
+        " - AIMP",
+        " - Windows Media Player",
+    ];
+    for suffix in APP_SUFFIXES {
+        if let Some(prefix) = cleaned.strip_suffix(suffix) {
+            let trimmed = prefix.trim();
+            if !trimmed.is_empty() {
+                cleaned = trimmed.to_string();
+            }
+            break;
+        }
+    }
+
+    const SITE_SUFFIXES: [(&str, &str); 6] = [
+        (" - YouTube Music", "YouTube Music"),
+        (" - YouTube", "YouTube"),
+        (" - SoundCloud", "SoundCloud"),
+        (" - Twitch", "Twitch"),
+        (" - Netflix", "Netflix"),
+        (" - Spotify", "Spotify"),
+    ];
+    for (suffix, site_label) in SITE_SUFFIXES {
+        if let Some(prefix) = cleaned.strip_suffix(suffix) {
+            let trimmed = prefix.trim();
+            if !trimmed.is_empty() {
+                return (trimmed.to_string(), format!("{site_label} · {friendly}"));
+            }
+        }
+    }
+
+    if let Some(prefix) = cleaned.strip_suffix(" - mpv") {
+        let trimmed = prefix.trim();
+        if !trimmed.is_empty() {
+            cleaned = trimmed.to_string();
+        }
+    }
+
+    (cleaned, friendly)
+}
+
+/// Candidate produced by enumerating WASAPI active render audio streams + window titles.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioWindowCandidate {
+    pub app_id: String,
+    pub exe_name: String,
+    pub pid: u32,
+    pub title: String,
+    pub artist: String,
+    pub is_playing: bool,
+}
+
+/// Merges SMTC sessions with active WASAPI desktop/browser audio sessions and picks the best index.
+#[must_use]
+pub fn merge_and_rank_sessions(
+    mut smtc_infos: Vec<MediaSessionInfo>,
+    mut smtc_summaries: Vec<MediaSessionSummary>,
+    audio_candidates: &[AudioWindowCandidate],
+    preferred_app_id: Option<&str>,
+    exclusions: &[String],
+) -> (Option<MediaSessionInfo>, Vec<MediaSessionSummary>) {
+    // 1. Enrich SMTC placeholder/empty titles from matching WASAPI window titles.
+    for info in &mut smtc_infos {
+        let info_friendly = friendly_media_app_label(&info.app_id).to_ascii_lowercase();
+        let placeholder = info.title.is_empty()
+            || info
+                .title
+                .eq_ignore_ascii_case(&friendly_media_app_label(&info.app_id));
+        if placeholder
+            && let Some(cand) = audio_candidates.iter().find(|c| {
+                c.app_id.to_ascii_lowercase() == info_friendly
+                    || c.exe_name.to_ascii_lowercase().contains(&info_friendly)
+                    || info
+                        .app_id
+                        .to_ascii_lowercase()
+                        .contains(c.exe_name.to_ascii_lowercase().trim_end_matches(".exe"))
+            })
+        {
+            info.title = cand.title.clone();
+            if info
+                .artist
+                .eq_ignore_ascii_case(&friendly_media_app_label(&info.app_id))
+                && !cand.artist.is_empty()
+            {
+                info.artist = cand.artist.clone();
+            }
+            if info.pid == 0 {
+                info.pid = cand.pid;
+            }
+        }
+    }
+
+    // 2. Filter SMTC entries against user exclusions.
+    smtc_infos.retain(|info| !is_excluded_media_source(&info.app_id, &info.title, exclusions));
+    smtc_summaries.retain(|s| !is_excluded_media_source(&s.app_id, &s.title, exclusions));
+
+    // 3. Append any WASAPI active/paused desktop/browser player not already covered by SMTC.
+    for cand in audio_candidates {
+        if is_excluded_media_source(&cand.app_id, &cand.title, exclusions)
+            || is_excluded_media_source(&cand.exe_name, &cand.title, exclusions)
+        {
+            continue;
+        }
+        let cand_friendly = friendly_media_app_label(&cand.app_id).to_ascii_lowercase();
+        let exe_stem = cand
+            .exe_name
+            .to_ascii_lowercase()
+            .trim_end_matches(".exe")
+            .to_string();
+        let covered_by_smtc = smtc_infos.iter().any(|s| {
+            let sf = friendly_media_app_label(&s.app_id).to_ascii_lowercase();
+            sf == cand_friendly
+                || (!exe_stem.is_empty() && s.app_id.to_ascii_lowercase().contains(&exe_stem))
+        });
+        if covered_by_smtc {
+            continue;
+        }
+
+        smtc_summaries.push(MediaSessionSummary {
+            app_id: cand.app_id.clone(),
+            title: cand.title.clone(),
+            artist: cand.artist.clone(),
+            is_playing: cand.is_playing,
+            control_mode: "audio_window".into(),
+            pid: cand.pid,
+        });
+        smtc_infos.push(MediaSessionInfo {
+            app_id: cand.app_id.clone(),
+            title: cand.title.clone(),
+            artist: cand.artist.clone(),
+            album_title: String::new(),
+            is_playing: cand.is_playing,
+            position_ms: 0,
+            duration_ms: 0,
+            album_art_data_url: None,
+            accent_hex: DEFAULT_MEDIA_ACCENT.to_string(),
+            control_mode: "audio_window".into(),
+            pid: cand.pid,
+            can_seek: false,
+        });
+    }
+
+    // 4. Rank active candidate: preferred playing -> SMTC playing -> WASAPI playing -> preferred -> first.
+    let chosen_idx = preferred_app_id
+        .and_then(|pref| {
+            smtc_infos
+                .iter()
+                .position(|s| s.app_id == pref && s.is_playing)
+        })
+        .or_else(|| {
+            smtc_infos
+                .iter()
+                .position(|s| s.is_playing && s.control_mode == "smtc")
+        })
+        .or_else(|| smtc_infos.iter().position(|s| s.is_playing))
+        .or_else(|| {
+            preferred_app_id.and_then(|pref| smtc_infos.iter().position(|s| s.app_id == pref))
+        })
+        .or_else(|| (!smtc_infos.is_empty()).then_some(0));
+
+    (
+        chosen_idx.and_then(|i| smtc_infos.into_iter().nth(i)),
+        smtc_summaries,
+    )
 }
 
 /// Computes continuous SMTC playback position using `LastUpdatedTime` so browser/video timelines
@@ -439,6 +798,7 @@ pub fn extract_dominant_accent_from_rgba(rgba: &[u8]) -> String {
 
 #[cfg(windows)]
 mod platform {
+    use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -457,20 +817,36 @@ mod platform {
     use windows::Storage::Streams::{
         DataReader, DataWriter, IRandomAccessStreamWithContentType, InMemoryRandomAccessStream,
     };
+    use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, S_OK, WPARAM};
     use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioMeterInformation};
     use windows::Win32::Media::Audio::{
-        EDataFlow, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole, eRender,
+        AudioSessionStateActive, DEVICE_STATE_ACTIVE, EDataFlow, IAudioSessionControl2,
+        IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole,
+        eMultimedia, eRender,
     };
     use windows::Win32::System::Com::{
         CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
     };
-    use windows::core::GUID;
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
+    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
+        SendInput, VK_MEDIA_NEXT_TRACK, VK_MEDIA_PLAY_PAUSE, VK_MEDIA_PREV_TRACK,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindow,
+        IsWindowVisible, SendNotifyMessageW, WM_APPCOMMAND,
+    };
+    use windows::core::{BOOL, GUID, Interface, PWSTR};
 
     use super::{
-        DEFAULT_MEDIA_ACCENT, MediaCommand, MediaSessionInfo, MediaSessionSummary,
-        MediaStateSnapshot, compute_thumbnail_fingerprint, crop_rgba_rows,
+        AudioWindowCandidate, DEFAULT_MEDIA_ACCENT, MediaCommand, MediaSessionInfo,
+        MediaSessionSummary, MediaStateSnapshot, compute_thumbnail_fingerprint, crop_rgba_rows,
         detect_vertical_letterbox, extract_dominant_accent_from_rgba, friendly_media_app_label,
-        interpolate_smtc_position_ms,
+        interpolate_smtc_position_ms, is_known_media_process, is_system_audio_noise,
+        merge_and_rank_sessions, parse_window_media_title,
     };
 
     #[derive(Clone)]
@@ -482,8 +858,391 @@ mod platform {
         accent_hex: String,
     }
 
+    #[derive(Clone)]
+    struct CachedWindowPlayer {
+        app_id: String,
+        exe_name: String,
+        pid: u32,
+        hwnd_raw: isize,
+        title: String,
+        artist: String,
+        is_playing: bool,
+        last_audible_at: Instant,
+        last_seen_at: Instant,
+    }
+
     static THUMB_CACHE: OnceLock<Mutex<Option<CachedThumbnail>>> = OnceLock::new();
+    static WINDOW_PLAYER_CACHE: OnceLock<Mutex<Vec<CachedWindowPlayer>>> = OnceLock::new();
     const THUMB_REVALIDATE_WINDOW: Duration = Duration::from_secs(4);
+    const AUDIO_QUIET_HYSTERESIS: Duration = Duration::from_millis(1800);
+    const PAUSED_PLAYER_RETENTION: Duration = Duration::from_secs(600);
+    const UNKNOWN_PLAYER_RETENTION: Duration = Duration::from_secs(30);
+
+    #[derive(Default)]
+    struct EnumWindowMap {
+        visible: HashMap<u32, (isize, String)>,
+        fallback: HashMap<u32, (isize, String)>,
+    }
+
+    unsafe extern "system" fn collect_process_window_titles(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let map = unsafe { &mut *(lparam.0 as *mut EnumWindowMap) };
+        let mut pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        }
+        if pid == 0 {
+            return BOOL(1);
+        }
+        let len = unsafe { GetWindowTextLengthW(hwnd) };
+        if len <= 0 || len > 512 {
+            return BOOL(1);
+        }
+        let mut buf = vec![0u16; (len as usize) + 1];
+        let copied = unsafe { GetWindowTextW(hwnd, &mut buf) };
+        if copied <= 0 {
+            return BOOL(1);
+        }
+        let text = String::from_utf16_lossy(&buf[..copied as usize])
+            .trim()
+            .to_string();
+        if text.is_empty()
+            || matches!(
+                text.as_str(),
+                "Default IME" | "MSCTFIME UI" | "Program Manager"
+            )
+        {
+            return BOOL(1);
+        }
+        let visible = unsafe { IsWindowVisible(hwnd).as_bool() };
+        let entry = (hwnd.0 as isize, text);
+        if visible {
+            map.visible
+                .entry(pid)
+                .and_modify(|existing| {
+                    if entry.1.len() > existing.1.len() {
+                        *existing = entry.clone();
+                    }
+                })
+                .or_insert(entry);
+        } else {
+            map.fallback
+                .entry(pid)
+                .and_modify(|existing| {
+                    if entry.1.len() > existing.1.len() {
+                        *existing = entry.clone();
+                    }
+                })
+                .or_insert(entry);
+        }
+        BOOL(1)
+    }
+
+    fn snapshot_window_titles() -> HashMap<u32, (isize, String)> {
+        let mut collected = EnumWindowMap::default();
+        // SAFETY: Valid stack pointer for synchronous `EnumWindows` enumeration.
+        unsafe {
+            let _ = EnumWindows(
+                Some(collect_process_window_titles),
+                LPARAM((&mut collected as *mut EnumWindowMap).cast::<()>() as isize),
+            );
+        }
+        let mut merged = collected.fallback;
+        for (pid, win) in collected.visible {
+            merged.insert(pid, win);
+        }
+        merged
+    }
+
+    fn query_process_exe_name(pid: u32) -> Option<String> {
+        // SAFETY: Queries only executable image name with limited read-only permission.
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+            let mut buf = [0u16; 512];
+            let mut size = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(
+                handle,
+                PROCESS_NAME_WIN32,
+                PWSTR(buf.as_mut_ptr()),
+                &mut size,
+            )
+            .is_ok();
+            let _ = CloseHandle(handle);
+            if !ok || size == 0 {
+                return None;
+            }
+            let full = String::from_utf16_lossy(&buf[..size as usize]);
+            full.rsplit(['\\', '/'])
+                .next()
+                .map(ToOwned::to_owned)
+                .filter(|s| !s.is_empty())
+        }
+    }
+
+    fn poll_wasapi_window_players(exclusions: &[String]) -> Vec<AudioWindowCandidate> {
+        let window_titles = snapshot_window_titles();
+        let own_pid = std::process::id();
+        let now = Instant::now();
+        let mut observed: HashMap<u32, CachedWindowPlayer> = HashMap::new();
+
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            if let Ok(enumerator) =
+                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                && let Ok(devices) = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            {
+                let dev_count = devices.GetCount().unwrap_or(0);
+                for dev_idx in 0..dev_count {
+                    let Ok(device) = devices.Item(dev_idx) else {
+                        continue;
+                    };
+                    let Ok(mgr) = device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) else {
+                        continue;
+                    };
+                    let Ok(sess_enum) = mgr.GetSessionEnumerator() else {
+                        continue;
+                    };
+                    let sess_count = sess_enum.GetCount().unwrap_or(0);
+                    for s_idx in 0..sess_count {
+                        let Ok(ctrl) = sess_enum.GetSession(s_idx) else {
+                            continue;
+                        };
+                        let Ok(ctrl2) = ctrl.cast::<IAudioSessionControl2>() else {
+                            continue;
+                        };
+                        if ctrl2.IsSystemSoundsSession() == S_OK {
+                            continue;
+                        }
+                        let Ok(pid) = ctrl2.GetProcessId() else {
+                            continue;
+                        };
+                        if pid == 0 || pid == own_pid {
+                            continue;
+                        }
+                        let Some(exe_name) = query_process_exe_name(pid) else {
+                            continue;
+                        };
+                        if is_system_audio_noise(&exe_name) {
+                            continue;
+                        }
+                        let session_active = ctrl.GetState().ok() == Some(AudioSessionStateActive);
+                        let peak = ctrl
+                            .cast::<IAudioMeterInformation>()
+                            .and_then(|m| m.GetPeakValue())
+                            .ok()
+                            .filter(|v| v.is_finite())
+                            .unwrap_or(0.0);
+
+                        let known = is_known_media_process(&exe_name);
+                        let (hwnd_raw, raw_title) = window_titles
+                            .get(&pid)
+                            .cloned()
+                            .unwrap_or_else(|| (0, String::new()));
+
+                        if !known && (!session_active || peak <= 0.002) {
+                            continue;
+                        }
+
+                        let (title, artist) = parse_window_media_title(&raw_title, &exe_name);
+                        let app_id = friendly_media_app_label(&exe_name);
+                        if super::is_excluded_media_source(&app_id, &title, exclusions)
+                            || super::is_excluded_media_source(&exe_name, &title, exclusions)
+                        {
+                            continue;
+                        }
+
+                        let audible = session_active && peak > 0.0005;
+                        observed
+                            .entry(pid)
+                            .and_modify(|cur| {
+                                if audible {
+                                    cur.is_playing = true;
+                                    cur.last_audible_at = now;
+                                }
+                                if cur.hwnd_raw == 0 && hwnd_raw != 0 {
+                                    cur.hwnd_raw = hwnd_raw;
+                                    cur.title = title.clone();
+                                    cur.artist = artist.clone();
+                                }
+                            })
+                            .or_insert(CachedWindowPlayer {
+                                app_id,
+                                exe_name,
+                                pid,
+                                hwnd_raw,
+                                title,
+                                artist,
+                                is_playing: audible || (session_active && known),
+                                last_audible_at: if audible {
+                                    now
+                                } else {
+                                    now.checked_sub(AUDIO_QUIET_HYSTERESIS).unwrap_or(now)
+                                },
+                                last_seen_at: now,
+                            });
+                    }
+                }
+            }
+            let _ = eMultimedia;
+        }
+
+        let cache = WINDOW_PLAYER_CACHE.get_or_init(|| Mutex::new(Vec::new()));
+        let mut out = Vec::new();
+        if let Ok(mut guard) = cache.lock() {
+            // Refresh existing cached entries whose process/window is still alive.
+            for existing in guard.iter_mut() {
+                if let Some(fresh) = observed.remove(&existing.pid) {
+                    let quiet_hold =
+                        now.duration_since(existing.last_audible_at) <= AUDIO_QUIET_HYSTERESIS;
+                    existing.title = fresh.title;
+                    existing.artist = fresh.artist;
+                    if fresh.hwnd_raw != 0 {
+                        existing.hwnd_raw = fresh.hwnd_raw;
+                    }
+                    existing.last_seen_at = now;
+                    if fresh.is_playing {
+                        existing.is_playing = true;
+                        existing.last_audible_at = now;
+                    } else {
+                        existing.is_playing = quiet_hold;
+                    }
+                } else {
+                    if let Some((hwnd_raw, raw_title)) = window_titles.get(&existing.pid) {
+                        let (t, a) = parse_window_media_title(raw_title, &existing.exe_name);
+                        existing.hwnd_raw = *hwnd_raw;
+                        existing.title = t;
+                        existing.artist = a;
+                    }
+                    existing.is_playing = false;
+                }
+            }
+            for (_pid, new_player) in observed {
+                guard.push(new_player);
+            }
+            guard.retain(|item| {
+                let win_alive = if item.hwnd_raw != 0 {
+                    unsafe {
+                        IsWindow(Some(HWND(item.hwnd_raw as *mut core::ffi::c_void))).as_bool()
+                    }
+                } else {
+                    window_titles.contains_key(&item.pid)
+                };
+                if !win_alive {
+                    return false;
+                }
+                let retention = if is_known_media_process(&item.exe_name) {
+                    PAUSED_PLAYER_RETENTION
+                } else {
+                    UNKNOWN_PLAYER_RETENTION
+                };
+                now.duration_since(item.last_seen_at) <= retention
+            });
+
+            for item in guard.iter() {
+                out.push(AudioWindowCandidate {
+                    app_id: item.app_id.clone(),
+                    exe_name: item.exe_name.clone(),
+                    pid: item.pid,
+                    title: item.title.clone(),
+                    artist: item.artist.clone(),
+                    is_playing: item.is_playing,
+                });
+            }
+        }
+        out
+    }
+
+    fn send_global_media_vk(cmd: MediaCommand) -> Result<(), String> {
+        let vk = match cmd {
+            MediaCommand::PlayPause => VK_MEDIA_PLAY_PAUSE,
+            MediaCommand::Next => VK_MEDIA_NEXT_TRACK,
+            MediaCommand::Previous => VK_MEDIA_PREV_TRACK,
+            MediaCommand::ToggleMute => return toggle_system_mute(),
+        };
+        let inputs = [
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: vk,
+                        wScan: 0,
+                        dwFlags: KEYEVENTF_EXTENDEDKEY,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: vk,
+                        wScan: 0,
+                        dwFlags: KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+        ];
+        // SAFETY: Valid stack array of two keyboard events for hardware media key injection.
+        let sent = unsafe { SendInput(&inputs, core::mem::size_of::<INPUT>() as i32) };
+        if sent == 0 {
+            return Err("SendInput media key failed".into());
+        }
+        Ok(())
+    }
+
+    fn send_window_media_command(app_id: &str, cmd: MediaCommand) -> Result<(), String> {
+        const APPCOMMAND_MEDIA_NEXTTRACK: isize = 11;
+        const APPCOMMAND_MEDIA_PREVIOUSTRACK: isize = 12;
+        const APPCOMMAND_MEDIA_PLAY_PAUSE: isize = 14;
+
+        let target = WINDOW_PLAYER_CACHE
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .ok()
+            .and_then(|guard| {
+                guard
+                    .iter()
+                    .find(|item| item.app_id == app_id)
+                    .map(|item| (item.hwnd_raw, item.exe_name.clone()))
+            });
+
+        let (hwnd_raw, exe_name) = target.unwrap_or((0, app_id.to_string()));
+        let exe_lower = exe_name.to_ascii_lowercase();
+        let prefer_global_vk = exe_lower.contains("chrome")
+            || exe_lower.contains("msedge")
+            || exe_lower.contains("firefox")
+            || exe_lower.contains("brave")
+            || exe_lower.contains("mpv")
+            || exe_lower.contains("spotify");
+
+        if !prefer_global_vk && hwnd_raw != 0 {
+            let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+            if unsafe { IsWindow(Some(hwnd)).as_bool() } {
+                let app_cmd = match cmd {
+                    MediaCommand::PlayPause => APPCOMMAND_MEDIA_PLAY_PAUSE,
+                    MediaCommand::Next => APPCOMMAND_MEDIA_NEXTTRACK,
+                    MediaCommand::Previous => APPCOMMAND_MEDIA_PREVIOUSTRACK,
+                    MediaCommand::ToggleMute => return toggle_system_mute(),
+                };
+                let ok = unsafe {
+                    SendNotifyMessageW(
+                        hwnd,
+                        WM_APPCOMMAND,
+                        WPARAM(hwnd_raw as usize),
+                        LPARAM(app_cmd << 16),
+                    )
+                    .is_ok()
+                };
+                if ok {
+                    return Ok(());
+                }
+            }
+        }
+
+        send_global_media_vk(cmd)
+    }
 
     fn current_windows_filetime_100ns() -> i64 {
         let Ok(dur) = SystemTime::now().duration_since(UNIX_EPOCH) else {
@@ -851,68 +1610,103 @@ mod platform {
         .ok_or_else(|| "unable to toggle system mute".to_string())
     }
 
-    #[must_use]
-    pub fn read_media_state(preferred_app_id: Option<&str>) -> MediaStateSnapshot {
-        let sessions = get_sessions();
-        let mut summaries = Vec::with_capacity(sessions.len());
-        let mut props_by_idx: Vec<
-            Option<GlobalSystemMediaTransportControlsSessionMediaProperties>,
-        > = Vec::with_capacity(sessions.len());
+    fn resolve_cached_thumbnail(
+        app_id: &str,
+        title: &str,
+        display_artist: &str,
+        props: Option<&GlobalSystemMediaTransportControlsSessionMediaProperties>,
+    ) -> (Option<String>, String) {
+        let cache_key = format!("{app_id}::{title}::{display_artist}");
+        let now = Instant::now();
+        let cached = THUMB_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .filter(|c| c.key == cache_key);
 
-        for session in &sessions {
+        if let Some(entry) = cached {
+            let settled = entry.data_url.is_some()
+                && now.duration_since(entry.first_seen_at) > THUMB_REVALIDATE_WINDOW;
+            if settled {
+                return (entry.data_url, entry.accent_hex);
+            }
+            if let Some(bytes) = read_raw_thumbnail_bytes(props) {
+                let fp = compute_thumbnail_fingerprint(&bytes);
+                if fp == entry.raw_fingerprint && entry.data_url.is_some() {
+                    return (entry.data_url, entry.accent_hex);
+                }
+                let (art, acc) = decode_thumbnail_and_accent(&bytes);
+                if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+                    *guard = Some(CachedThumbnail {
+                        key: cache_key,
+                        first_seen_at: entry.first_seen_at,
+                        raw_fingerprint: fp,
+                        data_url: art.clone(),
+                        accent_hex: acc.clone(),
+                    });
+                }
+                return (art, acc);
+            }
+            return (entry.data_url, entry.accent_hex);
+        }
+
+        if let Some(bytes) = read_raw_thumbnail_bytes(props) {
+            let fp = compute_thumbnail_fingerprint(&bytes);
+            let (art, acc) = decode_thumbnail_and_accent(&bytes);
+            if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+                *guard = Some(CachedThumbnail {
+                    key: cache_key,
+                    first_seen_at: now,
+                    raw_fingerprint: fp,
+                    data_url: art.clone(),
+                    accent_hex: acc.clone(),
+                });
+            }
+            return (art, acc);
+        }
+
+        (None, DEFAULT_MEDIA_ACCENT.to_string())
+    }
+
+    fn collect_smtc_candidates() -> (
+        Vec<GlobalSystemMediaTransportControlsSession>,
+        Vec<Option<GlobalSystemMediaTransportControlsSessionMediaProperties>>,
+        Vec<MediaSessionInfo>,
+        Vec<MediaSessionSummary>,
+    ) {
+        let sessions = get_sessions();
+        let now_ft = current_windows_filetime_100ns();
+        let mut raw_sessions = Vec::with_capacity(sessions.len());
+        let mut props_list = Vec::with_capacity(sessions.len());
+        let mut infos = Vec::with_capacity(sessions.len());
+        let mut summaries = Vec::with_capacity(sessions.len());
+
+        for session in sessions {
             let app_id = session
                 .SourceAppUserModelId()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let is_playing = session_is_playing(session);
+            let is_playing = session_is_playing(&session);
             let props = session
                 .TryGetMediaPropertiesAsync()
                 .ok()
                 .and_then(|op| op.join().ok());
-            let title = props
-                .as_ref()
-                .and_then(|p| p.Title().ok())
-                .map(|t| t.to_string_lossy().trim().to_string())
-                .unwrap_or_default();
-            let artist = props
-                .as_ref()
-                .and_then(|p| p.Artist().ok())
-                .map(|a| a.to_string_lossy().trim().to_string())
-                .unwrap_or_default();
-
-            if !title.is_empty() || !app_id.is_empty() {
-                summaries.push(MediaSessionSummary {
-                    app_id,
-                    title,
-                    artist,
-                    is_playing,
-                });
-            }
-            props_by_idx.push(props);
-        }
-
-        let active = pick_session_index(&sessions, preferred_app_id).and_then(|idx| {
-            let session = &sessions[idx];
-            let props = props_by_idx.get(idx).and_then(|p| p.as_ref());
-            let app_id = session
-                .SourceAppUserModelId()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
             let raw_title = props
+                .as_ref()
                 .and_then(|p| p.Title().ok())
                 .map(|t| t.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
             let artist = props
+                .as_ref()
                 .and_then(|p| p.Artist().ok())
                 .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
             let album_title = props
+                .as_ref()
                 .and_then(|p| p.AlbumTitle().ok())
                 .map(|a| a.to_string_lossy().trim().to_string())
                 .unwrap_or_default();
-
-            let is_playing = session_is_playing(session);
-            let now_ft = current_windows_filetime_100ns();
 
             let (position_ms, duration_ms) = session
                 .GetTimelineProperties()
@@ -940,73 +1734,77 @@ mod platform {
             } else if is_playing || duration_ms > 0 {
                 friendly.clone()
             } else {
-                return None;
+                String::new()
             };
             let display_artist = if !artist.is_empty() { artist } else { friendly };
 
-            let cache_key = format!("{app_id}::{title}::{display_artist}");
-            let now = Instant::now();
-            let cached = THUMB_CACHE
-                .get_or_init(|| Mutex::new(None))
-                .lock()
-                .ok()
-                .and_then(|g| g.clone())
-                .filter(|c| c.key == cache_key);
-
-            let (album_art_data_url, accent_hex) = if let Some(entry) = cached {
-                let settled = entry.data_url.is_some()
-                    && now.duration_since(entry.first_seen_at) > THUMB_REVALIDATE_WINDOW;
-                if settled {
-                    (entry.data_url, entry.accent_hex)
-                } else if let Some(bytes) = read_raw_thumbnail_bytes(props) {
-                    let fp = compute_thumbnail_fingerprint(&bytes);
-                    if fp == entry.raw_fingerprint && entry.data_url.is_some() {
-                        (entry.data_url, entry.accent_hex)
+            if !title.is_empty() || !app_id.is_empty() {
+                summaries.push(MediaSessionSummary {
+                    app_id: app_id.clone(),
+                    title: title.clone(),
+                    artist: display_artist.clone(),
+                    is_playing,
+                    control_mode: "smtc".into(),
+                    pid: 0,
+                });
+            }
+            if !title.is_empty() || is_playing || duration_ms > 0 {
+                infos.push(MediaSessionInfo {
+                    app_id: app_id.clone(),
+                    title: if title.is_empty() {
+                        friendly_media_app_label(&app_id)
                     } else {
-                        let (art, acc) = decode_thumbnail_and_accent(&bytes);
-                        if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
-                            *guard = Some(CachedThumbnail {
-                                key: cache_key,
-                                first_seen_at: entry.first_seen_at,
-                                raw_fingerprint: fp,
-                                data_url: art.clone(),
-                                accent_hex: acc.clone(),
-                            });
-                        }
-                        (art, acc)
-                    }
-                } else {
-                    (entry.data_url, entry.accent_hex)
-                }
-            } else if let Some(bytes) = read_raw_thumbnail_bytes(props) {
-                let fp = compute_thumbnail_fingerprint(&bytes);
-                let (art, acc) = decode_thumbnail_and_accent(&bytes);
-                if let Ok(mut guard) = THUMB_CACHE.get_or_init(|| Mutex::new(None)).lock() {
-                    *guard = Some(CachedThumbnail {
-                        key: cache_key,
-                        first_seen_at: now,
-                        raw_fingerprint: fp,
-                        data_url: art.clone(),
-                        accent_hex: acc.clone(),
-                    });
-                }
-                (art, acc)
-            } else {
-                (None, DEFAULT_MEDIA_ACCENT.to_string())
-            };
+                        title
+                    },
+                    artist: display_artist,
+                    album_title,
+                    is_playing,
+                    position_ms,
+                    duration_ms,
+                    album_art_data_url: None,
+                    accent_hex: DEFAULT_MEDIA_ACCENT.to_string(),
+                    control_mode: "smtc".into(),
+                    pid: 0,
+                    can_seek: duration_ms > 0,
+                });
+                raw_sessions.push(session);
+                props_list.push(props);
+            }
+        }
 
-            Some(MediaSessionInfo {
-                app_id,
-                title,
-                artist: display_artist,
-                album_title,
-                is_playing,
-                position_ms,
-                duration_ms,
-                album_art_data_url,
-                accent_hex,
+        (raw_sessions, props_list, infos, summaries)
+    }
+
+    #[must_use]
+    pub fn read_media_state_with_exclusions(
+        preferred_app_id: Option<&str>,
+        exclusions: &[String],
+    ) -> MediaStateSnapshot {
+        let (raw_sessions, props_list, smtc_infos, smtc_summaries) = collect_smtc_candidates();
+        let audio_candidates = poll_wasapi_window_players(exclusions);
+
+        let (mut active, summaries) = merge_and_rank_sessions(
+            smtc_infos,
+            smtc_summaries,
+            &audio_candidates,
+            preferred_app_id,
+            exclusions,
+        );
+
+        if let Some(ref mut info) = active
+            && info.control_mode == "smtc"
+            && let Some(pos) = raw_sessions.iter().position(|s| {
+                s.SourceAppUserModelId()
+                    .map(|id| id.to_string_lossy() == info.app_id)
+                    .unwrap_or(false)
             })
-        });
+        {
+            let props = props_list.get(pos).and_then(|p| p.as_ref());
+            let (art, acc) =
+                resolve_cached_thumbnail(&info.app_id, &info.title, &info.artist, props);
+            info.album_art_data_url = art;
+            info.accent_hex = acc;
+        }
 
         let (volume_percent, muted) = get_system_volume();
 
@@ -1018,6 +1816,11 @@ mod platform {
         }
     }
 
+    #[must_use]
+    pub fn read_media_state(preferred_app_id: Option<&str>) -> MediaStateSnapshot {
+        read_media_state_with_exclusions(preferred_app_id, &[])
+    }
+
     pub fn send_media_command(
         cmd: MediaCommand,
         preferred_app_id: Option<&str>,
@@ -1025,17 +1828,35 @@ mod platform {
         if cmd == MediaCommand::ToggleMute {
             return toggle_system_mute();
         }
-        let sessions = get_sessions();
-        let session = pick_session(&sessions, preferred_app_id).ok_or("no active media session")?;
-        let op = match cmd {
-            MediaCommand::PlayPause => session.TryTogglePlayPauseAsync(),
-            MediaCommand::Next => session.TrySkipNextAsync(),
-            MediaCommand::Previous => session.TrySkipPreviousAsync(),
-            MediaCommand::ToggleMute => unreachable!(),
+        let (raw_sessions, _props, smtc_infos, smtc_summaries) = collect_smtc_candidates();
+        let audio_candidates = poll_wasapi_window_players(&[]);
+        let (active, _summaries) = merge_and_rank_sessions(
+            smtc_infos,
+            smtc_summaries,
+            &audio_candidates,
+            preferred_app_id,
+            &[],
+        );
+
+        if let Some(target) = active {
+            if target.control_mode == "smtc"
+                && let Some(session) = pick_session(&raw_sessions, Some(&target.app_id))
+            {
+                let op = match cmd {
+                    MediaCommand::PlayPause => session.TryTogglePlayPauseAsync(),
+                    MediaCommand::Next => session.TrySkipNextAsync(),
+                    MediaCommand::Previous => session.TrySkipPreviousAsync(),
+                    MediaCommand::ToggleMute => unreachable!(),
+                }
+                .map_err(|e| format!("SMTC command failed: {e}"))?;
+                let _ = op.join();
+                return Ok(());
+            }
+            return send_window_media_command(&target.app_id, cmd);
         }
-        .map_err(|e| format!("SMTC command failed: {e}"))?;
-        let _ = op.join();
-        Ok(())
+
+        // Even with no active session detected yet, global hardware media keys wake paused players.
+        send_global_media_vk(cmd)
     }
 
     pub fn seek_media(position_ms: u64, preferred_app_id: Option<&str>) -> Result<(), String> {
@@ -1074,6 +1895,14 @@ mod platform {
     }
 
     #[must_use]
+    pub fn read_media_state_with_exclusions(
+        _preferred_app_id: Option<&str>,
+        _exclusions: &[String],
+    ) -> MediaStateSnapshot {
+        MediaStateSnapshot::default()
+    }
+
+    #[must_use]
     pub fn read_media_state(_preferred_app_id: Option<&str>) -> MediaStateSnapshot {
         MediaStateSnapshot::default()
     }
@@ -1108,8 +1937,9 @@ mod platform {
 }
 
 pub use platform::{
-    AudioPeakReader, get_mic_muted, get_system_volume, read_media_state, seek_media,
-    send_media_command, set_system_volume, toggle_mic_mute,
+    AudioPeakReader, get_mic_muted, get_system_volume, read_media_state,
+    read_media_state_with_exclusions, seek_media, send_media_command, set_system_volume,
+    toggle_mic_mute,
 };
 
 #[cfg(test)]
@@ -1128,9 +1958,88 @@ mod tests {
             duration_ms: 180_000,
             album_art_data_url: None,
             accent_hex: DEFAULT_MEDIA_ACCENT.into(),
+            control_mode: "smtc".into(),
+            pid: 0,
+            can_seek: true,
         };
         assert!(info.is_playing);
         assert_eq!(info.duration_ms, 180_000);
+        assert!(info.can_seek);
+    }
+
+    #[test]
+    fn parses_offline_and_online_window_titles_and_filters_system_noise() {
+        assert!(is_system_audio_noise("audiodg.exe"));
+        assert!(is_system_audio_noise("Lumen.exe"));
+        assert!(!is_system_audio_noise("PotPlayerMini64.exe"));
+        assert!(is_known_media_process("foobar2000.exe"));
+        assert!(is_known_media_process("chrome.exe"));
+
+        assert_eq!(
+            parse_window_media_title("Lofi Hip Hop - YouTube - Google Chrome", "chrome.exe"),
+            ("Lofi Hip Hop".into(), "YouTube · Google Chrome".into())
+        );
+        assert_eq!(
+            parse_window_media_title("Interstellar.mkv - PotPlayer", "PotPlayerMini64.exe"),
+            ("Interstellar.mkv".into(), "PotPlayer".into())
+        );
+        assert_eq!(
+            parse_window_media_title("Album Track.flac - foobar2000", "foobar2000.exe"),
+            ("Album Track.flac".into(), "foobar2000".into())
+        );
+    }
+
+    #[test]
+    fn merges_smtc_and_offline_wasapi_players_with_active_priority() {
+        let paused_smtc = vec![MediaSessionInfo {
+            app_id: "chrome.exe".into(),
+            title: "Paused Video".into(),
+            artist: "YouTube".into(),
+            album_title: String::new(),
+            is_playing: false,
+            position_ms: 0,
+            duration_ms: 120_000,
+            album_art_data_url: None,
+            accent_hex: DEFAULT_MEDIA_ACCENT.into(),
+            control_mode: "smtc".into(),
+            pid: 0,
+            can_seek: true,
+        }];
+        let smtc_sum = vec![MediaSessionSummary {
+            app_id: "chrome.exe".into(),
+            title: "Paused Video".into(),
+            artist: "YouTube".into(),
+            is_playing: false,
+            control_mode: "smtc".into(),
+            pid: 0,
+        }];
+        let wasapi_offline = vec![AudioWindowCandidate {
+            app_id: "PotPlayer".into(),
+            exe_name: "PotPlayerMini64.exe".into(),
+            pid: 4242,
+            title: "Offline Lecture.mp4".into(),
+            artist: "PotPlayer".into(),
+            is_playing: true,
+        }];
+
+        let (active, summaries) =
+            merge_and_rank_sessions(paused_smtc, smtc_sum, &wasapi_offline, None, &[]);
+        assert_eq!(summaries.len(), 2);
+        let chosen = active.expect("active session picked");
+        assert_eq!(chosen.app_id, "PotPlayer");
+        assert_eq!(chosen.control_mode, "audio_window");
+        assert!(!chosen.can_seek);
+
+        // Exclusions filter both SMTC and WASAPI entries.
+        let (excluded_active, excluded_list) = merge_and_rank_sessions(
+            Vec::new(),
+            Vec::new(),
+            &wasapi_offline,
+            None,
+            &["potplayer".into()],
+        );
+        assert!(excluded_active.is_none());
+        assert!(excluded_list.is_empty());
     }
 
     #[test]
@@ -1253,6 +2162,9 @@ mod tests {
                 duration_ms: 180_000,
                 album_art_data_url: None,
                 accent_hex: DEFAULT_MEDIA_ACCENT.into(),
+                control_mode: "smtc".into(),
+                pid: 0,
+                can_seek: true,
             }),
             sessions: Vec::new(),
             volume_percent: 60,

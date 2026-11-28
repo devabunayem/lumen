@@ -32,6 +32,7 @@ export interface ChipRowProps {
   onToggleFocusTimer: () => void;
   onToggleLedger: () => void;
   onCopyClipboard: () => Promise<void>;
+  onOpenClipboardPage?: () => void;
   onOpenPomodoro: () => void;
   onSelectPage: (idx: number) => void;
 }
@@ -68,6 +69,7 @@ export function ChipRow({
   onToggleFocusTimer,
   onToggleLedger,
   onCopyClipboard,
+  onOpenClipboardPage,
   onOpenPomodoro,
   onSelectPage,
 }: ChipRowProps) {
@@ -150,6 +152,12 @@ export function ChipRow({
             type="button"
             data-testid="chip-clipboard"
             onClick={() => void handleCopy()}
+            onContextMenu={(e) => {
+              if (onOpenClipboardPage) {
+                e.preventDefault();
+                onOpenClipboardPage();
+              }
+            }}
             className={`home-glass-chip type-home-micro inline-flex h-[22px] shrink-0 items-center gap-1.5 px-2.5 text-white/90 ${chipInteractionClass}`}
           >
             <ClipboardIcon size={11} className="shrink-0 text-white/70" />

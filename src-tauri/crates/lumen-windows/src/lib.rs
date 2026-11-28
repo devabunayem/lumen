@@ -133,6 +133,129 @@ pub fn classify_and_mask_clipboard(raw: &str) -> ClipboardChipSnapshot {
     }
 }
 
+/// Real-time host telemetry snapshot for Page 3 (`System & Shelf`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemTelemetrySnapshot {
+    pub cpu_percent: f32,
+    pub cpu_cores: u32,
+    pub ram_percent: u8,
+    pub ram_used_gb: f32,
+    pub ram_total_gb: f32,
+    pub gpu_percent: Option<f32>,
+    pub gpu_name: Option<String>,
+    pub vram_used_gb: Option<f32>,
+    pub vram_total_gb: Option<f32>,
+    pub net_down_bps: u64,
+    pub net_up_bps: u64,
+    pub net_session_rx_bytes: u64,
+    pub net_session_tx_bytes: u64,
+    pub net_online: bool,
+    pub net_interface_name: Option<String>,
+}
+
+impl Default for SystemTelemetrySnapshot {
+    fn default() -> Self {
+        Self {
+            cpu_percent: 0.0,
+            cpu_cores: 1,
+            ram_percent: 0,
+            ram_used_gb: 0.0,
+            ram_total_gb: 0.0,
+            gpu_percent: None,
+            gpu_name: None,
+            vram_used_gb: None,
+            vram_total_gb: None,
+            net_down_bps: 0,
+            net_up_bps: 0,
+            net_session_rx_bytes: 0,
+            net_session_tx_bytes: 0,
+            net_online: false,
+            net_interface_name: None,
+        }
+    }
+}
+
+/// Computes CPU utilization `%` from two `(idle, kernel, user)` Win32 FILETIME totals.
+#[must_use]
+pub fn compute_cpu_percent_delta(prev: (u64, u64, u64), cur: (u64, u64, u64)) -> f32 {
+    let d_idle = cur.0.saturating_sub(prev.0);
+    let d_kernel = cur.1.saturating_sub(prev.1);
+    let d_user = cur.2.saturating_sub(prev.2);
+    // Win32 kernel time already includes idle time.
+    let total = d_kernel.saturating_add(d_user);
+    if total == 0 {
+        return 0.0;
+    }
+    let busy = total.saturating_sub(d_idle);
+    (((busy as f64) / (total as f64)) * 100.0).clamp(0.0, 100.0) as f32
+}
+
+/// Computes instantaneous download and upload throughput (bytes/sec) across a delta interval.
+#[must_use]
+pub fn compute_net_rates_bps(
+    prev_rx: u64,
+    prev_tx: u64,
+    cur_rx: u64,
+    cur_tx: u64,
+    elapsed_ms: u64,
+) -> (u64, u64) {
+    if elapsed_ms == 0 {
+        return (0, 0);
+    }
+    let rx_delta = cur_rx.saturating_sub(prev_rx);
+    let tx_delta = cur_tx.saturating_sub(prev_tx);
+    let down_bps = ((u128::from(rx_delta) * 1000) / u128::from(elapsed_ms)) as u64;
+    let up_bps = ((u128::from(tx_delta) * 1000) / u128::from(elapsed_ms)) as u64;
+    (down_bps, up_bps)
+}
+
+/// Classifies clipboard contents for icon/badge display (`secret`, `link`, `color`, `code`, `text`).
+#[must_use]
+pub fn classify_clipboard_kind(raw: &str, sensitive: bool) -> &'static str {
+    if sensitive {
+        return "secret";
+    }
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return "link";
+    }
+    if trimmed.starts_with('#')
+        && matches!(trimmed.len(), 4 | 7 | 9)
+        && trimmed[1..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return "color";
+    }
+    if trimmed.contains('\n')
+        || trimmed.contains("=>")
+        || trimmed.contains('{')
+        || lower.starts_with("const ")
+        || lower.starts_with("let ")
+        || lower.starts_with("function ")
+        || lower.starts_with("import ")
+        || lower.starts_with("fn ")
+        || lower.starts_with("select ")
+    {
+        return "code";
+    }
+    "text"
+}
+
+/// Formats a normalized single-line clipboard preview trimmed safely on Unicode char boundaries.
+#[must_use]
+pub fn clipboard_preview_text(raw: &str, max_chars: usize) -> String {
+    let single_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cap = max_chars.max(8);
+    let count = single_line.chars().count();
+    if count <= cap {
+        single_line
+    } else {
+        let head: String = single_line.chars().take(cap.saturating_sub(1)).collect();
+        format!("{head}…")
+    }
+}
+
 /// Checks local TCP dev ports (`127.0.0.1:port`) with a short non-blocking timeout.
 #[must_use]
 pub fn check_dev_ports(ports: &[u16]) -> Vec<u16> {
@@ -1444,6 +1567,426 @@ mod win32 {
             }
         }
     }
+
+    /// Low-overhead Windows CPU, GPU (PDH + DXGI), RAM, and Network speed sampler.
+    pub struct SystemTelemetrySampler {
+        prev_cpu: Option<(u64, u64, u64)>,
+        prev_net: Option<(u64, u64, std::time::Instant)>,
+        session_rx_bytes: u64,
+        session_tx_bytes: u64,
+        gpu_query: isize,
+        gpu_counter: isize,
+        gpu_initialized: bool,
+        gpu_name: Option<String>,
+        vram_total_gb: Option<f32>,
+    }
+
+    impl Default for SystemTelemetrySampler {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl Drop for SystemTelemetrySampler {
+        fn drop(&mut self) {
+            if self.gpu_query != 0 {
+                use windows::Win32::System::Performance::{PDH_HQUERY, PdhCloseQuery};
+                unsafe {
+                    let _ = PdhCloseQuery(PDH_HQUERY(self.gpu_query as *mut core::ffi::c_void));
+                }
+                self.gpu_query = 0;
+            }
+        }
+    }
+
+    impl SystemTelemetrySampler {
+        #[must_use]
+        pub fn new() -> Self {
+            let (gpu_query, gpu_counter) = Self::init_gpu_pdh();
+            let (gpu_name, _, vram_total_gb) = Self::query_dxgi_adapter_memory();
+            let prev_cpu = Self::read_cpu_times();
+            let prev_net = Self::read_net_counters()
+                .ok()
+                .map(|(rx, tx, _, _)| (rx, tx, std::time::Instant::now()));
+
+            Self {
+                prev_cpu,
+                prev_net,
+                session_rx_bytes: 0,
+                session_tx_bytes: 0,
+                gpu_query,
+                gpu_counter,
+                gpu_initialized: false,
+                gpu_name,
+                vram_total_gb,
+            }
+        }
+
+        fn filetime_to_u64(ft: windows::Win32::Foundation::FILETIME) -> u64 {
+            (u64::from(ft.dwHighDateTime) << 32) | u64::from(ft.dwLowDateTime)
+        }
+
+        fn read_cpu_times() -> Option<(u64, u64, u64)> {
+            use windows::Win32::Foundation::FILETIME;
+            use windows::Win32::System::Threading::GetSystemTimes;
+            let (mut idle, mut kernel, mut user) = (
+                FILETIME::default(),
+                FILETIME::default(),
+                FILETIME::default(),
+            );
+            unsafe {
+                GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user)).ok()?;
+            }
+            Some((
+                Self::filetime_to_u64(idle),
+                Self::filetime_to_u64(kernel),
+                Self::filetime_to_u64(user),
+            ))
+        }
+
+        fn read_cpu_cores_and_ram() -> (u32, u8, f32, f32) {
+            use windows::Win32::System::SystemInformation::{
+                GetSystemInfo, GlobalMemoryStatusEx, MEMORYSTATUSEX, SYSTEM_INFO,
+            };
+            unsafe {
+                let mut si = SYSTEM_INFO::default();
+                GetSystemInfo(&mut si);
+                let cores = si.dwNumberOfProcessors.max(1);
+
+                let mut mem = MEMORYSTATUSEX {
+                    dwLength: core::mem::size_of::<MEMORYSTATUSEX>() as u32,
+                    ..Default::default()
+                };
+                if GlobalMemoryStatusEx(&mut mem).is_ok() && mem.ullTotalPhys > 0 {
+                    let total_gb = (mem.ullTotalPhys as f64 / (1024.0 * 1024.0 * 1024.0)) as f32;
+                    let avail_gb = (mem.ullAvailPhys as f64 / (1024.0 * 1024.0 * 1024.0)) as f32;
+                    let used_gb = (total_gb - avail_gb).max(0.0);
+                    let pct = mem.dwMemoryLoad.min(100) as u8;
+                    (cores, pct, used_gb, total_gb)
+                } else {
+                    (cores, 0, 0.0, 0.0)
+                }
+            }
+        }
+
+        fn init_gpu_pdh() -> (isize, isize) {
+            use windows::Win32::System::Performance::{
+                PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCollectQueryData, PdhOpenQueryW,
+            };
+            unsafe {
+                let mut query = PDH_HQUERY::default();
+                if PdhOpenQueryW(PCWSTR::null(), 0, &mut query) != 0 {
+                    return (0, 0);
+                }
+                let path = HSTRING::from(r"\GPU Engine(*)\Utilization Percentage");
+                let mut counter = PDH_HCOUNTER::default();
+                if PdhAddEnglishCounterW(query, PCWSTR(path.as_ptr()), 0, &mut counter) != 0 {
+                    return (0, 0);
+                }
+                let _ = PdhCollectQueryData(query);
+                (query.0 as isize, counter.0 as isize)
+            }
+        }
+
+        fn sample_gpu_percent(&mut self) -> Option<f32> {
+            use std::collections::HashMap;
+            use windows::Win32::System::Performance::{
+                PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
+                PdhCollectQueryData, PdhGetFormattedCounterArrayW,
+            };
+
+            if self.gpu_query == 0 || self.gpu_counter == 0 {
+                return None;
+            }
+            let query = PDH_HQUERY(self.gpu_query as *mut core::ffi::c_void);
+            let counter = PDH_HCOUNTER(self.gpu_counter as *mut core::ffi::c_void);
+
+            unsafe {
+                if PdhCollectQueryData(query) != 0 {
+                    return None;
+                }
+                if !self.gpu_initialized {
+                    self.gpu_initialized = true;
+                    return Some(0.0);
+                }
+                let mut buf_size = 0u32;
+                let mut item_count = 0u32;
+                let status = PdhGetFormattedCounterArrayW(
+                    counter,
+                    PDH_FMT_DOUBLE,
+                    &mut buf_size,
+                    &mut item_count,
+                    None,
+                );
+                const PDH_MORE_DATA_STATUS: u32 = 0x8000_07D2;
+                if status != PDH_MORE_DATA_STATUS || buf_size == 0 || item_count == 0 {
+                    return Some(0.0);
+                }
+                let elem_bytes = core::mem::size_of::<PDH_FMT_COUNTERVALUE_ITEM_W>();
+                let cap = (buf_size as usize).div_ceil(elem_bytes);
+                let mut items = Vec::<PDH_FMT_COUNTERVALUE_ITEM_W>::with_capacity(cap);
+                let ptr = items.as_mut_ptr();
+                if PdhGetFormattedCounterArrayW(
+                    counter,
+                    PDH_FMT_DOUBLE,
+                    &mut buf_size,
+                    &mut item_count,
+                    Some(ptr),
+                ) != 0
+                {
+                    return Some(0.0);
+                }
+                items.set_len((item_count as usize).min(cap));
+
+                let mut engine_totals: HashMap<String, f64> = HashMap::new();
+                for item in &items {
+                    if item.FmtValue.CStatus != 0 {
+                        continue;
+                    }
+                    let val = item.FmtValue.Anonymous.doubleValue;
+                    if !val.is_finite() || val <= 0.0 {
+                        continue;
+                    }
+                    let name = if item.szName.is_null() {
+                        String::from("eng_0")
+                    } else {
+                        item.szName.to_string().unwrap_or_else(|_| "eng_0".into())
+                    };
+                    let bucket = name.split("engtype_").nth(1).unwrap_or("3D").to_string();
+                    *engine_totals.entry(bucket).or_insert(0.0) += val;
+                }
+                let max_pct = engine_totals
+                    .values()
+                    .copied()
+                    .fold(0.0f64, f64::max)
+                    .clamp(0.0, 100.0);
+                Some(max_pct as f32)
+            }
+        }
+
+        fn query_dxgi_adapter_memory() -> (Option<String>, Option<f32>, Option<f32>) {
+            use windows::Win32::Graphics::Dxgi::{
+                CreateDXGIFactory1, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO,
+                IDXGIAdapter3, IDXGIFactory1,
+            };
+            use windows::core::Interface;
+
+            unsafe {
+                let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() else {
+                    return (None, None, None);
+                };
+                let mut best: Option<(String, Option<f32>, f32, usize)> = None;
+                let mut idx = 0u32;
+                while let Ok(adapter) = factory.EnumAdapters1(idx) {
+                    idx += 1;
+                    let Ok(desc) = adapter.GetDesc1() else {
+                        continue;
+                    };
+                    // Skip software Basic Render Driver (DXGI_ADAPTER_FLAG_SOFTWARE == 2).
+                    if (desc.Flags & 2) != 0 {
+                        continue;
+                    }
+                    let raw_name = &desc.Description;
+                    let nul = raw_name
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(raw_name.len());
+                    let name = String::from_utf16_lossy(&raw_name[..nul])
+                        .trim()
+                        .to_string();
+                    let total_bytes = desc.DedicatedVideoMemory;
+                    let total_gb = (total_bytes as f64 / (1024.0 * 1024.0 * 1024.0)) as f32;
+                    let used_gb = adapter.cast::<IDXGIAdapter3>().ok().and_then(|a3| {
+                        let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+                        a3.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info)
+                            .ok()?;
+                        Some((info.CurrentUsage as f64 / (1024.0 * 1024.0 * 1024.0)) as f32)
+                    });
+                    if best.as_ref().is_none_or(|b| total_bytes > b.3) {
+                        best = Some((name, used_gb, total_gb, total_bytes));
+                    }
+                }
+                match best {
+                    Some((name, used, total, _)) => {
+                        (Some(name), used, (total > 0.05).then_some(total))
+                    }
+                    None => (None, None, None),
+                }
+            }
+        }
+
+        fn read_net_counters() -> Result<(u64, u64, bool, Option<String>), String> {
+            use windows::Win32::Foundation::NO_ERROR;
+            use windows::Win32::NetworkManagement::IpHelper::{
+                FreeMibTable, GetIfTable2, MIB_IF_TABLE2,
+            };
+            use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
+
+            unsafe {
+                let mut table: *mut MIB_IF_TABLE2 = core::ptr::null_mut();
+                let err = GetIfTable2(&mut table);
+                if err != NO_ERROR || table.is_null() {
+                    return Err("GetIfTable2 failed".into());
+                }
+                let count = (*table).NumEntries as usize;
+                let rows = core::slice::from_raw_parts((*table).Table.as_ptr(), count);
+                let mut rx_total = 0u64;
+                let mut tx_total = 0u64;
+                let mut online = false;
+                let mut best_if_name: Option<(u64, String)> = None;
+
+                for row in rows {
+                    if row.OperStatus != IfOperStatusUp {
+                        continue;
+                    }
+                    // Include physical/connected adapters (Ethernet=6, Wi-Fi=71, WWAN=243/244).
+                    let is_real_adapter = matches!(row.Type, 6 | 71 | 243 | 244)
+                        || (row.Type != 24
+                            && row.Type != 131
+                            && (row.InterfaceAndOperStatusFlags._bitfield & 1) != 0);
+                    if !is_real_adapter {
+                        continue;
+                    }
+                    online = true;
+                    rx_total = rx_total.saturating_add(row.InOctets);
+                    tx_total = tx_total.saturating_add(row.OutOctets);
+
+                    let alias_len = row
+                        .Alias
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(row.Alias.len());
+                    let alias = String::from_utf16_lossy(&row.Alias[..alias_len])
+                        .trim()
+                        .to_string();
+                    let traffic = row.InOctets.saturating_add(row.OutOctets);
+                    if !alias.is_empty() && best_if_name.as_ref().is_none_or(|b| traffic > b.0) {
+                        best_if_name = Some((traffic, alias));
+                    }
+                }
+
+                FreeMibTable(table.cast());
+                Ok((rx_total, tx_total, online, best_if_name.map(|b| b.1)))
+            }
+        }
+
+        pub fn sample(&mut self) -> crate::SystemTelemetrySnapshot {
+            let cur_cpu = Self::read_cpu_times();
+            let cpu_percent = match (self.prev_cpu, cur_cpu) {
+                (Some(prev), Some(cur)) => crate::compute_cpu_percent_delta(prev, cur),
+                _ => 0.0,
+            };
+            if cur_cpu.is_some() {
+                self.prev_cpu = cur_cpu;
+            }
+
+            let (cpu_cores, ram_percent, ram_used_gb, ram_total_gb) =
+                Self::read_cpu_cores_and_ram();
+            let gpu_percent = self.sample_gpu_percent();
+            let (dyn_name, vram_used_gb, dyn_total) = Self::query_dxgi_adapter_memory();
+            if self.gpu_name.is_none() {
+                self.gpu_name = dyn_name;
+            }
+            if self.vram_total_gb.is_none() {
+                self.vram_total_gb = dyn_total;
+            }
+
+            let now = std::time::Instant::now();
+            let (net_down_bps, net_up_bps, net_online, net_interface_name) =
+                if let Ok((cur_rx, cur_tx, online, if_name)) = Self::read_net_counters() {
+                    let (down, up) = if let Some((prev_rx, prev_tx, prev_at)) = self.prev_net {
+                        let elapsed_ms = now.duration_since(prev_at).as_millis() as u64;
+                        let rx_d = cur_rx.saturating_sub(prev_rx);
+                        let tx_d = cur_tx.saturating_sub(prev_tx);
+                        self.session_rx_bytes = self.session_rx_bytes.saturating_add(rx_d);
+                        self.session_tx_bytes = self.session_tx_bytes.saturating_add(tx_d);
+                        crate::compute_net_rates_bps(prev_rx, prev_tx, cur_rx, cur_tx, elapsed_ms)
+                    } else {
+                        (0, 0)
+                    };
+                    self.prev_net = Some((cur_rx, cur_tx, now));
+                    (down, up, online, if_name)
+                } else {
+                    (0, 0, false, None)
+                };
+
+            crate::SystemTelemetrySnapshot {
+                cpu_percent,
+                cpu_cores,
+                ram_percent,
+                ram_used_gb,
+                ram_total_gb,
+                gpu_percent,
+                gpu_name: self.gpu_name.clone(),
+                vram_used_gb,
+                vram_total_gb: self.vram_total_gb,
+                net_down_bps,
+                net_up_bps,
+                net_session_rx_bytes: self.session_rx_bytes,
+                net_session_tx_bytes: self.session_tx_bytes,
+                net_online,
+                net_interface_name,
+            }
+        }
+    }
+
+    /// Opens the native Windows multi-file picker on a dedicated STA thread and returns selected paths.
+    pub fn pick_shelf_files() -> Result<Vec<String>, String> {
+        std::thread::Builder::new()
+            .name("lumen-file-picker".into())
+            .spawn(|| -> Result<Vec<String>, String> {
+                use windows::Win32::System::Com::{
+                    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance,
+                    CoInitializeEx, CoTaskMemFree, CoUninitialize,
+                };
+                use windows::Win32::UI::Shell::{
+                    FOS_ALLOWMULTISELECT, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FileOpenDialog,
+                    IFileOpenDialog, SIGDN_FILESYSPATH,
+                };
+
+                // SAFETY: Dedicated STA thread created solely for standard Windows IFileOpenDialog.
+                unsafe {
+                    let hr_init = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                    let res = (|| -> Result<Vec<String>, String> {
+                        let dialog: IFileOpenDialog =
+                            CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)
+                                .map_err(|e| format!("FileOpenDialog init failed: {e}"))?;
+                        let opts = dialog.GetOptions().unwrap_or_default();
+                        let _ = dialog.SetOptions(
+                            opts | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST,
+                        );
+                        if dialog.Show(None).is_err() {
+                            return Ok(Vec::new());
+                        }
+                        let results = dialog
+                            .GetResults()
+                            .map_err(|e| format!("GetResults failed: {e}"))?;
+                        let count = results.GetCount().unwrap_or(0);
+                        let mut paths = Vec::new();
+                        for idx in 0..count {
+                            if let Ok(item) = results.GetItemAt(idx)
+                                && let Ok(pwstr) = item.GetDisplayName(SIGDN_FILESYSPATH)
+                            {
+                                if let Ok(s) = pwstr.to_string()
+                                    && !s.is_empty()
+                                {
+                                    paths.push(s);
+                                }
+                                CoTaskMemFree(Some(pwstr.0.cast()));
+                            }
+                        }
+                        Ok(paths)
+                    })();
+                    if hr_init.is_ok() {
+                        CoUninitialize();
+                    }
+                    res
+                }
+            })
+            .map_err(|e| format!("spawn file picker failed: {e}"))?
+            .join()
+            .map_err(|_| "file picker thread panicked".to_string())?
+    }
 }
 
 #[cfg(not(windows))]
@@ -1605,17 +2148,36 @@ mod win32 {
     ) -> Result<crate::OpenMeteoWeather, String> {
         Err("unavailable".into())
     }
+
+    #[derive(Default)]
+    pub struct SystemTelemetrySampler;
+
+    impl SystemTelemetrySampler {
+        #[must_use]
+        pub fn new() -> Self {
+            Self
+        }
+
+        pub fn sample(&mut self) -> crate::SystemTelemetrySnapshot {
+            crate::SystemTelemetrySnapshot::default()
+        }
+    }
+
+    pub fn pick_shelf_files() -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
 }
 
 pub use win32::{
-    GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, capture_screen_to_png,
-    clear_clipboard_if_matching, cursor_screen_pos, fetch_open_meteo_weather,
-    get_windows_location_opt_in, is_autostart_enabled, is_camera_access_allowed, is_caps_lock_on,
-    is_keep_awake, is_other_app_fullscreen, launch_screen_recording, launch_snipping_screenshot,
-    lock_workstation, ocr_screen_to_clipboard, open_camera_privacy_settings, open_shell_target,
-    privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
-    set_click_through, set_keep_awake, set_window_bounds_atomic, set_window_pill_region,
-    toggle_radio_kind, write_clipboard_text,
+    GlobalHotkeyManager, SystemTelemetrySampler, acquire_single_instance_mutex, battery_status,
+    capture_screen_to_png, clear_clipboard_if_matching, cursor_screen_pos,
+    fetch_open_meteo_weather, get_windows_location_opt_in, is_autostart_enabled,
+    is_camera_access_allowed, is_caps_lock_on, is_keep_awake, is_other_app_fullscreen,
+    launch_screen_recording, launch_snipping_screenshot, lock_workstation, ocr_screen_to_clipboard,
+    open_camera_privacy_settings, open_shell_target, pick_shelf_files, privacy_device_status,
+    quick_radios_status, read_clipboard_text, set_autostart_enabled, set_click_through,
+    set_keep_awake, set_window_bounds_atomic, set_window_pill_region, toggle_radio_kind,
+    write_clipboard_text,
 };
 
 #[cfg(test)]
@@ -1682,5 +2244,30 @@ mod tests {
         let plain = classify_and_mask_clipboard("Standup meeting notes");
         assert!(!plain.sensitive);
         assert_eq!(plain.display_text, "Standup meeting notes");
+
+        assert_eq!(classify_clipboard_kind("482910", true), "secret");
+        assert_eq!(
+            classify_clipboard_kind("https://lumen.dev/docs", false),
+            "link"
+        );
+        assert_eq!(classify_clipboard_kind("#30d158", false), "color");
+        assert_eq!(classify_clipboard_kind("const x = () => 1;", false), "code");
+        assert_eq!(
+            clipboard_preview_text("hello\n   world\tfrom lumen", 20),
+            "hello world from lu…"
+        );
+    }
+
+    #[test]
+    fn computes_cpu_percent_and_network_throughput_rates() {
+        // 50% busy delta: d_idle=500, d_kernel=700, d_user=300 => total=1000, busy=500 -> 50%
+        let cpu = compute_cpu_percent_delta((1000, 2000, 1000), (1500, 2700, 1300));
+        assert!((cpu - 50.0).abs() < 0.01);
+        assert_eq!(compute_cpu_percent_delta((10, 10, 10), (10, 10, 10)), 0.0);
+
+        // 1 MiB down & 256 KiB up over 500ms -> 2 MiB/s down, 512 KiB/s up
+        let (down, up) = compute_net_rates_bps(100, 50, 100 + 1_048_576, 50 + 262_144, 500);
+        assert_eq!(down, 2_097_152);
+        assert_eq!(up, 524_288);
     }
 }

@@ -4,7 +4,7 @@ import { DayArc } from "../home/components/DayArc";
 import { MusicCard } from "../home/components/MusicCard";
 import { computeDayArcGeometry } from "../home/hooks/useDayArcGeometry";
 import { TodoCard } from "../calendar/TodoCard";
-import { WaterWidget } from "../widgets/water/WaterWidget";
+import { WaterCard } from "../home/components/WaterCard";
 
 describe("Phase 3 Core Widgets", () => {
   it("renders Calendar Hub TodoCard counter and adds/toggles tasks", () => {
@@ -92,12 +92,12 @@ describe("Phase 3 Core Widgets", () => {
     expect(onToggleTask).toHaveBeenCalledWith(2);
   });
 
-  it("renders WaterWidget goal reached and triggers drink + undo", () => {
-    const onDrink = vi.fn();
-    const onUndo = vi.fn();
+  it("renders WaterCard goal reached and triggers drink + page open", () => {
+    const onLogWater = vi.fn();
+    const onOpenWaterPage = vi.fn();
     render(
-      <WaterWidget
-        summary={{
+      <WaterCard
+        water={{
           today_ml: 1750,
           goal_ml: 1500,
           percentage: 116.6,
@@ -105,19 +105,19 @@ describe("Phase 3 Core Widgets", () => {
           last_entry_id: 9,
           weekly: [],
         }}
-        servingMl={250}
-        remindersEnabled
-        onDrink={onDrink}
-        onUndo={onUndo}
-        onToggleReminders={vi.fn()}
-        onChangeGoal={vi.fn()}
+        language="en"
+        banglaDigits={false}
+        reduceMotion
+        onLogWater={onLogWater}
+        onOpenWaterPage={onOpenWaterPage}
       />,
     );
-    expect(screen.getByText("Goal reached")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Drink +250 ml" }));
-    expect(onDrink).toHaveBeenCalledWith(250);
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(onUndo).toHaveBeenCalledWith(9);
+    const card = screen.getByTestId("home-water-card");
+    expect(card).toHaveAttribute("aria-label", expect.stringContaining("1.8 L"));
+    fireEvent.click(card);
+    expect(onLogWater).toHaveBeenCalledWith(250);
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(onOpenWaterPage).toHaveBeenCalled();
   });
 
   it("renders DayArc prayer checkmarks, 5-prayer popover, city switcher, and live Qibla bearing", () => {

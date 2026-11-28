@@ -354,7 +354,7 @@ impl PomodoroController {
     }
 }
 
-const BUILTIN_PAGE_ORDER: [&str; 4] = ["calendar_hub", "control", "water", "shelf"];
+const BUILTIN_PAGE_ORDER: [&str; 2] = ["calendar_hub", "system_shelf"];
 
 fn default_version() -> u32 {
     1
@@ -672,11 +672,14 @@ impl LumenSettings {
         let mut deduped = Vec::new();
         for raw_id in &self.page_order {
             let trimmed = raw_id.trim();
-            if trimmed.is_empty() || matches!(trimmed, "music" | "prayer") {
+            if trimmed.is_empty()
+                || matches!(trimmed, "music" | "prayer" | "control" | "water" | "shelf")
+            {
                 continue;
             }
             let mapped = match trimmed {
                 "waqt" | "calendar" | "reminders" | "todo" | "pomodoro" => "calendar_hub",
+                "workspace" => "system_shelf",
                 other => other,
             };
             if !deduped.iter().any(|p| p == mapped) {
@@ -696,7 +699,16 @@ impl LumenSettings {
         self.hidden_pages.retain(|id| {
             !matches!(
                 id.as_str(),
-                "waqt" | "calendar" | "reminders" | "todo" | "pomodoro" | "music" | "prayer"
+                "waqt"
+                    | "calendar"
+                    | "reminders"
+                    | "todo"
+                    | "pomodoro"
+                    | "music"
+                    | "prayer"
+                    | "control"
+                    | "water"
+                    | "shelf"
             )
         });
     }
@@ -809,19 +821,16 @@ mod tests {
         assert_eq!(migrated.water_goal_ml, 10_000);
         assert_eq!(migrated.position_offset_x, -400);
         assert_eq!(migrated.scale, "auto");
-        assert_eq!(migrated.page_order.len(), 4);
-        assert_eq!(migrated.page_order[0], "calendar_hub");
+        assert_eq!(migrated.page_order, vec!["calendar_hub", "system_shelf"]);
         assert_eq!(migrated.reminder_snooze_minutes, 3);
         assert_eq!(migrated.reminder_default_lead_minutes, 10);
 
         let legacy_waqt = LumenSettings::load_or_migrate(
-            r#"{"waqtPrayerPauseMode":"auto_pause","pageOrder":["control","waqt","todo","water","pomodoro","shelf"]}"#,
+            r#"{"waqtPrayerPauseMode":"auto_pause","pageOrder":["control","waqt","todo","water","pomodoro","shelf"],"hiddenPages":["control","water"]}"#,
         );
         assert_eq!(legacy_waqt.calendar_prayer_pause_mode, "auto_pause");
-        assert_eq!(
-            legacy_waqt.page_order,
-            vec!["control", "calendar_hub", "water", "shelf"]
-        );
+        assert_eq!(legacy_waqt.page_order, vec!["calendar_hub", "system_shelf"]);
+        assert!(legacy_waqt.hidden_pages.is_empty());
 
         let fallback = LumenSettings::load_or_migrate("{invalid json");
         assert_eq!(fallback, LumenSettings::default());

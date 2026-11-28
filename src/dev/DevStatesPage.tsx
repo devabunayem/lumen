@@ -2,7 +2,14 @@ import { useState } from "react";
 import { CalendarHubPage, type CalendarHubPageProps } from "../calendar/CalendarHubPage";
 import { BASE_GEOMETRY } from "../design/tokens";
 import { HomePage, type HomePageProps } from "../home/HomePage";
-import type { CalendarHubSnapshot, PrayerSchedule } from "../lib/ipc";
+import type {
+  CalendarHubSnapshot,
+  ClipboardHistoryItem,
+  PrayerSchedule,
+  ShelfItem,
+  SystemTelemetrySnapshot,
+} from "../lib/ipc";
+import { SystemShelfPage, type SystemShelfPageProps } from "../systemShelf/SystemShelfPage";
 
 function makeBaseSchedule(overrides: Partial<PrayerSchedule> = {}): PrayerSchedule {
   return {
@@ -832,15 +839,235 @@ function buildCalendarHubPhase1States(): CalendarHubStateEntry[] {
   ];
 }
 
+function buildSystemShelfStates(): Array<{
+  id: string;
+  label: string;
+  dir?: "rtl" | "ltr";
+  scale?: number;
+  props: SystemShelfPageProps;
+}> {
+  const sampleShelf: ShelfItem[] = [
+    {
+      id: 1,
+      kind: "file",
+      path_or_text: "C:/Users/Lumen/Documents/Q4-Architecture-Spec.pdf",
+      display_name: "Q4-Architecture-Spec.pdf",
+      available: true,
+      added_at: "2026-11-28T10:15:00Z",
+    },
+    {
+      id: 2,
+      kind: "link",
+      path_or_text: "https://github.com/lumen-island/lumen/pulls",
+      display_name: "github.com/lumen-island/pulls",
+      available: true,
+      added_at: "2026-11-28T09:50:00Z",
+    },
+    {
+      id: 3,
+      kind: "file",
+      path_or_text: "D:/Exports/Demo-Missing-Clip.mp4",
+      display_name: "Demo-Missing-Clip.mp4",
+      available: false,
+      added_at: "2026-11-28T08:30:00Z",
+    },
+  ];
+
+  const sampleTelemetry: SystemTelemetrySnapshot = {
+    cpuPercent: 34.2,
+    cpuCores: 16,
+    ramPercent: 58,
+    ramUsedGb: 18.4,
+    ramTotalGb: 32,
+    gpuPercent: 28.5,
+    gpuName: "NVIDIA GeForce RTX 4070",
+    vramUsedGb: 3.4,
+    vramTotalGb: 8,
+    netDownBps: 14_800_000,
+    netUpBps: 2_350_000,
+    netSessionRxBytes: 2_480_000_000,
+    netSessionTxBytes: 420_000_000,
+    netOnline: true,
+    netInterfaceName: "Wi-Fi 6",
+  };
+
+  const sampleClipboard: ClipboardHistoryItem[] = [
+    {
+      id: 101,
+      kind: "code",
+      preview: "cargo test --manifest-path src-tauri/Cargo.toml --workspace",
+      rawHash: "hash-101",
+      sensitive: false,
+      pinned: true,
+      copiedAt: "2026-11-28T10:20:00Z",
+    },
+    {
+      id: 102,
+      kind: "link",
+      preview: "https://tauri.app/develop/calling-rust/",
+      rawHash: "hash-102",
+      sensitive: false,
+      pinned: false,
+      copiedAt: "2026-11-28T10:12:00Z",
+    },
+    {
+      id: 103,
+      kind: "color",
+      preview: "#32ade6",
+      rawHash: "hash-103",
+      sensitive: false,
+      pinned: false,
+      copiedAt: "2026-11-28T09:58:00Z",
+    },
+  ];
+
+  const baseProps: SystemShelfPageProps = {
+    nowDate: new Date(2026, 10, 28, 10, 25),
+    shelfItems: sampleShelf,
+    telemetry: sampleTelemetry,
+    telemetryLoading: false,
+    cpuHistory: [22, 26, 25, 31, 38, 35, 29, 34.2],
+    gpuHistory: [12, 16, 18, 24, 30, 27, 25, 28.5],
+    netDownHistory: [4_000_000, 7_200_000, 11_000_000, 9_500_000, 14_800_000],
+    clipboardItems: sampleClipboard,
+    dragOverShelf: false,
+    isPinned: false,
+    language: "en",
+    banglaDigits: false,
+    reduceMotion: false,
+    reduceTransparency: false,
+    glowEnabled: true,
+    onTogglePin: () => {},
+    onOpenSettings: () => {},
+    onShelfAdd: () => {},
+    onShelfPickFiles: () => {},
+    onShelfOpen: () => {},
+    onShelfCopy: () => {},
+    onShelfRemove: () => {},
+    onShelfClear: () => {},
+    onCopyClip: () => {},
+    onToggleClipPin: () => {},
+    onDeleteClip: () => {},
+    onClearClipboard: () => {},
+  };
+
+  return [
+    {
+      id: "default",
+      label: "1. System & Shelf — Default (640x312 @ 100%)",
+      props: baseProps,
+    },
+    {
+      id: "empty",
+      label: "2. Empty Shelf & Empty Clipboard",
+      props: {
+        ...baseProps,
+        shelfItems: [],
+        clipboardItems: [],
+      },
+    },
+    {
+      id: "high-load",
+      label: "3. High CPU & GPU Load (Amber Alert Glow)",
+      props: {
+        ...baseProps,
+        isPinned: true,
+        telemetry: {
+          ...sampleTelemetry,
+          cpuPercent: 93.4,
+          ramPercent: 93,
+          ramUsedGb: 29.8,
+          gpuPercent: 96.1,
+          vramUsedGb: 7.7,
+          netDownBps: 84_500_000,
+          netUpBps: 19_200_000,
+        },
+        cpuHistory: [55, 68, 79, 86, 91, 93.4],
+        gpuHistory: [48, 70, 84, 92, 95, 96.1],
+      },
+    },
+    {
+      id: "secret-clipboard",
+      label: "4. Secret Clipboard Entry Masked (30s Wipe) + Drag Over",
+      props: {
+        ...baseProps,
+        dragOverShelf: true,
+        clipboardItems: [
+          {
+            id: 201,
+            kind: "secret",
+            preview: "sk-proj-••••9f4a",
+            rawHash: "hash-201",
+            sensitive: true,
+            pinned: false,
+            copiedAt: "2026-11-28T10:24:45Z",
+          },
+          ...sampleClipboard,
+        ],
+      },
+    },
+    {
+      id: "offline",
+      label: "5. Offline Network + Telemetry Unavailable GPU",
+      props: {
+        ...baseProps,
+        gpuHistory: [],
+        netDownHistory: [],
+        telemetry: {
+          ...sampleTelemetry,
+          gpuPercent: null,
+          gpuName: null,
+          vramUsedGb: null,
+          vramTotalGb: null,
+          netDownBps: 0,
+          netUpBps: 0,
+          netOnline: false,
+          netInterfaceName: null,
+        },
+      },
+    },
+    {
+      id: "reduce-transparency",
+      label: "6. Reduce Transparency + Reduce Motion",
+      props: {
+        ...baseProps,
+        reduceMotion: true,
+        reduceTransparency: true,
+        glowEnabled: false,
+      },
+    },
+    {
+      id: "bangla-locale",
+      label: "7. Bangla UI & Bangla Numerals",
+      props: {
+        ...baseProps,
+        language: "bn",
+        banglaDigits: true,
+      },
+    },
+    {
+      id: "scale-150",
+      label: "8. High-DPI Notch Scale 150% (960x468)",
+      scale: 1.5,
+      props: baseProps,
+    },
+  ];
+}
+
 export function DevStatesPage() {
-  const [galleryTab, setGalleryTab] = useState<"home" | "calendar_hub">("calendar_hub");
+  const [galleryTab, setGalleryTab] = useState<"home" | "calendar_hub" | "system_shelf">(
+    "system_shelf",
+  );
   const homeStates = buildAll20States();
   const calendarHubStates = buildCalendarHubPhase1States();
+  const systemShelfStates = buildSystemShelfStates();
   const [selectedId, setSelectedId] = useState<string>("all");
   const visibleHome =
     selectedId === "all" ? homeStates : homeStates.filter((s) => s.id === selectedId);
   const visibleCalendarHub =
     selectedId === "all" ? calendarHubStates : calendarHubStates.filter((s) => s.id === selectedId);
+  const visibleSystemShelf =
+    selectedId === "all" ? systemShelfStates : systemShelfStates.filter((s) => s.id === selectedId);
 
   return (
     <div
@@ -852,7 +1079,22 @@ export function DevStatesPage() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
           <div>
             <h1 className="text-xl font-semibold text-white">Lumen UI States Gallery</h1>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="dev-tab-system-shelf"
+                onClick={() => {
+                  setGalleryTab("system_shelf");
+                  setSelectedId("all");
+                }}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  galleryTab === "system_shelf"
+                    ? "bg-[#32ade6] text-black"
+                    : "bg-white/10 text-white/75"
+                }`}
+              >
+                System &amp; Shelf (8 States)
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -891,7 +1133,12 @@ export function DevStatesPage() {
             >
               All
             </button>
-            {(galleryTab === "calendar_hub" ? calendarHubStates : homeStates).map((st) => (
+            {(galleryTab === "system_shelf"
+              ? systemShelfStates
+              : galleryTab === "calendar_hub"
+                ? calendarHubStates
+                : homeStates
+            ).map((st) => (
               <button
                 key={st.id}
                 type="button"
@@ -907,15 +1154,15 @@ export function DevStatesPage() {
         </div>
 
         <div className="flex flex-col gap-10">
-          {galleryTab === "calendar_hub"
-            ? visibleCalendarHub.map((st) => {
+          {galleryTab === "system_shelf"
+            ? visibleSystemShelf.map((st) => {
                 const scale = st.scale ?? 1;
-                const w = Math.round(BASE_GEOMETRY.calendarHubExpanded.width * scale);
-                const h = Math.round(BASE_GEOMETRY.calendarHubExpanded.height * scale);
+                const w = Math.round(BASE_GEOMETRY.systemShelfExpanded.width * scale);
+                const h = Math.round(BASE_GEOMETRY.systemShelfExpanded.height * scale);
                 return (
                   <section
                     key={st.id}
-                    data-testid={`dev-cal-hub-state-${st.id}`}
+                    data-testid={`dev-sys-shelf-state-${st.id}`}
                     className="flex flex-col gap-2"
                   >
                     <div className="flex items-center justify-between text-xs text-white/75">
@@ -930,7 +1177,7 @@ export function DevStatesPage() {
                       style={{
                         width: `${w}px`,
                         height: `${h}px`,
-                        borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scale)}px`,
+                        borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.systemShelfBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.systemShelfBottomRadius * scale)}px`,
                         border: "1px solid rgba(255,255,255,0.08)",
                         borderTop: "0px",
                       }}
@@ -938,58 +1185,100 @@ export function DevStatesPage() {
                       <div
                         className="origin-top-left"
                         style={{
-                          width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
-                          height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
+                          width: `${BASE_GEOMETRY.systemShelfExpanded.width}px`,
+                          height: `${BASE_GEOMETRY.systemShelfExpanded.height}px`,
                           transform: scale !== 1 ? `scale(${scale})` : undefined,
                         }}
                       >
-                        <CalendarHubPage {...st.props} />
+                        <SystemShelfPage {...st.props} />
                       </div>
                     </div>
                   </section>
                 );
               })
-            : visibleHome.map((st) => {
-                const scale = st.scale ?? 1;
-                const w = Math.round(BASE_GEOMETRY.homeExpanded.width * scale);
-                const h = Math.round(BASE_GEOMETRY.homeExpanded.height * scale);
-
-                return (
-                  <section
-                    key={st.id}
-                    data-testid={`dev-state-${st.id}`}
-                    className="flex flex-col gap-2"
-                  >
-                    <div className="flex items-center justify-between text-xs text-white/75">
-                      <span className="font-semibold">{st.label}</span>
-                      <span className="tabular-nums text-white/50">
-                        {w}×{h} px
-                      </span>
-                    </div>
-                    <div
-                      className={`relative overflow-hidden bg-black ${st.className ?? ""}`}
-                      style={{
-                        width: `${w}px`,
-                        height: `${h}px`,
-                        borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px`,
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderTop: "0px",
-                      }}
+            : galleryTab === "calendar_hub"
+              ? visibleCalendarHub.map((st) => {
+                  const scale = st.scale ?? 1;
+                  const w = Math.round(BASE_GEOMETRY.calendarHubExpanded.width * scale);
+                  const h = Math.round(BASE_GEOMETRY.calendarHubExpanded.height * scale);
+                  return (
+                    <section
+                      key={st.id}
+                      data-testid={`dev-cal-hub-state-${st.id}`}
+                      className="flex flex-col gap-2"
                     >
+                      <div className="flex items-center justify-between text-xs text-white/75">
+                        <span className="font-semibold">{st.label}</span>
+                        <span className="tabular-nums text-white/50">
+                          {w}×{h} px
+                        </span>
+                      </div>
                       <div
-                        className="origin-top-left"
+                        dir={st.dir}
+                        className="relative overflow-hidden bg-black"
                         style={{
-                          width: `${BASE_GEOMETRY.homeExpanded.width}px`,
-                          height: `${BASE_GEOMETRY.homeExpanded.height}px`,
-                          transform: scale !== 1 ? `scale(${scale})` : undefined,
+                          width: `${w}px`,
+                          height: `${h}px`,
+                          borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scale)}px`,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          borderTop: "0px",
                         }}
                       >
-                        <HomePage {...st.props} />
+                        <div
+                          className="origin-top-left"
+                          style={{
+                            width: `${BASE_GEOMETRY.calendarHubExpanded.width}px`,
+                            height: `${BASE_GEOMETRY.calendarHubExpanded.height}px`,
+                            transform: scale !== 1 ? `scale(${scale})` : undefined,
+                          }}
+                        >
+                          <CalendarHubPage {...st.props} />
+                        </div>
                       </div>
-                    </div>
-                  </section>
-                );
-              })}
+                    </section>
+                  );
+                })
+              : visibleHome.map((st) => {
+                  const scale = st.scale ?? 1;
+                  const w = Math.round(BASE_GEOMETRY.homeExpanded.width * scale);
+                  const h = Math.round(BASE_GEOMETRY.homeExpanded.height * scale);
+
+                  return (
+                    <section
+                      key={st.id}
+                      data-testid={`dev-state-${st.id}`}
+                      className="flex flex-col gap-2"
+                    >
+                      <div className="flex items-center justify-between text-xs text-white/75">
+                        <span className="font-semibold">{st.label}</span>
+                        <span className="tabular-nums text-white/50">
+                          {w}×{h} px
+                        </span>
+                      </div>
+                      <div
+                        className={`relative overflow-hidden bg-black ${st.className ?? ""}`}
+                        style={{
+                          width: `${w}px`,
+                          height: `${h}px`,
+                          borderRadius: `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scale)}px`,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          borderTop: "0px",
+                        }}
+                      >
+                        <div
+                          className="origin-top-left"
+                          style={{
+                            width: `${BASE_GEOMETRY.homeExpanded.width}px`,
+                            height: `${BASE_GEOMETRY.homeExpanded.height}px`,
+                            transform: scale !== 1 ? `scale(${scale})` : undefined,
+                          }}
+                        >
+                          <HomePage {...st.props} />
+                        </div>
+                      </div>
+                    </section>
+                  );
+                })}
         </div>
       </div>
     </div>

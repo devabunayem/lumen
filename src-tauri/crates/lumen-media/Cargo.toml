@@ -3,7 +3,7 @@ name = "lumen-media"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Windows SMTC media session bridge, system volume control, and LRCLIB synced lyrics"
+description = "Windows SMTC + WASAPI universal media session bridge and system volume control"
 
 [dependencies]
 base64 = "0.23"
@@ -17,9 +17,13 @@ windows = { version = "0.62", features = [
     "Graphics_Imaging",
     "Media_Control",
     "Storage_Streams",
+    "Win32_Foundation",
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
     "Win32_System_Variant",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
 ] }

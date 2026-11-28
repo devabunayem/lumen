@@ -1,14 +1,14 @@
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
+  BoltIcon,
   CalendarIcon,
   ChevronUpIcon,
-  DropletIcon,
+  ClipboardIcon,
   GridIcon,
-  InboxIcon,
   PinIcon,
   SettingsIcon,
-  BoltIcon,
 } from "../design/icons";
 import { CONTENT_STAGGER, getMotionTransition } from "../design/motion";
 import {
@@ -90,10 +90,18 @@ import {
   type ShelfItem,
   shelfList,
   shelfOpen,
+  shelfPickFiles,
   shelfRemove,
+  clipboardHistoryClear,
+  clipboardHistoryCopy,
+  clipboardHistoryDelete,
+  type ClipboardHistoryItem,
+  clipboardHistoryList,
+  clipboardHistoryTogglePin,
   subscribeAudioPeak,
   subscribeCalendarHubUpdated,
   subscribeCalendarReminderAlert,
+  subscribeClipboardHistoryUpdated,
   subscribeClipboardUpdated,
   subscribeDevPulseUpdated,
   subscribeFocusFlowUpdated,
@@ -103,6 +111,7 @@ import {
   subscribeNotificationPopup,
   subscribePomodoroTick,
   subscribePrayerUpdated,
+  subscribeSystemTelemetry,
   subscribeTrayToggleExpand,
   subscribeTrayToggleHide,
   syncPillBounds,
@@ -113,6 +122,9 @@ import {
   systemLockWorkstation,
   systemPrivacyIndicators,
   systemQuickTogglesState,
+  systemShelfSetVisible,
+  systemTelemetryGetSnapshot,
+  type SystemTelemetrySnapshot,
   systemToggleCamera,
   systemToggleMicMute,
   systemToggleSilentMode,
@@ -125,20 +137,17 @@ import {
   waterGetSummary,
   waterLog,
   type WaterSummary,
-  waterUndo,
   weatherGetCurrent,
 } from "../lib/ipc";
 import { DEFAULT_SETTINGS, type ActionGlowMode } from "../settings";
 import { LiveWaveform } from "../widgets/music/LiveWaveform";
-import { ControlPanelWidget } from "../widgets/control/ControlPanelWidget";
 import { PluginHostWidget } from "../widgets/plugins/PluginHostWidget";
 import {
   BUILTIN_WIDGET_IDS,
   type IslandPageMeta,
   resolveOrderedWidgetIds,
 } from "../widgets/registry";
-import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
-import { WaterWidget } from "../widgets/water/WaterWidget";
+import { SystemShelfPage } from "../systemShelf/SystemShelfPage";
 import { ActionGlowLayer, type LumiMood } from "./ActionGlowLayer";
 import { HudOverlay } from "./HudOverlay";
 import { LumenMascot } from "./LumenMascot";
@@ -358,10 +367,8 @@ export function IslandShell({
       })),
     [calendarHubSnapshot?.reminders],
   );
-  const [waterGoalOverride, setWaterGoalOverride] = useState<number | null>(null);
-  const waterGoalMl = waterGoalOverride ?? initialWaterGoalMl;
+  const waterGoalMl = initialWaterGoalMl;
   const [waterSummary, setWaterSummary] = useState<WaterSummary | null>(null);
-  const [waterReminders, setWaterReminders] = useState(true);
   const [prayerSchedule, setPrayerSchedule] = useState<PrayerSchedule | null>(null);
   const [prayerCities, setPrayerCities] = useState<PrayerCityPreset[]>([]);
   const [pomodoro, setPomodoro] = useState<PomodoroSnapshot | null>(null);
@@ -378,6 +385,13 @@ export function IslandShell({
   const [batteryState, setBatteryState] = useState<[number, boolean] | null>(null);
   const [isFirstOpenOfDay, setIsFirstOpenOfDay] = useState(false);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
+  const [telemetry, setTelemetry] = useState<SystemTelemetrySnapshot | null>(null);
+  const [telemetryLoading, setTelemetryLoading] = useState(() => isTauriRuntime());
+  const [cpuHistory, setCpuHistory] = useState<number[]>([]);
+  const [gpuHistory, setGpuHistory] = useState<number[]>([]);
+  const [netDownHistory, setNetDownHistory] = useState<number[]>([]);
+  const [clipboardHistory, setClipboardHistory] = useState<ClipboardHistoryItem[]>([]);
+  const [dragOverShelf, setDragOverShelf] = useState(false);
   const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
   const [activeNotification, setActiveNotification] = useState<NotificationPopup | null>(null);
@@ -748,30 +762,12 @@ export function IslandShell({
         },
       ],
       [
-        "control",
+        "system_shelf",
         {
-          id: "control",
-          titleLead: msg.pages.controlLead,
-          titleAccent: msg.pages.controlAccent,
-          accentVar: "var(--accent-blue)",
-        },
-      ],
-      [
-        "water",
-        {
-          id: "water",
-          titleLead: msg.pages.waterLead,
-          titleAccent: msg.pages.waterAccent,
-          accentVar: "var(--accent-blue)",
-        },
-      ],
-      [
-        "shelf",
-        {
-          id: "shelf",
-          titleLead: msg.pages.shelfLead,
-          titleAccent: msg.pages.shelfAccent,
-          accentVar: "var(--accent-purple)",
+          id: "system_shelf",
+          titleLead: msg.pages.systemShelfLead,
+          titleAccent: msg.pages.systemShelfAccent,
+          accentVar: "var(--accent-cyan)",
         },
       ],
     ]);
@@ -822,6 +818,7 @@ export function IslandShell({
     void pomodoroGetState().then((p) => p && setPomodoro(p));
     void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
     void shelfList().then(setShelfItems);
+    void clipboardHistoryList().then(setClipboardHistory);
     void pluginsList().then(setPlugins);
     void tasbihGet().then((ts) => ts && setTasbih(ts));
     void ledgerGet().then((l) => l && setLedger(l));
@@ -894,6 +891,8 @@ export function IslandShell({
     let unlistenFocusFlow: (() => void) | undefined;
     let unlistenCalReminderAlert: (() => void) | undefined;
     let unlistenCalHubUpdated: (() => void) | undefined;
+    let unlistenSysTelemetry: (() => void) | undefined;
+    let unlistenClipHistory: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
@@ -1096,6 +1095,20 @@ export function IslandShell({
     }).then((fn) => {
       unlistenCalHubUpdated = fn;
     });
+    void subscribeSystemTelemetry((snap) => {
+      setTelemetry(snap);
+      setTelemetryLoading(false);
+      setCpuHistory((prev) => [...prev.slice(-19), snap.cpuPercent]);
+      setGpuHistory((prev) => [...prev.slice(-19), snap.gpuPercent ?? 0]);
+      setNetDownHistory((prev) => [...prev.slice(-19), snap.netDownBps]);
+    }).then((fn) => {
+      unlistenSysTelemetry = fn;
+    });
+    void subscribeClipboardHistoryUpdated((items) => {
+      setClipboardHistory(items);
+    }).then((fn) => {
+      unlistenClipHistory = fn;
+    });
 
     return () => {
       unlistenFs?.();
@@ -1112,6 +1125,8 @@ export function IslandShell({
       unlistenFocusFlow?.();
       unlistenCalReminderAlert?.();
       unlistenCalHubUpdated?.();
+      unlistenSysTelemetry?.();
+      unlistenClipHistory?.();
     };
   }, [dispatch, mediaExclusions]);
 
@@ -1119,7 +1134,48 @@ export function IslandShell({
   const activePage = pages[safePageIndex] ?? pages[0];
   const isHomePage = activePage.id === "home";
   const isCalendarHubPage = activePage.id === "calendar_hub";
+  const isSystemShelfPage = activePage.id === "system_shelf";
   const isHomeSizedPage = isHomePage;
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    let unlistenDragDrop: (() => void) | undefined;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const kind = event.payload.type;
+        if (kind === "enter" || kind === "over") {
+          clearHoverTimers();
+          setSlimReturnActive(false);
+          setDragOverShelf(true);
+          const shelfIdx = pages.findIndex((p) => p.id === "system_shelf");
+          if (shelfIdx >= 0) {
+            setActivePageIndex(shelfIdx);
+          }
+          dispatch({ type: "DRAG_ENTER" });
+        } else if (kind === "drop") {
+          setDragOverShelf(false);
+          const paths = event.payload.paths ?? [];
+          for (const path of paths) {
+            void shelfAdd("file", path).then((items) => {
+              if (isTauriRuntime()) {
+                setShelfItems(items);
+              }
+            });
+          }
+        } else if (kind === "leave") {
+          setDragOverShelf(false);
+        }
+      })
+      .then((fn) => {
+        unlistenDragDrop = fn;
+      })
+      .catch(() => {});
+    return () => {
+      unlistenDragDrop?.();
+    };
+  }, [clearHoverTimers, dispatch, pages]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1226,9 +1282,11 @@ export function IslandShell({
       case "expanded":
         return isCalendarHubPage
           ? BASE_GEOMETRY.calendarHubExpanded
-          : isHomeSizedPage
-            ? BASE_GEOMETRY.homeExpanded
-            : BASE_GEOMETRY.expanded;
+          : isSystemShelfPage
+            ? BASE_GEOMETRY.systemShelfExpanded
+            : isHomeSizedPage
+              ? BASE_GEOMETRY.homeExpanded
+              : BASE_GEOMETRY.expanded;
       case "hud":
         if (activeReminderAlert !== null) {
           return BASE_GEOMETRY.reminder;
@@ -1247,6 +1305,7 @@ export function IslandShell({
     effectiveState,
     isSlimQuiet,
     isCalendarHubPage,
+    isSystemShelfPage,
     isHomeSizedPage,
     activeReminderAlert,
     activeNotification,
@@ -1259,9 +1318,34 @@ export function IslandShell({
   const isFloatingPill = shapeStyle === "pill";
   const topOffset = isFloatingPill ? Math.round(BASE_GEOMETRY.pillFloatOffset * scaleFactor) : 0;
   const homeVisibleNow = isExpanded && (isHomeSizedPage || isCalendarHubPage) && !isHidden;
+  const systemShelfVisibleNow = isExpanded && isSystemShelfPage && !isHidden;
   const isBannerHud =
     effectiveState === "hud" &&
     (activeReminderAlert !== null || activeNotification !== null || activeNowPlaying !== null);
+
+  useEffect(() => {
+    void systemShelfSetVisible(systemShelfVisibleNow);
+    if (!systemShelfVisibleNow) {
+      return;
+    }
+    void systemTelemetryGetSnapshot().then((snap) => {
+      if (!snap) {
+        return;
+      }
+      setTelemetry(snap);
+      setTelemetryLoading(false);
+      setCpuHistory((prev) =>
+        prev.length === 0 ? [snap.cpuPercent] : [...prev.slice(-19), snap.cpuPercent],
+      );
+      setGpuHistory((prev) =>
+        prev.length === 0 ? [snap.gpuPercent ?? 0] : [...prev.slice(-19), snap.gpuPercent ?? 0],
+      );
+      setNetDownHistory((prev) =>
+        prev.length === 0 ? [snap.netDownBps] : [...prev.slice(-19), snap.netDownBps],
+      );
+    });
+    void clipboardHistoryList().then(setClipboardHistory);
+  }, [systemShelfVisibleNow]);
 
   useEffect(() => {
     void homeSetVisible(homeVisibleNow);
@@ -1275,18 +1359,22 @@ export function IslandShell({
         ? isExpanded
           ? (isCalendarHubPage
               ? BASE_GEOMETRY.calendarHubBottomRadius
-              : isHomeSizedPage
-                ? BASE_GEOMETRY.homeBottomRadius
-                : 28) * scaleFactor
+              : isSystemShelfPage
+                ? BASE_GEOMETRY.systemShelfBottomRadius
+                : isHomeSizedPage
+                  ? BASE_GEOMETRY.homeBottomRadius
+                  : 28) * scaleFactor
           : isBannerHud
             ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2)
         : isExpanded
           ? (isCalendarHubPage
               ? BASE_GEOMETRY.calendarHubBottomRadius
-              : isHomeSizedPage
-                ? BASE_GEOMETRY.homeBottomRadius
-                : 24) * scaleFactor
+              : isSystemShelfPage
+                ? BASE_GEOMETRY.systemShelfBottomRadius
+                : isHomeSizedPage
+                  ? BASE_GEOMETRY.homeBottomRadius
+                  : 24) * scaleFactor
           : isBannerHud
             ? (activeNowPlaying !== null && activeNotification === null ? 22 : 24) * scaleFactor
             : Math.round(height / 2),
@@ -1331,6 +1419,7 @@ export function IslandShell({
     isFloatingPill,
     isExpanded,
     isCalendarHubPage,
+    isSystemShelfPage,
     isHomeSizedPage,
     homeVisibleNow,
     activeReminderAlert,
@@ -1358,9 +1447,11 @@ export function IslandShell({
         isExpanded
           ? isCalendarHubPage
             ? BASE_GEOMETRY.calendarHubBottomRadius
-            : isHomeSizedPage
-              ? BASE_GEOMETRY.homeBottomRadius
-              : 28
+            : isSystemShelfPage
+              ? BASE_GEOMETRY.systemShelfBottomRadius
+              : isHomeSizedPage
+                ? BASE_GEOMETRY.homeBottomRadius
+                : 28
           : isBannerHud
             ? isNowPlaying && !isNotify
               ? 22
@@ -1373,9 +1464,11 @@ export function IslandShell({
       : isExpanded
         ? isCalendarHubPage
           ? `0px 0px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.calendarHubBottomRadius * scaleFactor)}px`
-          : isHomeSizedPage
-            ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
-            : "0px 0px 24px 24px"
+          : isSystemShelfPage
+            ? `0px 0px ${Math.round(BASE_GEOMETRY.systemShelfBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.systemShelfBottomRadius * scaleFactor)}px`
+            : isHomeSizedPage
+              ? `0px 0px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px ${Math.round(BASE_GEOMETRY.homeBottomRadius * scaleFactor)}px`
+              : "0px 0px 24px 24px"
         : isBannerHud
           ? isNowPlaying && !isNotify
             ? "0px 0px 22px 22px"
@@ -1458,11 +1551,21 @@ export function IslandShell({
           event.preventDefault();
           clearHoverTimers();
           setSlimReturnActive(false);
-          const shelfIdx = pages.findIndex((p) => p.id === "shelf");
+          setDragOverShelf(true);
+          const shelfIdx = pages.findIndex((p) => p.id === "system_shelf");
           if (shelfIdx >= 0) {
             setActivePageIndex(shelfIdx);
           }
           dispatch({ type: "DRAG_ENTER" });
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDragLeave={() => {
+          setDragOverShelf(false);
+        }}
+        onDrop={() => {
+          setDragOverShelf(false);
         }}
         onMouseEnter={() => {
           isHoveredRef.current = true;
@@ -2467,6 +2570,164 @@ export function IslandShell({
                         />
                       </div>
                     </motion.div>
+                  ) : isSystemShelfPage ? (
+                    <motion.div
+                      key="page-system_shelf"
+                      custom={slideDirection}
+                      variants={{
+                        enter: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? 72 : -72,
+                          opacity: 0,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                        }),
+                        center: {
+                          x: 0,
+                          opacity: 1,
+                          scale: 1,
+                          transition: getMotionTransition("pageSwitch", prefersReducedMotion),
+                        },
+                        exit: (direction: number) => ({
+                          x: prefersReducedMotion ? 0 : direction > 0 ? -72 : 72,
+                          opacity: 0,
+                          scale: prefersReducedMotion ? 1 : 0.985,
+                          transition: {
+                            duration: prefersReducedMotion ? 0.08 : 0.16,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                        }),
+                      }}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      className="absolute inset-0 flex items-start justify-center"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div
+                        className="origin-top shrink-0"
+                        style={{
+                          width: `${BASE_GEOMETRY.systemShelfExpanded.width}px`,
+                          height: `${BASE_GEOMETRY.systemShelfExpanded.height}px`,
+                          transform: scaleFactor !== 1 ? `scale(${scaleFactor})` : undefined,
+                        }}
+                      >
+                        <SystemShelfPage
+                          nowDate={nowDate}
+                          shelfItems={shelfItems}
+                          telemetry={telemetry}
+                          telemetryLoading={telemetryLoading}
+                          cpuHistory={cpuHistory}
+                          gpuHistory={gpuHistory}
+                          netDownHistory={netDownHistory}
+                          clipboardItems={clipboardHistory}
+                          dragOverShelf={dragOverShelf}
+                          isPinned={isPinned}
+                          language={language}
+                          banglaDigits={banglaDigits}
+                          reduceMotion={prefersReducedMotion}
+                          reduceTransparency={reduceTransparency}
+                          glowEnabled={glowEnabled}
+                          onTogglePin={() => {
+                            const next = !isPinned;
+                            isPinnedRef.current = next;
+                            setIsPinned(next);
+                            if (next && leaveTimerRef.current !== null) {
+                              window.clearTimeout(leaveTimerRef.current);
+                              leaveTimerRef.current = null;
+                            }
+                          }}
+                          onOpenSettings={() => {
+                            if (onOpenSettings) {
+                              onOpenSettings();
+                            } else {
+                              void openSettingsWindow();
+                            }
+                          }}
+                          onShelfAdd={(kind, val) => {
+                            void shelfAdd(kind, val).then((items) => {
+                              if (isTauriRuntime()) {
+                                setShelfItems(items);
+                              } else {
+                                setShelfItems((prev) => [
+                                  {
+                                    id: Date.now(),
+                                    kind,
+                                    path_or_text: val,
+                                    display_name: val.slice(0, 40),
+                                    available: true,
+                                    added_at: new Date().toISOString(),
+                                  },
+                                  ...prev,
+                                ]);
+                              }
+                            });
+                          }}
+                          onShelfPickFiles={() => {
+                            void shelfPickFiles().then((items) => {
+                              if (items.length > 0) {
+                                setShelfItems(items);
+                              }
+                            });
+                          }}
+                          onShelfOpen={(target) => {
+                            void shelfOpen(target);
+                          }}
+                          onShelfCopy={(target) => {
+                            void navigator.clipboard?.writeText(target).catch(() => {});
+                          }}
+                          onShelfRemove={(id) => {
+                            void shelfRemove(id).then((items) => {
+                              if (isTauriRuntime()) {
+                                setShelfItems(items);
+                              } else {
+                                setShelfItems((prev) => prev.filter((i) => i.id !== id));
+                              }
+                            });
+                          }}
+                          onShelfClear={() => {
+                            void shelfClear().then(() => setShelfItems([]));
+                          }}
+                          onCopyClip={async (id) => {
+                            const snap = await clipboardHistoryCopy(id);
+                            if (snap) {
+                              setClipboard(snap);
+                            }
+                          }}
+                          onToggleClipPin={(id) => {
+                            void clipboardHistoryTogglePin(id).then((items) => {
+                              if (isTauriRuntime()) {
+                                setClipboardHistory(items);
+                              } else {
+                                setClipboardHistory((prev) =>
+                                  prev.map((item) =>
+                                    item.id === id ? { ...item, pinned: !item.pinned } : item,
+                                  ),
+                                );
+                              }
+                            });
+                          }}
+                          onDeleteClip={(id) => {
+                            void clipboardHistoryDelete(id).then((items) => {
+                              if (isTauriRuntime()) {
+                                setClipboardHistory(items);
+                              } else {
+                                setClipboardHistory((prev) =>
+                                  prev.filter((item) => item.id !== id),
+                                );
+                              }
+                            });
+                          }}
+                          onClearClipboard={() => {
+                            void clipboardHistoryClear(true).then((items) => {
+                              if (isTauriRuntime()) {
+                                setClipboardHistory(items);
+                              } else {
+                                setClipboardHistory((prev) => prev.filter((item) => item.pinned));
+                              }
+                            });
+                          }}
+                        />
+                      </div>
+                    </motion.div>
                   ) : (
                     <motion.div
                       key="page-secondary"
@@ -2546,13 +2807,7 @@ export function IslandShell({
                           </button>
 
                           <div className="flex items-center justify-self-end gap-1">
-                            <div
-                              className={`flex items-center gap-1 transition-opacity duration-150 ${
-                                activePage.id === "control"
-                                  ? "opacity-100"
-                                  : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                              }`}
-                            >
+                            <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
                               <button
                                 type="button"
                                 aria-label={isPinned ? msg.pill.unpin : msg.pill.pin}
@@ -2611,11 +2866,7 @@ export function IslandShell({
                                 setPageGalleryOpen(false);
                                 dispatch({ type: "CLICK" });
                               }}
-                              className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent transition-all hover:bg-[var(--surface-button)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
-                                activePage.id === "control"
-                                  ? "opacity-100"
-                                  : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                              }`}
+                              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent opacity-0 transition-all hover:bg-[var(--surface-button)] group-hover:opacity-100 focus-within:opacity-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/75"
                               style={{
                                 color: "var(--text-secondary)",
                               }}
@@ -2657,111 +2908,6 @@ export function IslandShell({
                               transition={getMotionTransition("pageSwitch", prefersReducedMotion)}
                               className="flex h-full w-full items-center"
                             >
-                              {activePage.id === "control" && (
-                                <ControlPanelWidget
-                                  media={media}
-                                  pomodoro={pomodoro}
-                                  waterGoalMl={initialWaterGoalMl}
-                                  cameraActive={privacyDevices[0]}
-                                  micActive={privacyDevices[1]}
-                                  language={language}
-                                  onPomodoroChange={(nextPom) => setPomodoro(nextPom)}
-                                  onNavigatePage={(targetId) => {
-                                    const targetIndex = pages.findIndex((p) => p.id === targetId);
-                                    if (targetIndex >= 0) {
-                                      setPageGalleryOpen(false);
-                                      setSlideDirection(targetIndex >= safePageIndex ? 1 : -1);
-                                      setActivePageIndex(targetIndex);
-                                    }
-                                  }}
-                                />
-                              )}
-
-                              {activePage.id === "water" && (
-                                <div className="h-full w-full">
-                                  <WaterWidget
-                                    summary={waterSummary}
-                                    servingMl={250}
-                                    remindersEnabled={waterReminders}
-                                    onDrink={(ml) => {
-                                      triggerLumiEvent("water", {
-                                        legacyMood: "celebrate",
-                                        durationMs: 2200,
-                                        playChirp: "lumi_happy",
-                                      });
-                                      void waterLog(ml, waterGoalMl, 4).then((w) => {
-                                        if (w) {
-                                          setWaterSummary(w);
-                                        } else {
-                                          const nextTotal = (waterSummary?.today_ml ?? 0) + ml;
-                                          const pct = (nextTotal / waterGoalMl) * 100;
-                                          setWaterSummary({
-                                            today_ml: nextTotal,
-                                            goal_ml: waterGoalMl,
-                                            percentage: pct,
-                                            goal_reached: pct >= 100,
-                                            last_entry_id: Date.now(),
-                                            weekly: [],
-                                          });
-                                        }
-                                      });
-                                    }}
-                                    onUndo={(entryId) => {
-                                      void waterUndo(entryId, waterGoalMl, 4).then(
-                                        (w) => w && setWaterSummary(w),
-                                      );
-                                    }}
-                                    onToggleReminders={() => setWaterReminders((v) => !v)}
-                                    onChangeGoal={(goal) => {
-                                      setWaterGoalOverride(goal);
-                                      void waterGetSummary(goal, 4).then(
-                                        (w) => w && setWaterSummary(w),
-                                      );
-                                    }}
-                                  />
-                                </div>
-                              )}
-
-                              {activePage.id === "shelf" && (
-                                <ShelfWidget
-                                  items={shelfItems}
-                                  onAdd={(kind, val) => {
-                                    void shelfAdd(kind, val).then((items) => {
-                                      if (isTauriRuntime()) {
-                                        setShelfItems(items);
-                                      } else {
-                                        setShelfItems((prev) => [
-                                          {
-                                            id: Date.now(),
-                                            kind,
-                                            path_or_text: val,
-                                            display_name: val.slice(0, 40),
-                                            available: true,
-                                            added_at: new Date().toISOString(),
-                                          },
-                                          ...prev,
-                                        ]);
-                                      }
-                                    });
-                                  }}
-                                  onOpen={(target) => {
-                                    void shelfOpen(target);
-                                  }}
-                                  onRemove={(id) => {
-                                    void shelfRemove(id).then((items) => {
-                                      if (isTauriRuntime()) {
-                                        setShelfItems(items);
-                                      } else {
-                                        setShelfItems((prev) => prev.filter((i) => i.id !== id));
-                                      }
-                                    });
-                                  }}
-                                  onClear={() => {
-                                    void shelfClear().then(() => setShelfItems([]));
-                                  }}
-                                />
-                              )}
-
                               {activePage.plugin && <PluginHostWidget plugin={activePage.plugin} />}
                             </motion.div>
                           </AnimatePresence>
@@ -2838,12 +2984,8 @@ export function IslandShell({
                                 const icon =
                                   page.id === "calendar_hub" ? (
                                     <CalendarIcon size={13} />
-                                  ) : page.id === "control" ? (
-                                    <GridIcon size={13} />
-                                  ) : page.id === "water" ? (
-                                    <DropletIcon size={13} />
-                                  ) : page.id === "shelf" ? (
-                                    <InboxIcon size={13} />
+                                  ) : page.id === "system_shelf" ? (
+                                    <ClipboardIcon size={13} />
                                   ) : (
                                     <BoltIcon size={13} />
                                   );

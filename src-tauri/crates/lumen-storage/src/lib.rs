@@ -101,6 +101,16 @@ CREATE TABLE IF NOT EXISTS reminders (
     completed INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS clipboard_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT NOT NULL,
+    preview TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'text',
+    raw_hash TEXT NOT NULL UNIQUE,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    copied_at TEXT NOT NULL
+);
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -221,6 +231,19 @@ pub struct ShelfItem {
     pub display_name: String,
     pub available: bool,
     pub added_at: String,
+}
+
+/// Locally persisted non-sensitive clipboard history item for System & Shelf (`Page 3`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardHistoryItem {
+    pub id: i64,
+    pub preview: String,
+    pub kind: String,
+    pub raw_hash: String,
+    pub pinned: bool,
+    pub sensitive: bool,
+    pub copied_at: String,
 }
 
 /// Thread-safe SQLite repository backing Lumen's local-first storage.
@@ -893,6 +916,130 @@ impl StorageRepo {
                 .map_err(|e| format!("clear shelf failed: {e}"))?;
         }
         Ok(Vec::new())
+    }
+
+    pub fn list_clipboard_history(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ClipboardHistoryItem>, String> {
+        let cap = limit.clamp(1, 100) as i64;
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, preview, kind, raw_hash, pinned, copied_at
+                 FROM clipboard_history
+                 ORDER BY pinned DESC, copied_at DESC, id DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| format!("prepare clipboard history failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![cap], |row| {
+                Ok(ClipboardHistoryItem {
+                    id: row.get(0)?,
+                    preview: row.get(1)?,
+                    kind: row.get(2)?,
+                    raw_hash: row.get(3)?,
+                    pinned: row.get::<_, i64>(4)? != 0,
+                    sensitive: false,
+                    copied_at: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("query clipboard history failed: {e}"))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| format!("clipboard row decode failed: {e}"))?);
+        }
+        Ok(out)
+    }
+
+    pub fn record_clipboard_entry(
+        &self,
+        content: &str,
+        preview: &str,
+        kind: &str,
+        raw_hash: &str,
+        cap: usize,
+    ) -> Result<Vec<ClipboardHistoryItem>, String> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() || raw_hash.trim().is_empty() {
+            return self.list_clipboard_history(cap);
+        }
+        let max_items = cap.clamp(1, 100) as i64;
+        let now = Utc::now().to_rfc3339();
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute(
+                "INSERT INTO clipboard_history (content, preview, kind, raw_hash, pinned, copied_at)
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5)
+                 ON CONFLICT(raw_hash) DO UPDATE SET
+                    content = excluded.content,
+                    preview = excluded.preview,
+                    kind = excluded.kind,
+                    copied_at = excluded.copied_at",
+                params![content, preview, kind, raw_hash, now],
+            )
+            .map_err(|e| format!("upsert clipboard history failed: {e}"))?;
+            conn.execute(
+                "DELETE FROM clipboard_history
+                 WHERE pinned = 0
+                   AND id NOT IN (
+                       SELECT id FROM clipboard_history
+                       ORDER BY pinned DESC, copied_at DESC, id DESC
+                       LIMIT ?1
+                   )",
+                params![max_items],
+            )
+            .map_err(|e| format!("enforce clipboard history cap failed: {e}"))?;
+        }
+        self.list_clipboard_history(cap)
+    }
+
+    pub fn toggle_pin_clipboard_entry(&self, id: i64) -> Result<Vec<ClipboardHistoryItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute(
+                "UPDATE clipboard_history SET pinned = CASE WHEN pinned = 0 THEN 1 ELSE 0 END WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| format!("toggle clipboard pin failed: {e}"))?;
+        }
+        self.list_clipboard_history(30)
+    }
+
+    pub fn delete_clipboard_entry(&self, id: i64) -> Result<Vec<ClipboardHistoryItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id])
+                .map_err(|e| format!("delete clipboard entry failed: {e}"))?;
+        }
+        self.list_clipboard_history(30)
+    }
+
+    pub fn clear_clipboard_history(
+        &self,
+        keep_pinned: bool,
+    ) -> Result<Vec<ClipboardHistoryItem>, String> {
+        {
+            let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            if keep_pinned {
+                conn.execute("DELETE FROM clipboard_history WHERE pinned = 0", [])
+            } else {
+                conn.execute("DELETE FROM clipboard_history", [])
+            }
+            .map_err(|e| format!("clear clipboard history failed: {e}"))?;
+        }
+        self.list_clipboard_history(30)
+    }
+
+    pub fn get_clipboard_entry_content(&self, id: i64) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+        conn.query_row(
+            "SELECT content FROM clipboard_history WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| format!("read clipboard entry failed: {e}"))
     }
 
     pub fn get_cached_lyrics(&self, track_key: &str) -> Result<Option<String>, String> {
@@ -1638,5 +1785,34 @@ mod tests {
             .purge_expired_reminders(target + Duration::days(7))
             .expect("purge 7d");
         assert_eq!(purged_7d, 1);
+    }
+
+    #[test]
+    fn manages_clipboard_history_dedupe_pins_and_cap() {
+        let repo = StorageRepo::open_in_memory().expect("db");
+        let list = repo
+            .record_clipboard_entry("https://lumen.dev", "https://lumen.dev", "link", "h1", 2)
+            .expect("rec1");
+        assert_eq!(list.len(), 1);
+        let id1 = list[0].id;
+        let pinned = repo.toggle_pin_clipboard_entry(id1).expect("pin");
+        assert!(pinned[0].pinned);
+
+        repo.record_clipboard_entry("plain text 1", "plain text 1", "text", "h2", 2)
+            .expect("rec2");
+        let after_cap = repo
+            .record_clipboard_entry("const x = 1;", "const x = 1;", "code", "h3", 2)
+            .expect("rec3");
+        assert_eq!(after_cap.len(), 2);
+        // Pinned entry stays protected despite cap.
+        assert!(after_cap.iter().any(|item| item.raw_hash == "h1"));
+        assert_eq!(
+            repo.get_clipboard_entry_content(id1).expect("get content"),
+            Some("https://lumen.dev".into())
+        );
+
+        let cleared = repo.clear_clipboard_history(true).expect("clear unpinned");
+        assert_eq!(cleared.len(), 1);
+        assert_eq!(cleared[0].raw_hash, "h1");
     }
 }

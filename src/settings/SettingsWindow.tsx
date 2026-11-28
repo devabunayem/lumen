@@ -126,7 +126,9 @@ export function SettingsWindow({
     }
   };
 
-  const visiblePageOrder = settings.pageOrder.filter((id) => id !== "music" && id !== "prayer");
+  const visiblePageOrder = settings.pageOrder.filter(
+    (id) => !["music", "prayer", "control", "water", "shelf"].includes(id),
+  );
 
   const movePage = (idx: number, delta: -1 | 1) => {
     const target = idx + delta;
@@ -1055,7 +1057,15 @@ export function SettingsWindow({
                         <div className="flex items-center gap-2.5">
                           <span className="w-4 font-mono text-xs text-[#8e8e93]">{idx + 1}.</span>
                           <span className="text-sm font-medium capitalize text-white">
-                            {pageId === "calendar_hub" ? "Calendar Hub" : pageId}
+                            {pageId === "calendar_hub"
+                              ? isBn
+                                ? "ক্যালেন্ডার হাব"
+                                : "Calendar Hub"
+                              : pageId === "system_shelf"
+                                ? isBn
+                                  ? "সিস্টেম ও শেলফ"
+                                  : "System & Shelf"
+                                : pageId}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">

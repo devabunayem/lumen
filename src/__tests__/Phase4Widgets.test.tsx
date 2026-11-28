@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { HudOverlay } from "../app/HudOverlay";
 import { FocusCard } from "../calendar/FocusCard";
-import { ShelfWidget } from "../widgets/shelf/ShelfWidget";
+import { FileShelfCard } from "../systemShelf/FileShelfCard";
 
 describe("Phase 4 Widgets (Focus Flow, Shelf, HUD)", () => {
   it("renders Focus countdown, Prayer Ask prompt, and Free Focus log task prompt", () => {
@@ -137,8 +137,9 @@ describe("Phase 4 Widgets (Focus Flow, Shelf, HUD)", () => {
   it("renders Shelf items, marks missing files, and submits links", () => {
     const onAdd = vi.fn();
     const onOpen = vi.fn();
+    const onPickFiles = vi.fn();
     render(
-      <ShelfWidget
+      <FileShelfCard
         items={[
           {
             id: 1,
@@ -157,7 +158,11 @@ describe("Phase 4 Widgets (Focus Flow, Shelf, HUD)", () => {
             added_at: "",
           },
         ]}
+        language="en"
+        banglaDigits={false}
+        reduceMotion
         onAdd={onAdd}
+        onPickFiles={onPickFiles}
         onOpen={onOpen}
         onRemove={vi.fn()}
         onClear={vi.fn()}
@@ -165,11 +170,13 @@ describe("Phase 4 Widgets (Focus Flow, Shelf, HUD)", () => {
     );
     fireEvent.click(screen.getByText("notes.txt"));
     expect(onOpen).toHaveBeenCalledWith("C:\\notes.txt");
-    expect(screen.getByTitle("Missing file")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("sys-shelf-browse-btn"));
+    expect(onPickFiles).toHaveBeenCalled();
 
-    const input = screen.getByLabelText("Drop or paste link or note");
-    fireEvent.change(input, { target: { value: "https://github.com/devabunayem/lumen" } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    const input = screen.getByTestId("sys-shelf-dropzone").querySelector("input");
+    expect(input).not.toBeNull();
+    fireEvent.change(input!, { target: { value: "https://github.com/devabunayem/lumen" } });
+    fireEvent.keyDown(input!, { key: "Enter" });
     expect(onAdd).toHaveBeenCalledWith("link", "https://github.com/devabunayem/lumen");
   });
 
