@@ -99,6 +99,8 @@ describe("System & Shelf Page 3 + Universal MusicCard", () => {
     expect(page).toHaveStyle({ width: "640px", height: "312px" });
     expect(screen.getByTestId("sys-cpu-pct")).toHaveTextContent("42%");
     expect(screen.getByTestId("sys-ram-pill")).toHaveTextContent("19.2/32G");
+    expect(screen.getByTestId("sys-shelf-cap-badge")).toHaveTextContent("1/50");
+    expect(screen.getByTestId("sys-clip-cap-badge")).toHaveTextContent("0/30");
 
     fireEvent.click(screen.getByRole("button", { name: "Pin island open" }));
     expect(onTogglePin).toHaveBeenCalled();
@@ -192,12 +194,77 @@ describe("System & Shelf Page 3 + Universal MusicCard", () => {
     expect(onNext).toHaveBeenCalled();
   });
 
-  it("renders all 8 System & Shelf states in DevStatesPage", () => {
+  it("enforces pin limit banner, pause/resume toggle, secret countdown, and dev state gallery", async () => {
+    const onTogglePin = vi.fn().mockRejectedValue(new Error("Maximum 10 pinned items allowed"));
+    const onTogglePause = vi.fn();
+
+    render(
+      <SystemShelfPage
+        nowDate={new Date(2026, 10, 28, 10, 25)}
+        shelfItems={[]}
+        telemetry={makeTelemetry()}
+        cpuHistory={[42]}
+        gpuHistory={[31]}
+        netDownHistory={[12_500_000]}
+        clipboardItems={[
+          {
+            id: 11,
+            kind: "secret",
+            preview: "OTP 482 •••",
+            rawHash: "h11",
+            sensitive: true,
+            pinned: false,
+            copiedAt: "2026-11-28T10:24:36Z",
+            expiresInSecs: 24,
+          },
+          {
+            id: 12,
+            kind: "text",
+            preview: "Clip item 12",
+            rawHash: "h12",
+            sensitive: false,
+            pinned: false,
+            copiedAt: "2026-11-28T10:20:00Z",
+          },
+        ]}
+        clipboardCapturePaused
+        language="en"
+        banglaDigits={false}
+        reduceMotion
+        reduceTransparency={false}
+        onOpenSettings={vi.fn()}
+        onShelfAdd={vi.fn()}
+        onShelfPickFiles={vi.fn()}
+        onShelfOpen={vi.fn()}
+        onShelfRemove={vi.fn()}
+        onShelfClear={vi.fn()}
+        onCopyClip={vi.fn()}
+        onToggleClipPin={onTogglePin}
+        onDeleteClip={vi.fn()}
+        onClearClipboard={vi.fn()}
+        onToggleClipCapturePaused={onTogglePause}
+      />,
+    );
+
+    expect(screen.getByTestId("sys-clip-item-11")).toHaveTextContent("24s");
+    expect(screen.getByTestId("sys-clipboard-paused-banner")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("sys-clipboard-pause-btn"));
+    expect(onTogglePause).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin clip" }));
+    expect(await screen.findByTestId("sys-clipboard-pin-limit-banner")).toHaveTextContent(
+      "Max 10 pinned items reached",
+    );
+  });
+
+  it("renders all 9 System & Shelf states in DevStatesPage", () => {
     render(<DevStatesPage />);
     expect(screen.getByTestId("dev-tab-system-shelf")).toBeInTheDocument();
     expect(screen.getByTestId("dev-sys-shelf-state-default")).toBeInTheDocument();
     expect(screen.getByTestId("dev-sys-shelf-state-high-load")).toBeInTheDocument();
     expect(screen.getByTestId("dev-sys-shelf-state-secret-clipboard")).toBeInTheDocument();
     expect(screen.getByTestId("dev-sys-shelf-state-bangla-locale")).toBeInTheDocument();
+    expect(screen.getByTestId("dev-sys-shelf-state-overflow-lists")).toBeInTheDocument();
   });
 });

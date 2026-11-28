@@ -1671,7 +1671,8 @@ mod win32 {
 
         fn init_gpu_pdh() -> (isize, isize) {
             use windows::Win32::System::Performance::{
-                PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCollectQueryData, PdhOpenQueryW,
+                PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCloseQuery,
+                PdhCollectQueryData, PdhOpenQueryW,
             };
             unsafe {
                 let mut query = PDH_HQUERY::default();
@@ -1681,6 +1682,7 @@ mod win32 {
                 let path = HSTRING::from(r"\GPU Engine(*)\Utilization Percentage");
                 let mut counter = PDH_HCOUNTER::default();
                 if PdhAddEnglishCounterW(query, PCWSTR(path.as_ptr()), 0, &mut counter) != 0 {
+                    let _ = PdhCloseQuery(query);
                     return (0, 0);
                 }
                 let _ = PdhCollectQueryData(query);

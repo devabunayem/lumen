@@ -95,13 +95,18 @@ import {
   clipboardHistoryClear,
   clipboardHistoryCopy,
   clipboardHistoryDelete,
+  clipboardGetCapturePaused,
   type ClipboardHistoryItem,
   clipboardHistoryList,
+  clipboardSetCapturePaused,
   clipboardHistoryTogglePin,
+  CLIPBOARD_MAX_PINNED,
+  SHELF_MAX_ITEMS,
   subscribeAudioPeak,
   subscribeCalendarHubUpdated,
   subscribeCalendarReminderAlert,
   subscribeClipboardHistoryUpdated,
+  subscribeClipboardPausedUpdated,
   subscribeClipboardUpdated,
   subscribeDevPulseUpdated,
   subscribeFocusFlowUpdated,
@@ -391,6 +396,7 @@ export function IslandShell({
   const [gpuHistory, setGpuHistory] = useState<number[]>([]);
   const [netDownHistory, setNetDownHistory] = useState<number[]>([]);
   const [clipboardHistory, setClipboardHistory] = useState<ClipboardHistoryItem[]>([]);
+  const [clipboardCapturePaused, setClipboardCapturePaused] = useState(false);
   const [dragOverShelf, setDragOverShelf] = useState(false);
   const [plugins, setPlugins] = useState<LoadedPlugin[]>([]);
   const [activeHud, setActiveHud] = useState<HudEvent | null>(null);
@@ -819,6 +825,7 @@ export function IslandShell({
     void calendarHubFocusGetState().then((f) => f && setFocusFlow(f));
     void shelfList().then(setShelfItems);
     void clipboardHistoryList().then(setClipboardHistory);
+    void clipboardGetCapturePaused().then(setClipboardCapturePaused);
     void pluginsList().then(setPlugins);
     void tasbihGet().then((ts) => ts && setTasbih(ts));
     void ledgerGet().then((l) => l && setLedger(l));
@@ -893,6 +900,7 @@ export function IslandShell({
     let unlistenCalHubUpdated: (() => void) | undefined;
     let unlistenSysTelemetry: (() => void) | undefined;
     let unlistenClipHistory: (() => void) | undefined;
+    let unlistenClipPaused: (() => void) | undefined;
 
     const handleMediaSnapshot = (snapshot: MediaStateSnapshot | null) => {
       if (!snapshot) {
@@ -1109,6 +1117,11 @@ export function IslandShell({
     }).then((fn) => {
       unlistenClipHistory = fn;
     });
+    void subscribeClipboardPausedUpdated((paused) => {
+      setClipboardCapturePaused(paused);
+    }).then((fn) => {
+      unlistenClipPaused = fn;
+    });
 
     return () => {
       unlistenFs?.();
@@ -1127,6 +1140,7 @@ export function IslandShell({
       unlistenCalHubUpdated?.();
       unlistenSysTelemetry?.();
       unlistenClipHistory?.();
+      unlistenClipPaused?.();
     };
   }, [dispatch, mediaExclusions]);
 
@@ -2619,6 +2633,7 @@ export function IslandShell({
                           gpuHistory={gpuHistory}
                           netDownHistory={netDownHistory}
                           clipboardItems={clipboardHistory}
+                          clipboardCapturePaused={clipboardCapturePaused}
                           dragOverShelf={dragOverShelf}
                           isPinned={isPinned}
                           language={language}
@@ -2643,21 +2658,34 @@ export function IslandShell({
                             }
                           }}
                           onShelfAdd={(kind, val) => {
-                            void shelfAdd(kind, val).then((items) => {
+                            const normalized =
+                              kind === "file" || kind === "folder"
+                                ? val.trim()
+                                : val.trim().slice(0, 4096);
+                            if (!normalized) {
+                              return;
+                            }
+                            void shelfAdd(kind, normalized).then((items) => {
                               if (isTauriRuntime()) {
                                 setShelfItems(items);
                               } else {
-                                setShelfItems((prev) => [
-                                  {
-                                    id: Date.now(),
-                                    kind,
-                                    path_or_text: val,
-                                    display_name: val.slice(0, 40),
-                                    available: true,
-                                    added_at: new Date().toISOString(),
-                                  },
-                                  ...prev,
-                                ]);
+                                setShelfItems((prev) => {
+                                  const deduped = prev.filter(
+                                    (entry) =>
+                                      !(entry.kind === kind && entry.path_or_text === normalized),
+                                  );
+                                  return [
+                                    {
+                                      id: Date.now(),
+                                      kind,
+                                      path_or_text: normalized,
+                                      display_name: normalized.slice(0, 40),
+                                      available: true,
+                                      added_at: new Date().toISOString(),
+                                    },
+                                    ...deduped,
+                                  ].slice(0, SHELF_MAX_ITEMS);
+                                });
                               }
                             });
                           }}
@@ -2692,18 +2720,29 @@ export function IslandShell({
                               setClipboard(snap);
                             }
                           }}
-                          onToggleClipPin={(id) => {
-                            void clipboardHistoryTogglePin(id).then((items) => {
-                              if (isTauriRuntime()) {
-                                setClipboardHistory(items);
-                              } else {
-                                setClipboardHistory((prev) =>
-                                  prev.map((item) =>
-                                    item.id === id ? { ...item, pinned: !item.pinned } : item,
-                                  ),
-                                );
+                          onToggleClipPin={async (id) => {
+                            if (isTauriRuntime()) {
+                              const items = await clipboardHistoryTogglePin(id);
+                              setClipboardHistory(items);
+                            } else {
+                              const target = clipboardHistory.find((item) => item.id === id);
+                              const pinnedCount = clipboardHistory.filter(
+                                (item) => item.pinned,
+                              ).length;
+                              if (target && !target.pinned && pinnedCount >= CLIPBOARD_MAX_PINNED) {
+                                throw new Error("Maximum 10 pinned clipboard items allowed");
                               }
-                            });
+                              setClipboardHistory((prev) =>
+                                prev.map((item) =>
+                                  item.id === id ? { ...item, pinned: !item.pinned } : item,
+                                ),
+                              );
+                            }
+                          }}
+                          onToggleClipCapturePaused={() => {
+                            const next = !clipboardCapturePaused;
+                            setClipboardCapturePaused(next);
+                            void clipboardSetCapturePaused(next);
                           }}
                           onDeleteClip={(id) => {
                             void clipboardHistoryDelete(id).then((items) => {

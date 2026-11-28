@@ -930,6 +930,7 @@ function buildSystemShelfStates(): Array<{
     gpuHistory: [12, 16, 18, 24, 30, 27, 25, 28.5],
     netDownHistory: [4_000_000, 7_200_000, 11_000_000, 9_500_000, 14_800_000],
     clipboardItems: sampleClipboard,
+    clipboardCapturePaused: false,
     dragOverShelf: false,
     isPinned: false,
     language: "en",
@@ -949,6 +950,7 @@ function buildSystemShelfStates(): Array<{
     onToggleClipPin: () => {},
     onDeleteClip: () => {},
     onClearClipboard: () => {},
+    onToggleClipCapturePaused: () => {},
   };
 
   return [
@@ -1001,6 +1003,7 @@ function buildSystemShelfStates(): Array<{
             sensitive: true,
             pinned: false,
             copiedAt: "2026-11-28T10:24:45Z",
+            expiresInSecs: 24,
           },
           ...sampleClipboard,
         ],
@@ -1051,6 +1054,98 @@ function buildSystemShelfStates(): Array<{
       scale: 1.5,
       props: baseProps,
     },
+    {
+      id: "overflow-lists",
+      label: "9. Scrollable Lists (5+ Items) + Paused Capture",
+      props: {
+        ...baseProps,
+        clipboardCapturePaused: true,
+        shelfItems: [
+          ...sampleShelf,
+          {
+            id: 4,
+            kind: "file",
+            path_or_text: "C:/Users/Lumen/Notes/roadmap.md",
+            display_name: "roadmap.md",
+            available: true,
+            added_at: "2026-11-28T08:15:00Z",
+          },
+          {
+            id: 5,
+            kind: "text",
+            path_or_text: "Verify Win32 PDH query cleanup before release tag",
+            display_name: "Verify Win32 PDH query cleanup before",
+            available: true,
+            added_at: "2026-11-28T07:55:00Z",
+          },
+          {
+            id: 6,
+            kind: "link",
+            path_or_text: "https://docs.rs/rusqlite/latest/rusqlite/",
+            display_name: "docs.rs/rusqlite/latest/rusqlite/",
+            available: true,
+            added_at: "2026-11-28T07:30:00Z",
+          },
+          {
+            id: 7,
+            kind: "file",
+            path_or_text: "C:/Users/Lumen/Designs/notch-grid.fig",
+            display_name: "notch-grid.fig",
+            available: true,
+            added_at: "2026-11-28T07:10:00Z",
+          },
+        ],
+        clipboardItems: [
+          {
+            id: 301,
+            kind: "secret",
+            preview: "OTP 482 •••",
+            rawHash: "hash-301",
+            sensitive: true,
+            pinned: false,
+            copiedAt: "2026-11-28T10:24:50Z",
+            expiresInSecs: 18,
+          },
+          ...sampleClipboard,
+          {
+            id: 104,
+            kind: "text",
+            preview: "Max 30 recent unpinned + 10 pinned slots",
+            rawHash: "hash-104",
+            sensitive: false,
+            pinned: true,
+            copiedAt: "2026-11-28T09:42:00Z",
+          },
+          {
+            id: 105,
+            kind: "link",
+            preview: "https://motion.dev/docs/react-animation",
+            rawHash: "hash-105",
+            sensitive: false,
+            pinned: false,
+            copiedAt: "2026-11-28T09:18:00Z",
+          },
+          {
+            id: 106,
+            kind: "code",
+            preview: "pnpm lint && pnpm typecheck && pnpm test",
+            rawHash: "hash-106",
+            sensitive: false,
+            pinned: false,
+            copiedAt: "2026-11-28T08:50:00Z",
+          },
+          {
+            id: 107,
+            kind: "text",
+            preview: "Ask before running DB migrations on prod",
+            rawHash: "hash-107",
+            sensitive: false,
+            pinned: false,
+            copiedAt: "2026-11-28T08:10:00Z",
+          },
+        ],
+      },
+    },
   ];
 }
 
@@ -1093,7 +1188,7 @@ export function DevStatesPage() {
                     : "bg-white/10 text-white/75"
                 }`}
               >
-                System &amp; Shelf (8 States)
+                System &amp; Shelf (9 States)
               </button>
               <button
                 type="button"

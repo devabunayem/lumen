@@ -16,6 +16,7 @@ export interface SystemShelfPageProps {
   gpuHistory: number[];
   netDownHistory: number[];
   clipboardItems: ClipboardHistoryItem[];
+  clipboardCapturePaused?: boolean;
   dragOverShelf?: boolean;
   isPinned?: boolean;
   language: AppLanguage;
@@ -32,9 +33,10 @@ export interface SystemShelfPageProps {
   onShelfRemove: (id: number) => void;
   onShelfClear: () => void;
   onCopyClip: (id: number) => Promise<void> | void;
-  onToggleClipPin: (id: number) => void;
+  onToggleClipPin: (id: number) => Promise<void> | void;
   onDeleteClip: (id: number) => void;
   onClearClipboard: () => void;
+  onToggleClipCapturePaused?: () => void;
 }
 
 export function SystemShelfPage({
@@ -46,6 +48,7 @@ export function SystemShelfPage({
   gpuHistory,
   netDownHistory,
   clipboardItems,
+  clipboardCapturePaused = false,
   dragOverShelf = false,
   isPinned = false,
   language,
@@ -65,6 +68,7 @@ export function SystemShelfPage({
   onToggleClipPin,
   onDeleteClip,
   onClearClipboard,
+  onToggleClipCapturePaused,
 }: SystemShelfPageProps) {
   const msg = getMessages(language);
   const sMsg = msg.systemShelf;
@@ -210,6 +214,7 @@ export function SystemShelfPage({
 
           <ClipboardCard
             items={clipboardItems}
+            capturePaused={clipboardCapturePaused}
             nowDate={nowDate}
             language={language}
             banglaDigits={banglaDigits}
@@ -218,6 +223,7 @@ export function SystemShelfPage({
             onTogglePin={onToggleClipPin}
             onDeleteItem={onDeleteClip}
             onClearHistory={onClearClipboard}
+            onToggleCapturePaused={onToggleClipCapturePaused}
           />
         </div>
       </div>

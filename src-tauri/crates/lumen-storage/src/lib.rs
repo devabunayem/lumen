@@ -233,6 +233,12 @@ pub struct ShelfItem {
     pub added_at: String,
 }
 
+pub const SHELF_MAX_ITEMS: usize = 50;
+pub const SHELF_MAX_TEXT_CHARS: usize = 4096;
+pub const CLIPBOARD_MAX_UNPINNED: usize = 30;
+pub const CLIPBOARD_MAX_PINNED: usize = 10;
+pub const CLIPBOARD_MAX_CONTENT_BYTES: usize = 256 * 1024;
+
 /// Locally persisted non-sensitive clipboard history item for System & Shelf (`Page 3`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -244,6 +250,8 @@ pub struct ClipboardHistoryItem {
     pub pinned: bool,
     pub sensitive: bool,
     pub copied_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_in_secs: Option<u8>,
 }
 
 /// Thread-safe SQLite repository backing Lumen's local-first storage.
@@ -882,13 +890,24 @@ impl StorageRepo {
         if trimmed.is_empty() {
             return Err("shelf item cannot be empty".into());
         }
-        let max_items = cap.max(1) as i64;
+        let normalized: String = if kind == "file" || kind == "folder" {
+            trimmed.to_string()
+        } else {
+            trimmed.chars().take(SHELF_MAX_TEXT_CHARS).collect()
+        };
+        let max_items = cap.clamp(1, SHELF_MAX_ITEMS.max(1)) as i64;
         let now = Utc::now().to_rfc3339();
         {
             let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            // Promote duplicate items to the top rather than consuming another slot.
+            conn.execute(
+                "DELETE FROM shelf_items WHERE kind = ?1 AND path_or_text = ?2",
+                params![kind, normalized],
+            )
+            .map_err(|e| format!("dedupe shelf failed: {e}"))?;
             conn.execute(
                 "INSERT INTO shelf_items (kind, path_or_text, added_at) VALUES (?1, ?2, ?3)",
-                params![kind, trimmed, now],
+                params![kind, normalized, now],
             )
             .map_err(|e| format!("insert shelf failed: {e}"))?;
             conn.execute(
@@ -920,9 +939,10 @@ impl StorageRepo {
 
     pub fn list_clipboard_history(
         &self,
-        limit: usize,
+        unpinned_limit: usize,
     ) -> Result<Vec<ClipboardHistoryItem>, String> {
-        let cap = limit.clamp(1, 100) as i64;
+        let unpinned_cap = unpinned_limit.clamp(1, 100);
+        let query_cap = (CLIPBOARD_MAX_PINNED + unpinned_cap) as i64;
         let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
         let mut stmt = conn
             .prepare(
@@ -933,7 +953,7 @@ impl StorageRepo {
             )
             .map_err(|e| format!("prepare clipboard history failed: {e}"))?;
         let rows = stmt
-            .query_map(params![cap], |row| {
+            .query_map(params![query_cap], |row| {
                 Ok(ClipboardHistoryItem {
                     id: row.get(0)?,
                     preview: row.get(1)?,
@@ -942,6 +962,7 @@ impl StorageRepo {
                     pinned: row.get::<_, i64>(4)? != 0,
                     sensitive: false,
                     copied_at: row.get(5)?,
+                    expires_in_secs: None,
                 })
             })
             .map_err(|e| format!("query clipboard history failed: {e}"))?;
@@ -958,13 +979,16 @@ impl StorageRepo {
         preview: &str,
         kind: &str,
         raw_hash: &str,
-        cap: usize,
+        unpinned_cap: usize,
     ) -> Result<Vec<ClipboardHistoryItem>, String> {
         let trimmed = content.trim();
-        if trimmed.is_empty() || raw_hash.trim().is_empty() {
-            return self.list_clipboard_history(cap);
+        if trimmed.is_empty()
+            || raw_hash.trim().is_empty()
+            || content.len() > CLIPBOARD_MAX_CONTENT_BYTES
+        {
+            return self.list_clipboard_history(unpinned_cap);
         }
-        let max_items = cap.clamp(1, 100) as i64;
+        let max_unpinned = unpinned_cap.clamp(1, 100) as i64;
         let now = Utc::now().to_rfc3339();
         {
             let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
@@ -979,31 +1003,55 @@ impl StorageRepo {
                 params![content, preview, kind, raw_hash, now],
             )
             .map_err(|e| format!("upsert clipboard history failed: {e}"))?;
+            // Enforce unpinned cap independently so pinned items never starve recent history.
             conn.execute(
                 "DELETE FROM clipboard_history
                  WHERE pinned = 0
                    AND id NOT IN (
                        SELECT id FROM clipboard_history
-                       ORDER BY pinned DESC, copied_at DESC, id DESC
+                       WHERE pinned = 0
+                       ORDER BY copied_at DESC, id DESC
                        LIMIT ?1
                    )",
-                params![max_items],
+                params![max_unpinned],
             )
             .map_err(|e| format!("enforce clipboard history cap failed: {e}"))?;
         }
-        self.list_clipboard_history(cap)
+        self.list_clipboard_history(unpinned_cap)
     }
 
     pub fn toggle_pin_clipboard_entry(&self, id: i64) -> Result<Vec<ClipboardHistoryItem>, String> {
         {
             let conn = self.conn.lock().map_err(|_| "storage lock poisoned")?;
+            let current_pinned: Option<i64> = conn
+                .query_row(
+                    "SELECT pinned FROM clipboard_history WHERE id = ?1",
+                    params![id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| format!("read clipboard pin state failed: {e}"))?;
+            if let Some(0) = current_pinned {
+                let pinned_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM clipboard_history WHERE pinned = 1",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| format!("count pinned clipboard entries failed: {e}"))?;
+                if pinned_count >= CLIPBOARD_MAX_PINNED as i64 {
+                    return Err(format!(
+                        "Maximum {CLIPBOARD_MAX_PINNED} pinned clipboard items allowed"
+                    ));
+                }
+            }
             conn.execute(
                 "UPDATE clipboard_history SET pinned = CASE WHEN pinned = 0 THEN 1 ELSE 0 END WHERE id = ?1",
                 params![id],
             )
             .map_err(|e| format!("toggle clipboard pin failed: {e}"))?;
         }
-        self.list_clipboard_history(30)
+        self.list_clipboard_history(CLIPBOARD_MAX_UNPINNED)
     }
 
     pub fn delete_clipboard_entry(&self, id: i64) -> Result<Vec<ClipboardHistoryItem>, String> {
@@ -1012,7 +1060,7 @@ impl StorageRepo {
             conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id])
                 .map_err(|e| format!("delete clipboard entry failed: {e}"))?;
         }
-        self.list_clipboard_history(30)
+        self.list_clipboard_history(CLIPBOARD_MAX_UNPINNED)
     }
 
     pub fn clear_clipboard_history(
@@ -1028,7 +1076,7 @@ impl StorageRepo {
             }
             .map_err(|e| format!("clear clipboard history failed: {e}"))?;
         }
-        self.list_clipboard_history(30)
+        self.list_clipboard_history(CLIPBOARD_MAX_UNPINNED)
     }
 
     pub fn get_clipboard_entry_content(&self, id: i64) -> Result<Option<String>, String> {
@@ -1803,9 +1851,28 @@ mod tests {
         let after_cap = repo
             .record_clipboard_entry("const x = 1;", "const x = 1;", "code", "h3", 2)
             .expect("rec3");
-        assert_eq!(after_cap.len(), 2);
-        // Pinned entry stays protected despite cap.
+        // 1 pinned + 2 unpinned = 3 items (pins never starve unpinned slots)
+        assert_eq!(after_cap.len(), 3);
         assert!(after_cap.iter().any(|item| item.raw_hash == "h1"));
+        assert!(after_cap.iter().any(|item| item.raw_hash == "h2"));
+        assert!(after_cap.iter().any(|item| item.raw_hash == "h3"));
+
+        // 4th unpinned entry evicts oldest unpinned (h2), keeping h1 (pinned) + h3 + h4
+        let after_evict = repo
+            .record_clipboard_entry("entry 4", "entry 4", "text", "h4", 2)
+            .expect("rec4");
+        assert_eq!(after_evict.len(), 3);
+        assert!(after_evict.iter().any(|item| item.raw_hash == "h1"));
+        assert!(!after_evict.iter().any(|item| item.raw_hash == "h2"));
+
+        // Oversized (>256 KB) entries are ignored without modifying stored history
+        let oversized = "x".repeat(CLIPBOARD_MAX_CONTENT_BYTES + 16);
+        let after_big = repo
+            .record_clipboard_entry(&oversized, "oversized", "text", "h_big", 2)
+            .expect("ignore oversized");
+        assert_eq!(after_big.len(), 3);
+        assert!(!after_big.iter().any(|item| item.raw_hash == "h_big"));
+
         assert_eq!(
             repo.get_clipboard_entry_content(id1).expect("get content"),
             Some("https://lumen.dev".into())
@@ -1814,5 +1881,38 @@ mod tests {
         let cleared = repo.clear_clipboard_history(true).expect("clear unpinned");
         assert_eq!(cleared.len(), 1);
         assert_eq!(cleared[0].raw_hash, "h1");
+    }
+
+    #[test]
+    fn dedupes_shelf_items_and_enforces_pin_limit() {
+        let repo = StorageRepo::open_in_memory().expect("db");
+        repo.add_shelf_item("link", "https://one.dev", 3)
+            .expect("s1");
+        repo.add_shelf_item("link", "https://two.dev", 3)
+            .expect("s2");
+        let list = repo
+            .add_shelf_item("link", "https://one.dev", 3)
+            .expect("dedupe s1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].path_or_text, "https://one.dev");
+
+        // Pin limit of CLIPBOARD_MAX_PINNED (10)
+        for idx in 0..=CLIPBOARD_MAX_PINNED {
+            let hash = format!("pin-{idx}");
+            let rows = repo
+                .record_clipboard_entry(&hash, &hash, "text", &hash, 30)
+                .expect("seed");
+            let entry_id = rows
+                .iter()
+                .find(|r| r.raw_hash == hash)
+                .expect("inserted")
+                .id;
+            let res = repo.toggle_pin_clipboard_entry(entry_id);
+            if idx < CLIPBOARD_MAX_PINNED {
+                assert!(res.is_ok());
+            } else {
+                assert!(res.is_err());
+            }
+        }
     }
 }

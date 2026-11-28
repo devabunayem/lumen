@@ -30,7 +30,8 @@ use lumen_storage::calendar_hub::{
     SyncedEventInput,
 };
 use lumen_storage::{
-    ClipboardHistoryItem, ShelfItem, StorageRepo, TasbihState, TimeLedgerState, WaterSummary,
+    CLIPBOARD_MAX_CONTENT_BYTES, CLIPBOARD_MAX_UNPINNED, ClipboardHistoryItem, SHELF_MAX_ITEMS,
+    ShelfItem, StorageRepo, TasbihState, TimeLedgerState, WaterSummary,
 };
 use lumen_sync::google::connect_google_pkce;
 use lumen_sync::keyring_store::{delete_tokens, save_tokens};
@@ -119,7 +120,8 @@ struct AppState {
     home_visible: Arc<AtomicBool>,
     system_shelf_visible: Arc<AtomicBool>,
     telemetry_sampler: Arc<Mutex<SystemTelemetrySampler>>,
-    clipboard_secret: Arc<Mutex<Option<(String, Instant)>>>,
+    clipboard_secret: Arc<Mutex<Option<(String, Instant, String)>>>,
+    clipboard_capture_paused: Arc<AtomicBool>,
     is_fullscreen: Arc<AtomicBool>,
     silent_mode: Arc<AtomicBool>,
     focus_managed_silent: Arc<AtomicBool>,
@@ -749,7 +751,9 @@ fn shelf_add(
     path_or_text: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ShelfItem>, String> {
-    state.storage.add_shelf_item(&kind, &path_or_text, 50)
+    state
+        .storage
+        .add_shelf_item(&kind, &path_or_text, SHELF_MAX_ITEMS)
 }
 
 #[tauri::command]
@@ -773,7 +777,7 @@ async fn shelf_pick_files(state: State<'_, AppState>) -> Result<Vec<ShelfItem>, 
         .await
         .map_err(|e| format!("shelf file picker join error: {e}"))??;
     for path in paths {
-        let _ = state.storage.add_shelf_item("file", &path, 50);
+        let _ = state.storage.add_shelf_item("file", &path, SHELF_MAX_ITEMS);
     }
     state.storage.list_shelf()
 }
@@ -1036,7 +1040,9 @@ async fn system_capture_screenshot(
         let _ = win.show();
     }
     let saved = saved_res?;
-    let _ = state.storage.add_shelf_item("file", &saved, 50);
+    let _ = state
+        .storage
+        .add_shelf_item("file", &saved, SHELF_MAX_ITEMS);
     Ok(saved)
 }
 
@@ -1992,14 +1998,19 @@ fn clipboard_get_latest(state: State<'_, AppState>) -> Result<ClipboardChipSnaps
     let snap = classify_and_mask_clipboard(&raw);
     if snap.has_content {
         if snap.sensitive
+            && !state.clipboard_capture_paused.load(Ordering::Relaxed)
             && let Ok(mut guard) = state.clipboard_secret.lock()
         {
-            *guard = Some((raw, Instant::now()));
+            match *guard {
+                Some((ref prev, _, _)) if prev == &raw => {}
+                _ => *guard = Some((raw, Instant::now(), Utc::now().to_rfc3339())),
+            }
         }
         return Ok(snap);
     }
     if let Ok(guard) = state.clipboard_secret.lock()
-        && let Some((ref stored, _)) = *guard
+        && let Some((ref stored, started, _)) = *guard
+        && started.elapsed() < Duration::from_secs(30)
     {
         return Ok(classify_and_mask_clipboard(stored));
     }
@@ -2016,15 +2027,16 @@ fn clipboard_copy_latest(state: State<'_, AppState>) -> Result<ClipboardChipSnap
         if snap.sensitive
             && let Ok(mut guard) = state.clipboard_secret.lock()
         {
-            *guard = Some((raw, Instant::now()));
+            *guard = Some((raw, Instant::now(), Utc::now().to_rfc3339()));
         }
         return Ok(snap);
     }
     if let Ok(mut guard) = state.clipboard_secret.lock()
-        && let Some((ref stored, ref mut ts)) = *guard
+        && let Some((ref stored, ref mut ts, ref mut copied_at)) = *guard
     {
         write_clipboard_text(stored)?;
         *ts = Instant::now();
+        *copied_at = Utc::now().to_rfc3339();
         return Ok(classify_and_mask_clipboard(stored));
     }
     Err("clipboard empty".into())
@@ -2032,15 +2044,16 @@ fn clipboard_copy_latest(state: State<'_, AppState>) -> Result<ClipboardChipSnap
 
 fn assemble_clipboard_history_list(
     storage: &StorageRepo,
-    secret_guard: &Mutex<Option<(String, Instant)>>,
+    secret_guard: &Mutex<Option<(String, Instant, String)>>,
 ) -> Result<Vec<ClipboardHistoryItem>, String> {
-    let mut items = storage.list_clipboard_history(30)?;
+    let mut items = storage.list_clipboard_history(CLIPBOARD_MAX_UNPINNED)?;
     if let Ok(guard) = secret_guard.lock()
-        && let Some((ref secret_raw, started)) = *guard
+        && let Some((ref secret_raw, started, ref copied_at)) = *guard
         && started.elapsed() < Duration::from_secs(30)
     {
         let masked = classify_and_mask_clipboard(secret_raw);
         if masked.has_content && masked.sensitive {
+            let remaining = 30u64.saturating_sub(started.elapsed().as_secs()).max(1) as u8;
             items.insert(
                 0,
                 ClipboardHistoryItem {
@@ -2050,7 +2063,8 @@ fn assemble_clipboard_history_list(
                     raw_hash: masked.raw_hash,
                     pinned: false,
                     sensitive: true,
-                    copied_at: Utc::now().to_rfc3339(),
+                    copied_at: copied_at.clone(),
+                    expires_in_secs: Some(remaining),
                 },
             );
         }
@@ -2064,6 +2078,24 @@ fn clipboard_history_list(state: State<'_, AppState>) -> Result<Vec<ClipboardHis
 }
 
 #[tauri::command]
+fn clipboard_get_capture_paused(state: State<'_, AppState>) -> bool {
+    state.clipboard_capture_paused.load(Ordering::Relaxed)
+}
+
+#[tauri::command]
+fn clipboard_set_capture_paused(
+    paused: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> bool {
+    state
+        .clipboard_capture_paused
+        .store(paused, Ordering::Relaxed);
+    let _ = app.emit("lumen://clipboard-paused-updated", paused);
+    paused
+}
+
+#[tauri::command]
 fn clipboard_history_copy(
     id: i64,
     app: tauri::AppHandle,
@@ -2074,10 +2106,11 @@ fn clipboard_history_copy(
             .clipboard_secret
             .lock()
             .map_err(|_| "clipboard secret mutex poisoned".to_string())?;
-        let Some((ref mut stored, ref mut ts)) = *guard else {
+        let Some((ref mut stored, ref mut ts, ref mut copied_at)) = *guard else {
             return Err("secret clipboard entry expired".into());
         };
         *ts = Instant::now();
+        *copied_at = Utc::now().to_rfc3339();
         stored.clone()
     } else {
         state
@@ -2089,12 +2122,19 @@ fn clipboard_history_copy(
     write_clipboard_text(&raw)?;
     let snap = classify_and_mask_clipboard(&raw);
     let _ = app.emit("lumen://clipboard-updated", &snap);
-    if !snap.sensitive {
+    if !snap.sensitive
+        && !state.clipboard_capture_paused.load(Ordering::Relaxed)
+        && raw.len() <= CLIPBOARD_MAX_CONTENT_BYTES
+    {
         let kind = classify_clipboard_kind(&raw, false);
         let preview = clipboard_preview_text(&raw, 96);
-        let _ = state
-            .storage
-            .record_clipboard_entry(&raw, &preview, kind, &snap.raw_hash, 30);
+        let _ = state.storage.record_clipboard_entry(
+            &raw,
+            &preview,
+            kind,
+            &snap.raw_hash,
+            CLIPBOARD_MAX_UNPINNED,
+        );
     }
     if let Ok(list) = assemble_clipboard_history_list(&state.storage, &state.clipboard_secret) {
         let _ = app.emit("lumen://clipboard-history-updated", &list);
@@ -2125,7 +2165,7 @@ fn clipboard_history_delete(
 ) -> Result<Vec<ClipboardHistoryItem>, String> {
     if id < 0 {
         if let Ok(mut guard) = state.clipboard_secret.lock()
-            && let Some((secret, _)) = guard.take()
+            && let Some((secret, _, _)) = guard.take()
         {
             let _ = clear_clipboard_if_matching(&secret);
             let _ = app.emit(
@@ -2153,7 +2193,7 @@ fn clipboard_history_clear(
     state: State<'_, AppState>,
 ) -> Result<Vec<ClipboardHistoryItem>, String> {
     if let Ok(mut guard) = state.clipboard_secret.lock()
-        && let Some((secret, _)) = guard.take()
+        && let Some((secret, _, _)) = guard.take()
     {
         let _ = clear_clipboard_if_matching(&secret);
     }
@@ -2268,8 +2308,9 @@ pub fn run() {
             let home_visible = Arc::new(AtomicBool::new(false));
             let system_shelf_visible = Arc::new(AtomicBool::new(false));
             let telemetry_sampler = Arc::new(Mutex::new(SystemTelemetrySampler::new()));
-            let clipboard_secret: Arc<Mutex<Option<(String, Instant)>>> =
+            let clipboard_secret: Arc<Mutex<Option<(String, Instant, String)>>> =
                 Arc::new(Mutex::new(None));
+            let clipboard_capture_paused = Arc::new(AtomicBool::new(false));
             let is_fullscreen = Arc::new(AtomicBool::new(false));
             let silent_mode = Arc::new(AtomicBool::new(false));
             let focus_managed_silent = Arc::new(AtomicBool::new(false));
@@ -2314,6 +2355,7 @@ pub fn run() {
                 system_shelf_visible: Arc::clone(&system_shelf_visible),
                 telemetry_sampler: Arc::clone(&telemetry_sampler),
                 clipboard_secret: Arc::clone(&clipboard_secret),
+                clipboard_capture_paused: Arc::clone(&clipboard_capture_paused),
                 is_fullscreen: Arc::clone(&is_fullscreen),
                 silent_mode: Arc::clone(&silent_mode),
                 focus_managed_silent: Arc::clone(&focus_managed_silent),
@@ -2455,6 +2497,7 @@ pub fn run() {
             let fs_telemetry = Arc::clone(&telemetry_sampler);
             let fs_storage = Arc::clone(&storage);
             let fs_clip_secret = Arc::clone(&clipboard_secret);
+            let fs_clip_paused = Arc::clone(&clipboard_capture_paused);
             tauri::async_runtime::spawn(async move {
                 let mut last_fullscreen = false;
                 let mut last_caps = is_caps_lock_on();
@@ -2545,39 +2588,52 @@ pub fn run() {
 
                     // Clipboard OTP check every 1s & 30s privacy auto-clear + local history capture
                     if tick_count.is_multiple_of(2) && !fullscreen {
-                        let raw = read_clipboard_text().unwrap_or_default();
-                        let snap = classify_and_mask_clipboard(&raw);
-                        if snap.sensitive
-                            && snap.has_content
-                            && let Ok(mut guard) = fs_clip_secret.lock()
-                        {
-                            match *guard {
-                                Some((ref prev_secret, _)) if prev_secret == &raw => {}
-                                _ => *guard = Some((raw.clone(), Instant::now())),
-                            }
-                        }
-                        if snap.raw_hash != last_clip_hash {
-                            last_clip_hash = snap.raw_hash.clone();
-                            let _ = fs_window.emit("lumen://clipboard-updated", &snap);
-                            if snap.has_content && !snap.sensitive {
-                                let kind = classify_clipboard_kind(&raw, false);
-                                let preview = clipboard_preview_text(&raw, 96);
-                                let _ = fs_storage.record_clipboard_entry(
-                                    &raw,
-                                    &preview,
-                                    kind,
-                                    &snap.raw_hash,
-                                    30,
-                                );
-                            }
-                            if let Ok(list) =
-                                assemble_clipboard_history_list(&fs_storage, &fs_clip_secret)
+                        let capture_paused = fs_clip_paused.load(Ordering::Relaxed);
+                        if !capture_paused {
+                            let raw = read_clipboard_text().unwrap_or_default();
+                            let snap = classify_and_mask_clipboard(&raw);
+                            if snap.sensitive
+                                && snap.has_content
+                                && let Ok(mut guard) = fs_clip_secret.lock()
                             {
-                                let _ = fs_window.emit("lumen://clipboard-history-updated", &list);
+                                match *guard {
+                                    Some((ref prev_secret, _, _)) if prev_secret == &raw => {}
+                                    _ => {
+                                        *guard = Some((
+                                            raw.clone(),
+                                            Instant::now(),
+                                            Utc::now().to_rfc3339(),
+                                        ));
+                                    }
+                                }
+                            }
+                            if snap.raw_hash != last_clip_hash {
+                                last_clip_hash = snap.raw_hash.clone();
+                                let _ = fs_window.emit("lumen://clipboard-updated", &snap);
+                                if snap.has_content
+                                    && !snap.sensitive
+                                    && raw.len() <= CLIPBOARD_MAX_CONTENT_BYTES
+                                {
+                                    let kind = classify_clipboard_kind(&raw, false);
+                                    let preview = clipboard_preview_text(&raw, 96);
+                                    let _ = fs_storage.record_clipboard_entry(
+                                        &raw,
+                                        &preview,
+                                        kind,
+                                        &snap.raw_hash,
+                                        CLIPBOARD_MAX_UNPINNED,
+                                    );
+                                }
+                                if let Ok(list) =
+                                    assemble_clipboard_history_list(&fs_storage, &fs_clip_secret)
+                                {
+                                    let _ =
+                                        fs_window.emit("lumen://clipboard-history-updated", &list);
+                                }
                             }
                         }
                         let expired_secret = if let Ok(mut guard) = fs_clip_secret.lock() {
-                            if let Some((ref secret, started)) = *guard
+                            if let Some((ref secret, started, _)) = *guard
                                 && started.elapsed() >= Duration::from_secs(30)
                             {
                                 let owned = secret.clone();
@@ -2589,9 +2645,8 @@ pub fn run() {
                         } else {
                             None
                         };
-                        if let Some(secret) = expired_secret
-                            && clear_clipboard_if_matching(&secret)
-                        {
+                        if let Some(secret) = expired_secret {
+                            let _ = clear_clipboard_if_matching(&secret);
                             last_clip_hash.clear();
                             let _ = fs_window.emit(
                                 "lumen://clipboard-updated",
@@ -2607,6 +2662,13 @@ pub fn run() {
                             {
                                 let _ = fs_window.emit("lumen://clipboard-history-updated", &list);
                             }
+                        } else if fs_shelf_visible.load(Ordering::Relaxed)
+                            && fs_clip_secret.lock().map(|g| g.is_some()).unwrap_or(false)
+                            && let Ok(list) =
+                                assemble_clipboard_history_list(&fs_storage, &fs_clip_secret)
+                        {
+                            // Refresh active secret remaining TTL (30..1s) while Page 3 is open.
+                            let _ = fs_window.emit("lumen://clipboard-history-updated", &list);
                         }
 
                         // Real-time CPU/GPU/Network telemetry every 1s ONLY when Page 3 (System & Shelf) is visible
@@ -3012,6 +3074,8 @@ pub fn run() {
             clipboard_get_latest,
             clipboard_copy_latest,
             clipboard_history_list,
+            clipboard_get_capture_paused,
+            clipboard_set_capture_paused,
             clipboard_history_copy,
             clipboard_history_toggle_pin,
             clipboard_history_delete,

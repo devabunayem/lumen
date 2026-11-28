@@ -228,7 +228,9 @@
       "kindNote": "Note",
       "missingFile": "Missing file",
       "copyPath": "Copy path",
-      "remove": "Remove"
+      "remove": "Remove",
+      "capTooltip": "Saved {{count}} of {{max}} max · oldest replaced beyond limit",
+      "scrollMore": "Scroll for more"
     },
     "telemetry": {
       "title": "System",
@@ -251,7 +253,13 @@
       "unpin": "Unpin clip",
       "deleteItem": "Delete clip",
       "secretTag": "secret",
-      "secretHint": "Masked for privacy · auto-clears in 30s"
+      "secretHint": "Masked for privacy · auto-clears in 30s",
+      "pauseCapture": "Pause clipboard capture",
+      "resumeCapture": "Resume clipboard capture",
+      "pausedBanner": "Capture paused",
+      "pinLimitReached": "Max 10 pinned items reached",
+      "capTooltip": "{{unpinned}} of {{max}} unpinned · {{pinned}}/10 pinned · 30s live secrets",
+      "scrollMore": "Scroll for more"
     }
   }
 }

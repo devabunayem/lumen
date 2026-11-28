@@ -109,6 +109,8 @@
   --sys-track-bg: rgba(255, 255, 255, 0.1);
   --sys-subcard-bg: rgba(255, 255, 255, 0.04);
   --sys-subcard-border: rgba(255, 255, 255, 0.08);
+  --sys-scroll-thumb: rgba(255, 255, 255, 0.22);
+  --sys-scroll-thumb-hover: rgba(255, 255, 255, 0.38);
 
   --lumi-body-top: #fff8cf;
   --lumi-body-mid: #ffe083;
@@ -480,4 +482,31 @@ a:focus-visible,
 [data-reduce-motion="true"] .lumen-water-bubble-2,
 [data-reduce-motion="true"] .lumen-today-ring-pulse {
   animation: none;
+}
+
+.sys-scroll-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sys-scroll-thumb) transparent;
+}
+
+.sys-scroll-list::-webkit-scrollbar {
+  display: block;
+  width: 3px;
+}
+
+.sys-scroll-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sys-scroll-list::-webkit-scrollbar-thumb {
+  background-color: var(--sys-scroll-thumb);
+  border-radius: 999px;
+}
+
+.sys-scroll-list:hover::-webkit-scrollbar-thumb {
+  background-color: var(--sys-scroll-thumb-hover);
+}
+
+.sys-scroll-fade {
+  background: linear-gradient(to top, var(--surface) 18%, transparent);
 }

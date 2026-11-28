@@ -1528,6 +1528,10 @@ export interface SystemTelemetrySnapshot {
   netInterfaceName: string | null;
 }
 
+export const SHELF_MAX_ITEMS = 50;
+export const CLIPBOARD_MAX_UNPINNED = 30;
+export const CLIPBOARD_MAX_PINNED = 10;
+
 export interface ClipboardHistoryItem {
   id: number;
   preview: string;
@@ -1536,6 +1540,7 @@ export interface ClipboardHistoryItem {
   pinned: boolean;
   sensitive: boolean;
   copiedAt: string;
+  expiresInSecs?: number;
 }
 
 export async function systemShelfSetVisible(visible: boolean): Promise<void> {
@@ -1587,6 +1592,25 @@ export async function subscribeClipboardHistoryUpdated(
 ): Promise<UnlistenFn> {
   if (!isTauriRuntime()) return () => {};
   return listen<ClipboardHistoryItem[]>("lumen://clipboard-history-updated", (event) => {
+    onUpdate(event.payload);
+  });
+}
+
+export async function clipboardGetCapturePaused(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  return invoke<boolean>("clipboard_get_capture_paused");
+}
+
+export async function clipboardSetCapturePaused(paused: boolean): Promise<boolean> {
+  if (!isTauriRuntime()) return paused;
+  return invoke<boolean>("clipboard_set_capture_paused", { paused });
+}
+
+export async function subscribeClipboardPausedUpdated(
+  onUpdate: (paused: boolean) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) return () => {};
+  return listen<boolean>("lumen://clipboard-paused-updated", (event) => {
     onUpdate(event.payload);
   });
 }
