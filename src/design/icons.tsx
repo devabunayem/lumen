@@ -523,3 +523,61 @@ export function CheckIcon({ size = 12, className }: IconProps) {
     </svg>
   );
 }
+
+/** Precision viewfinder crop frame with inner capture ring for Windows Snipping Tool. */
+export function SnippingToolIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8" />
+      <path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8" />
+      <path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16" />
+      <path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+/** Screen frame with solid center record indicator for Windows Screen Recording. */
+export function ScreenRecordIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <rect x="3" y="4.5" width="18" height="13" rx="3" />
+      <circle cx="12" cy="11" r="2.75" fill="currentColor" stroke="none" />
+      <path d="M8.5 20.5h7" />
+    </svg>
+  );
+}
+
+/** Stopwatch / Focus timer glyph with crown and sweep hand. */
+export function FocusTimerIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <path d="M10 2.5h4" />
+      <path d="M12 2.5v2" />
+      <circle cx="12" cy="13" r="7.5" />
+      <path d="M12 9.25V13l2.75 1.75" />
+    </svg>
+  );
+}
+
+/** Crisp video camera glyph for Camera on state. */
+export function VideoCamIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <rect x="2.5" y="6.5" width="13.5" height="11" rx="2.5" />
+      <path d="m16 10.2 5-2.7v9l-5-2.7" />
+    </svg>
+  );
+}
+
+/** Slashed video camera glyph for Camera off state. */
+export function VideoCamOffIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size)} className={className}>
+      <line x1="2" y1="2" x2="22" y2="22" />
+      <path d="M10.5 6.5h3a2.5 2.5 0 0 1 2.5 2.5v1.5" />
+      <path d="M16 16a2.5 2.5 0 0 1-2.5 1.5H5A2.5 2.5 0 0 1 2.5 15V9A2.5 2.5 0 0 1 5 6.5h1" />
+      <path d="m16 10.2 5-2.7v9l-2.8-1.5" />
+    </svg>
+  );
+}

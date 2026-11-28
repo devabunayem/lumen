@@ -69,14 +69,18 @@
   },
   "home": {
     "toggles": {
+      "screenshot": "Snipping Tool",
+      "record": "Screen recording",
+      "focus": "Focus timer",
+      "mic": "Microphone mute",
+      "camera": "Camera on/off",
+      "lock": "Lock PC",
+      "silent": "Silent mode",
       "wifi": "Wi-Fi",
       "bluetooth": "Bluetooth",
-      "focus": "Focus",
-      "mic": "Microphone mute",
       "keepAwake": "Keep awake",
-      "lock": "Lock PC",
       "settings": "Open settings",
-      "radioError": "Radio unavailable"
+      "radioError": "Action unavailable"
     },
     "arc": {
       "tasbih": "Tasbih",

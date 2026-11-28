@@ -93,13 +93,14 @@ import {
   syncPillBounds,
   systemBatteryStatus,
   systemGetMicMuted,
+  systemLaunchScreenRecording,
+  systemLaunchSnippingScreenshot,
   systemLockWorkstation,
   systemPrivacyIndicators,
   systemQuickTogglesState,
-  systemToggleBluetooth,
-  systemToggleKeepAwake,
+  systemToggleCamera,
   systemToggleMicMute,
-  systemToggleWifi,
+  systemToggleSilentMode,
   tasbihGet,
   tasbihIncrement,
   tasbihReset,
@@ -302,7 +303,7 @@ export function IslandShell({
   pageOrder = DEFAULT_SETTINGS.pageOrder,
   hiddenPages = DEFAULT_SETTINGS.hiddenPages,
   initialWaterGoalMl = 1500,
-  mediaExclusions = [],
+  mediaExclusions = DEFAULT_SETTINGS.mediaExclusions,
   waqtBedtimeHHMM = DEFAULT_SETTINGS.waqtBedtimeHHMM,
   waqtPrayerPauseMode = DEFAULT_SETTINGS.waqtPrayerPauseMode,
   waqtRamadanTaraweeh = DEFAULT_SETTINGS.waqtRamadanTaraweeh,
@@ -359,11 +360,10 @@ export function IslandShell({
   const [ledger, setLedger] = useState<TimeLedgerState | null>(null);
   const [clipboard, setClipboard] = useState<ClipboardChipSnapshot | null>(null);
   const [devPulse, setDevPulse] = useState<DevPulseSnapshot | null>(null);
-  const [wifiOn, setWifiOn] = useState<boolean | null>(true);
-  const [bluetoothOn, setBluetoothOn] = useState<boolean | null>(true);
   const [focusOn, setFocusOn] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
-  const [keepAwakeOn, setKeepAwakeOn] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [silentModeOn, setSilentModeOn] = useState(false);
   const [batteryState, setBatteryState] = useState<[number, boolean] | null>(null);
   const [isFirstOpenOfDay, setIsFirstOpenOfDay] = useState(false);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
@@ -400,12 +400,16 @@ export function IslandShell({
     seconds: nowPlayingBannerSeconds,
   });
   const notifyDurationRef = useRef(notificationDurationSeconds);
+  const silentModeRef = useRef(false);
+  useEffect(() => {
+    silentModeRef.current = silentModeOn;
+  }, [silentModeOn]);
 
   const lumiSilenceContext = useMemo(
     () => ({
       mascotEnabled,
       talkLess: lumiTalkLess,
-      soundsEnabled: lumiSoundsEnabled,
+      soundsEnabled: lumiSoundsEnabled && !silentModeOn,
       inCallOrMic: privacyDevices[1],
       isFullscreen: state === "hidden",
       focusActive: Boolean(focusOn || (pomodoro?.running && pomodoro.phase === "focus")),
@@ -426,6 +430,7 @@ export function IslandShell({
       mascotEnabled,
       lumiTalkLess,
       lumiSoundsEnabled,
+      silentModeOn,
       privacyDevices,
       state,
       focusOn,
@@ -879,11 +884,10 @@ export function IslandShell({
     void systemBatteryStatus().then((b) => b && setBatteryState(b));
     void systemQuickTogglesState().then((qt) => {
       if (qt) {
-        setWifiOn(qt.wifi);
-        setBluetoothOn(qt.bluetooth);
         setFocusOn(qt.focus);
         setMicMuted(qt.micMuted);
-        setKeepAwakeOn(qt.keepAwake);
+        setCameraEnabled(qt.cameraEnabled);
+        setSilentModeOn(qt.silentMode);
       }
     });
     void systemGetMicMuted().then((muted) => setMicMuted(muted));
@@ -1058,6 +1062,9 @@ export function IslandShell({
       unlistenHud = fn;
     });
     void subscribeNotificationPopup((popup) => {
+      if (silentModeRef.current) {
+        return;
+      }
       setActiveHud(null);
       setActiveNowPlaying(null);
       setActiveReminderAlert(null);
@@ -2049,11 +2056,10 @@ export function IslandShell({
                   clipboard={clipboard}
                   devPulse={devPulse}
                   toggles={{
-                    wifi: wifiOn,
-                    bluetooth: bluetoothOn,
-                    focus: focusOn,
+                    focus: Boolean(focusOn || (pomodoro?.running && pomodoro.phase === "focus")),
                     micMuted,
-                    keepAwake: keepAwakeOn,
+                    cameraEnabled,
+                    silentMode: silentModeOn,
                   }}
                   batteryPct={batteryState ? batteryState[0] : null}
                   isCharging={batteryState ? batteryState[1] : false}
@@ -2093,32 +2099,44 @@ export function IslandShell({
                       void openSettingsWindow();
                     }
                   }}
-                  onToggleWifi={async () => {
-                    const next = await systemToggleWifi();
-                    setWifiOn(next);
-                    return next;
+                  onLaunchScreenshot={() => {
+                    triggerLumiReaction("confirm", 1800);
+                    return systemLaunchSnippingScreenshot();
                   }}
-                  onToggleBluetooth={async () => {
-                    const next = await systemToggleBluetooth();
-                    setBluetoothOn(next);
-                    return next;
+                  onLaunchScreenRecord={() => {
+                    triggerLumiReaction("confirm", 1800);
+                    return systemLaunchScreenRecording();
                   }}
                   onToggleFocus={() => {
-                    setFocusOn((f) => !f);
-                    triggerLumiReaction("sleep", 2200);
-                    void pomodoroToggle().then((p) => p && setPomodoro(p));
+                    const currentlyFocused = Boolean(
+                      focusOn || (pomodoro?.running && pomodoro.phase === "focus"),
+                    );
+                    const nextFocus = !currentlyFocused;
+                    setFocusOn(nextFocus);
+                    triggerLumiReaction(nextFocus ? "sleep" : "celebrate", 2000);
+                    const shouldTogglePomodoro = Boolean(pomodoro?.running) !== nextFocus;
+                    if (shouldTogglePomodoro) {
+                      void pomodoroToggle().then((p) => p && setPomodoro(p));
+                    }
                   }}
                   onToggleMic={() => {
                     setMicMuted((m) => !m);
                     triggerLumiReaction("confirm", 1800);
                     void systemToggleMicMute().then((m) => setMicMuted(m));
                   }}
-                  onToggleKeepAwake={() => {
-                    setKeepAwakeOn((k) => !k);
+                  onToggleCamera={async () => {
+                    const next = await systemToggleCamera();
+                    setCameraEnabled(next);
                     triggerLumiReaction("confirm", 1800);
-                    void systemToggleKeepAwake().then((k) => setKeepAwakeOn(k));
+                    return next;
                   }}
                   onLockWorkstation={() => void systemLockWorkstation()}
+                  onToggleSilentMode={() => {
+                    const next = !silentModeOn;
+                    setSilentModeOn(next);
+                    triggerLumiReaction(next ? "sleep" : "confirm", 1800);
+                    void systemToggleSilentMode(next).then((s) => setSilentModeOn(s));
+                  }}
                   onIncrementTasbih={() => {
                     setTasbih((cur) => ({ ...cur, count: cur.count + 1 }));
                     triggerLumiReaction("celebrate", 2000);

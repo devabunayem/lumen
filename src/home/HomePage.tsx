@@ -72,12 +72,13 @@ export interface HomePageProps {
   onNavigateWidget: (widgetId: string) => void;
   onSelectPage: (index: number) => void;
   onOpenSettings: () => void;
-  onToggleWifi: () => Promise<boolean>;
-  onToggleBluetooth: () => Promise<boolean>;
+  onLaunchScreenshot: () => Promise<void> | void;
+  onLaunchScreenRecord: () => Promise<void> | void;
   onToggleFocus: () => void;
   onToggleMic: () => void;
-  onToggleKeepAwake: () => void;
+  onToggleCamera: () => Promise<boolean> | void;
   onLockWorkstation: () => void;
+  onToggleSilentMode: () => void;
   onIncrementTasbih: () => void;
   onResetTasbih: () => void;
   onSelectPrayerCity?: (cityId: string) => void;
@@ -151,12 +152,13 @@ export function HomePage(props: HomePageProps) {
         banglaDigits={props.banglaDigits}
         toggles={props.toggles}
         reduceMotion={props.reduceMotion}
-        onToggleWifi={props.onToggleWifi}
-        onToggleBluetooth={props.onToggleBluetooth}
+        onLaunchScreenshot={props.onLaunchScreenshot}
+        onLaunchScreenRecord={props.onLaunchScreenRecord}
         onToggleFocus={props.onToggleFocus}
         onToggleMic={props.onToggleMic}
-        onToggleKeepAwake={props.onToggleKeepAwake}
+        onToggleCamera={props.onToggleCamera}
         onLockWorkstation={props.onLockWorkstation}
+        onToggleSilentMode={props.onToggleSilentMode}
         onOpenSettings={props.onOpenSettings}
         onToggleShape={props.onToggleShape}
       />

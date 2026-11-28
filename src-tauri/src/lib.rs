@@ -35,8 +35,9 @@ use lumen_windows::{
     acquire_single_instance_mutex, battery_status, capture_screen_to_png, check_dev_ports,
     classify_and_mask_clipboard, clear_clipboard_if_matching, compute_pill_screen_rect,
     compute_top_center_position, cursor_screen_pos, fetch_open_meteo_weather,
-    get_windows_location_opt_in, is_autostart_enabled, is_caps_lock_on, is_keep_awake,
-    is_other_app_fullscreen, lock_workstation, ocr_screen_to_clipboard, open_shell_target,
+    get_windows_location_opt_in, is_autostart_enabled, is_camera_access_allowed, is_caps_lock_on,
+    is_keep_awake, is_other_app_fullscreen, launch_screen_recording, launch_snipping_screenshot,
+    lock_workstation, ocr_screen_to_clipboard, open_camera_privacy_settings, open_shell_target,
     privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
     set_click_through, set_keep_awake, set_window_bounds_atomic, toggle_radio_kind,
     write_clipboard_text,
@@ -110,6 +111,7 @@ struct AppState {
     home_visible: Arc<AtomicBool>,
     clipboard_secret: Arc<Mutex<Option<(String, Instant)>>>,
     is_fullscreen: Arc<AtomicBool>,
+    silent_mode: Arc<AtomicBool>,
     waqt_focus_task_id: Arc<Mutex<Option<i64>>>,
 }
 
@@ -122,6 +124,9 @@ struct QuickTogglesState {
     mic_muted: bool,
     mic_in_use: bool,
     keep_awake: bool,
+    camera_enabled: bool,
+    camera_in_use: bool,
+    silent_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -648,6 +653,7 @@ fn notify_push_test(
         .lock()
         .map_err(|_| "notify seq mutex poisoned".to_string())?;
     *seq = seq.saturating_add(1);
+    let silent = state.silent_mode.load(Ordering::Relaxed);
     let filtered = filter_notification(
         *seq,
         &app_name,
@@ -655,7 +661,7 @@ fn notify_push_test(
         &body,
         &cfg,
         false,
-        is_focus_assist_quiet(),
+        is_focus_assist_quiet() || silent,
     );
     if let Some(ref popup) = filtered
         && let Some(win) = app.get_webview_window("island")
@@ -994,7 +1000,63 @@ fn build_sound_ctx(
 }
 
 #[tauri::command]
+async fn system_launch_snipping_screenshot(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.hide();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+    }
+    let res = tokio::task::spawn_blocking(launch_snipping_screenshot)
+        .await
+        .map_err(|e| format!("snipping launch error: {e}"))?;
+    if let Some(win) = app.get_webview_window("island") {
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(650)).await;
+            let _ = win.show();
+        });
+    }
+    res
+}
+
+#[tauri::command]
+async fn system_launch_screen_recording(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("island") {
+        let _ = win.hide();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+    }
+    let res = tokio::task::spawn_blocking(launch_screen_recording)
+        .await
+        .map_err(|e| format!("screen record launch error: {e}"))?;
+    if let Some(win) = app.get_webview_window("island") {
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(650)).await;
+            let _ = win.show();
+        });
+    }
+    res
+}
+
+#[tauri::command]
+async fn system_toggle_camera() -> Result<bool, String> {
+    tokio::task::spawn_blocking(|| {
+        open_camera_privacy_settings()?;
+        Ok(is_camera_access_allowed())
+    })
+    .await
+    .map_err(|e| format!("camera settings error: {e}"))?
+}
+
+#[tauri::command]
+fn system_toggle_silent_mode(enabled: Option<bool>, state: State<'_, AppState>) -> bool {
+    let next = enabled.unwrap_or_else(|| !state.silent_mode.load(Ordering::Relaxed));
+    state.silent_mode.store(next, Ordering::Relaxed);
+    next
+}
+
+#[tauri::command]
 fn play_ui_sound(name: String, state: State<'_, AppState>) -> Result<bool, String> {
+    if state.silent_mode.load(Ordering::Relaxed) {
+        return Ok(false);
+    }
     let Some(sound) = UiSoundName::from_str_name(&name) else {
         return Ok(false);
     };
@@ -1023,10 +1085,12 @@ async fn system_quick_toggles_state(
                 s.running && matches!(s.phase, PomodoroPhase::Focus)
             })
             .unwrap_or(false);
+    let silent_mode = state.silent_mode.load(Ordering::Relaxed);
     tokio::task::spawn_blocking(move || {
         let (wifi, bluetooth) = quick_radios_status();
         let mic_muted = get_mic_muted();
-        let (_, mic_in_use) = privacy_device_status();
+        let (camera_in_use, mic_in_use) = privacy_device_status();
+        let camera_enabled = is_camera_access_allowed();
         let keep_awake = is_keep_awake();
         QuickTogglesState {
             wifi,
@@ -1035,6 +1099,9 @@ async fn system_quick_toggles_state(
             mic_muted,
             mic_in_use,
             keep_awake,
+            camera_enabled,
+            camera_in_use,
+            silent_mode,
         }
     })
     .await
@@ -1858,6 +1925,7 @@ pub fn run() {
             let clipboard_secret: Arc<Mutex<Option<(String, Instant)>>> =
                 Arc::new(Mutex::new(None));
             let is_fullscreen = Arc::new(AtomicBool::new(false));
+            let silent_mode = Arc::new(AtomicBool::new(false));
             let shared_waqt_focus_task_id = Arc::new(Mutex::new(None));
 
             let hotkey_app = app.handle().clone();
@@ -1898,6 +1966,7 @@ pub fn run() {
                 home_visible: Arc::clone(&home_visible),
                 clipboard_secret: Arc::clone(&clipboard_secret),
                 is_fullscreen: Arc::clone(&is_fullscreen),
+                silent_mode: Arc::clone(&silent_mode),
                 waqt_focus_task_id: Arc::clone(&shared_waqt_focus_task_id),
             });
 
@@ -2220,6 +2289,7 @@ pub fn run() {
             let notify_seq_ref = Arc::clone(&shared_notify_seq);
             let settings_ref = Arc::clone(&shared_settings);
             let bg_fs_flag = Arc::clone(&is_fullscreen);
+            let bg_silent_flag = Arc::clone(&silent_mode);
             let media_playing_flag = Arc::new(AtomicBool::new(false));
             let media_playing_for_poll = Arc::clone(&media_playing_flag);
 
@@ -2327,7 +2397,8 @@ pub fn run() {
                             let settings =
                                 settings_ref.lock().map(|g| g.clone()).unwrap_or_default();
                             let is_fs = bg_fs_flag.load(Ordering::Relaxed);
-                            let quiet = is_focus_assist_quiet();
+                            let silent = bg_silent_flag.load(Ordering::Relaxed);
+                            let quiet = is_focus_assist_quiet() || silent;
                             for item in captured {
                                 let next_id = notify_seq_ref
                                     .lock()
@@ -2340,8 +2411,11 @@ pub fn run() {
                                     filter_captured_notification(next_id, &item, &cfg, is_fs, quiet)
                                 {
                                     let _ = media_window.emit("lumen://notification-popup", &popup);
-                                    let ctx = build_sound_ctx(&settings, &pom_ref, is_fs, false);
-                                    let _ = try_play_ui_sound(UiSoundName::MailArrival, &ctx);
+                                    if !silent {
+                                        let ctx =
+                                            build_sound_ctx(&settings, &pom_ref, is_fs, false);
+                                        let _ = try_play_ui_sound(UiSoundName::MailArrival, &ctx);
+                                    }
                                 }
                             }
                         }
@@ -2437,6 +2511,10 @@ pub fn run() {
             system_toggle_wifi,
             system_toggle_bluetooth,
             system_toggle_keep_awake,
+            system_launch_snipping_screenshot,
+            system_launch_screen_recording,
+            system_toggle_camera,
+            system_toggle_silent_mode,
             prayer_set_method,
             weather_get_current,
             tasbih_get,

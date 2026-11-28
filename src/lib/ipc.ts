@@ -279,6 +279,9 @@ export interface QuickTogglesState {
   micMuted: boolean;
   micInUse: boolean;
   keepAwake: boolean;
+  cameraEnabled: boolean;
+  cameraInUse: boolean;
+  silentMode: boolean;
 }
 
 export interface OpenMeteoWeather {
@@ -912,6 +915,9 @@ export async function systemQuickTogglesState(): Promise<QuickTogglesState> {
       micMuted: false,
       micInUse: false,
       keepAwake: false,
+      cameraEnabled: true,
+      cameraInUse: false,
+      silentMode: false,
     };
   }
   return invoke<QuickTogglesState>("system_quick_toggles_state");
@@ -936,6 +942,34 @@ export async function systemToggleKeepAwake(enabled?: boolean): Promise<boolean>
     return Boolean(enabled);
   }
   return invoke<boolean>("system_toggle_keep_awake", { enabled: enabled ?? null });
+}
+
+export async function systemLaunchSnippingScreenshot(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("system_launch_snipping_screenshot");
+}
+
+export async function systemLaunchScreenRecording(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  await invoke("system_launch_screen_recording");
+}
+
+export async function systemToggleCamera(): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return true;
+  }
+  return invoke<boolean>("system_toggle_camera");
+}
+
+export async function systemToggleSilentMode(enabled?: boolean): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return Boolean(enabled);
+  }
+  return invoke<boolean>("system_toggle_silent_mode", { enabled: enabled ?? null });
 }
 
 export async function prayerSetMethod(

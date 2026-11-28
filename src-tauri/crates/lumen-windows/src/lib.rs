@@ -612,6 +612,69 @@ mod win32 {
         Ok(())
     }
 
+    /// Launches the native Windows Snipping Tool capture overlay (`ms-screenclip:`).
+    pub fn launch_snipping_screenshot() -> Result<(), String> {
+        open_shell_target("ms-screenclip:").or_else(|_| open_shell_target("SnippingTool.exe"))
+    }
+
+    /// Launches Windows Snipping Tool video recording mode (`ms-screenclip:?clippingMode=Video`).
+    pub fn launch_screen_recording() -> Result<(), String> {
+        open_shell_target("ms-screenclip:?clippingMode=Video")
+            .or_else(|_| open_shell_target("ms-screenclip:"))
+    }
+
+    /// Checks whether user-level Windows webcam access is currently allowed (`KEY_READ` on ConsentStore).
+    #[must_use]
+    pub fn is_camera_access_allowed() -> bool {
+        use windows::Win32::System::Registry::{KEY_READ, REG_SZ, REG_VALUE_TYPE};
+
+        let subkey = HSTRING::from(
+            "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam",
+        );
+        let mut root = HKEY::default();
+        if unsafe {
+            RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                Some(0),
+                KEY_READ,
+                &mut root,
+            )
+        } != ERROR_SUCCESS
+        {
+            return true;
+        }
+        let val_name = HSTRING::from("Value");
+        let mut buf = [0u16; 32];
+        let mut byte_len = (buf.len() * core::mem::size_of::<u16>()) as u32;
+        let mut val_type = REG_VALUE_TYPE::default();
+        let ok = unsafe {
+            RegQueryValueExW(
+                root,
+                PCWSTR(val_name.as_ptr()),
+                None,
+                Some(&mut val_type),
+                Some(buf.as_mut_ptr().cast::<u8>()),
+                Some(&mut byte_len),
+            ) == ERROR_SUCCESS
+                && val_type == REG_SZ
+        };
+        let _ = unsafe { RegCloseKey(root) };
+        if !ok || byte_len == 0 {
+            return true;
+        }
+        let chars_len = (byte_len as usize / 2).min(buf.len());
+        let val = String::from_utf16_lossy(&buf[..chars_len])
+            .trim_end_matches('\0')
+            .to_ascii_lowercase();
+        val != "deny"
+    }
+
+    /// Opens the official Windows Camera privacy settings page (`ms-settings:privacy-webcam`).
+    pub fn open_camera_privacy_settings() -> Result<(), String> {
+        open_shell_target("ms-settings:privacy-webcam")
+    }
+
     /// Checks active camera (ConsentStore `KEY_READ`) and real-time WASAPI active microphone capture sessions.
     #[must_use]
     pub fn privacy_device_status() -> (bool, bool) {
@@ -1466,6 +1529,23 @@ mod win32 {
         Ok(())
     }
 
+    pub fn launch_snipping_screenshot() -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn launch_screen_recording() -> Result<(), String> {
+        Ok(())
+    }
+
+    #[must_use]
+    pub const fn is_camera_access_allowed() -> bool {
+        true
+    }
+
+    pub fn open_camera_privacy_settings() -> Result<(), String> {
+        Ok(())
+    }
+
     pub fn lock_workstation() -> Result<(), String> {
         Ok(())
     }
@@ -1530,8 +1610,9 @@ mod win32 {
 pub use win32::{
     GlobalHotkeyManager, acquire_single_instance_mutex, battery_status, capture_screen_to_png,
     clear_clipboard_if_matching, cursor_screen_pos, fetch_open_meteo_weather,
-    get_windows_location_opt_in, is_autostart_enabled, is_caps_lock_on, is_keep_awake,
-    is_other_app_fullscreen, lock_workstation, ocr_screen_to_clipboard, open_shell_target,
+    get_windows_location_opt_in, is_autostart_enabled, is_camera_access_allowed, is_caps_lock_on,
+    is_keep_awake, is_other_app_fullscreen, launch_screen_recording, launch_snipping_screenshot,
+    lock_workstation, ocr_screen_to_clipboard, open_camera_privacy_settings, open_shell_target,
     privacy_device_status, quick_radios_status, read_clipboard_text, set_autostart_enabled,
     set_click_through, set_keep_awake, set_window_bounds_atomic, set_window_pill_region,
     toggle_radio_kind, write_clipboard_text,

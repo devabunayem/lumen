@@ -70,4 +70,31 @@ describe("Home Page & /dev/states 20 UI states", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(await screen.findByTestId("home-page")).toBeInTheDocument();
   });
+
+  it("renders all 7 Home quick shortcuts (Snipping Tool, Screen Record, Focus, Mic, Camera, Lock, Silent Mode) and toggles interactive states", async () => {
+    useIslandStore.setState({ ...INITIAL_ISLAND_CONTEXT, state: "expanded" });
+    render(<IslandShell shapeStyle="notch" scaleFactor={1} />);
+
+    const expectedKeys = ["screenshot", "record", "focus", "mic", "camera", "lock", "silent"];
+    for (const key of expectedKeys) {
+      expect(await screen.findByTestId(`home-toggle-${key}`)).toBeInTheDocument();
+    }
+
+    const focusBtn = screen.getByTestId("home-toggle-focus");
+    expect(focusBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(focusBtn);
+    expect(focusBtn).toHaveAttribute("aria-pressed", "true");
+
+    const micBtn = screen.getByTestId("home-toggle-mic");
+    expect(micBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(micBtn);
+    await waitFor(() => {
+      expect(micBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    const silentBtn = screen.getByTestId("home-toggle-silent");
+    expect(silentBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(silentBtn);
+    expect(silentBtn).toHaveAttribute("aria-pressed", "true");
+  });
 });

@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import {
-  BluetoothIcon,
-  CoffeeIcon,
+  BellOffIcon,
+  FocusTimerIcon,
   LockIcon,
   MicIcon,
   MicOffIcon,
-  MoonIcon,
+  ScreenRecordIcon,
   SettingsIcon,
-  WifiIcon,
+  SnippingToolIcon,
+  VideoCamIcon,
+  VideoCamOffIcon,
 } from "../../design/icons";
 import { CONTENT_STAGGER, MOTION_PRESETS } from "../../design/motion";
 import { playUiSound } from "../../design/sounds";
@@ -17,11 +19,10 @@ import { getMessages } from "../../i18n";
 import { formatDigits } from "../../i18n/digits";
 
 export interface TogglesState {
-  wifi: boolean | null;
-  bluetooth: boolean | null;
   focus: boolean;
   micMuted: boolean;
-  keepAwake: boolean;
+  cameraEnabled: boolean;
+  silentMode: boolean;
 }
 
 export interface TogglesRowProps {
@@ -30,12 +31,13 @@ export interface TogglesRowProps {
   banglaDigits: boolean;
   toggles: TogglesState;
   reduceMotion: boolean;
-  onToggleWifi: () => Promise<boolean>;
-  onToggleBluetooth: () => Promise<boolean>;
+  onLaunchScreenshot: () => Promise<void> | void;
+  onLaunchScreenRecord: () => Promise<void> | void;
   onToggleFocus: () => void;
   onToggleMic: () => void;
-  onToggleKeepAwake: () => void;
+  onToggleCamera: () => Promise<boolean> | void;
   onLockWorkstation: () => void;
+  onToggleSilentMode: () => void;
   onOpenSettings: () => void;
   onToggleShape?: () => void;
 }
@@ -79,17 +81,19 @@ export function TogglesRow({
   banglaDigits,
   toggles,
   reduceMotion,
-  onToggleWifi,
-  onToggleBluetooth,
+  onLaunchScreenshot,
+  onLaunchScreenRecord,
   onToggleFocus,
   onToggleMic,
-  onToggleKeepAwake,
+  onToggleCamera,
   onLockWorkstation,
+  onToggleSilentMode,
   onOpenSettings,
   onToggleShape,
 }: TogglesRowProps) {
   const msg = getMessages(language);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [flashKey, setFlashKey] = useState<string | null>(null);
   const { datePart, timePart } = formatHeaderDate(nowDate, banglaDigits);
 
   const triggerError = (key: string) => {
@@ -100,10 +104,24 @@ export function TogglesRow({
     }, 1800);
   };
 
-  const handleRadioClick = async (key: "wifi" | "bluetooth", action: () => Promise<boolean>) => {
+  const triggerFlash = (key: string) => {
+    setFlashKey(key);
+    window.setTimeout(() => {
+      setFlashKey((prev) => (prev === key ? null : prev));
+    }, 850);
+  };
+
+  const handleAsyncAction = async (
+    key: string,
+    action: () => Promise<unknown> | void,
+    flash = false,
+  ) => {
     try {
-      const next = await action();
-      void playUiSound(next ? "toggle_on" : "toggle_off");
+      await action();
+      if (flash) {
+        triggerFlash(key);
+      }
+      void playUiSound("toggle_on");
     } catch {
       triggerError(key);
     }
@@ -111,27 +129,30 @@ export function TogglesRow({
 
   const buttons = [
     {
-      key: "wifi",
-      label: msg.home.toggles.wifi,
-      active: Boolean(toggles.wifi),
-      activeColor: COLOR_TOKENS.accentBlue,
-      icon: <WifiIcon size={14} />,
-      onClick: () => void handleRadioClick("wifi", onToggleWifi),
+      key: "screenshot",
+      label: msg.home.toggles.screenshot,
+      active: flashKey === "screenshot",
+      activeColor: COLOR_TOKENS.accentCyan,
+      pressable: false,
+      icon: <SnippingToolIcon size={14} />,
+      onClick: () => void handleAsyncAction("screenshot", onLaunchScreenshot, true),
     },
     {
-      key: "bluetooth",
-      label: msg.home.toggles.bluetooth,
-      active: Boolean(toggles.bluetooth),
-      activeColor: COLOR_TOKENS.accentBlue,
-      icon: <BluetoothIcon size={14} />,
-      onClick: () => void handleRadioClick("bluetooth", onToggleBluetooth),
+      key: "record",
+      label: msg.home.toggles.record,
+      active: flashKey === "record",
+      activeColor: COLOR_TOKENS.accentRed,
+      pressable: false,
+      icon: <ScreenRecordIcon size={14} />,
+      onClick: () => void handleAsyncAction("record", onLaunchScreenRecord, true),
     },
     {
       key: "focus",
       label: msg.home.toggles.focus,
       active: toggles.focus,
       activeColor: COLOR_TOKENS.accentFocus,
-      icon: <MoonIcon size={14} />,
+      pressable: true,
+      icon: <FocusTimerIcon size={14} />,
       onClick: () => {
         void playUiSound(toggles.focus ? "toggle_off" : "toggle_on");
         onToggleFocus();
@@ -142,6 +163,7 @@ export function TogglesRow({
       label: msg.home.toggles.mic,
       active: toggles.micMuted,
       activeColor: COLOR_TOKENS.accentRed,
+      pressable: true,
       icon: toggles.micMuted ? <MicOffIcon size={14} /> : <MicIcon size={14} />,
       onClick: () => {
         void playUiSound(toggles.micMuted ? "toggle_off" : "toggle_on");
@@ -149,14 +171,15 @@ export function TogglesRow({
       },
     },
     {
-      key: "awake",
-      label: msg.home.toggles.keepAwake,
-      active: toggles.keepAwake,
-      activeColor: COLOR_TOKENS.accentOrange,
-      icon: <CoffeeIcon size={14} />,
+      key: "camera",
+      label: msg.home.toggles.camera,
+      active: !toggles.cameraEnabled,
+      activeColor: COLOR_TOKENS.accentRed,
+      pressable: true,
+      icon: toggles.cameraEnabled ? <VideoCamIcon size={14} /> : <VideoCamOffIcon size={14} />,
       onClick: () => {
-        void playUiSound(toggles.keepAwake ? "toggle_off" : "toggle_on");
-        onToggleKeepAwake();
+        void playUiSound(toggles.cameraEnabled ? "toggle_off" : "toggle_on");
+        void handleAsyncAction("camera", onToggleCamera);
       },
     },
     {
@@ -164,10 +187,28 @@ export function TogglesRow({
       label: msg.home.toggles.lock,
       active: false,
       activeColor: COLOR_TOKENS.surfaceButton,
+      pressable: false,
       icon: <LockIcon size={14} />,
       onClick: () => {
         void playUiSound("toggle_on");
         onLockWorkstation();
+      },
+    },
+    {
+      key: "silent",
+      label: msg.home.toggles.silent,
+      active: toggles.silentMode,
+      activeColor: COLOR_TOKENS.accentOrange,
+      pressable: true,
+      icon: <BellOffIcon size={14} />,
+      onClick: () => {
+        if (!toggles.silentMode) {
+          void playUiSound("toggle_on");
+        }
+        onToggleSilentMode();
+        if (toggles.silentMode) {
+          void playUiSound("toggle_off");
+        }
       },
     },
   ];
@@ -189,34 +230,36 @@ export function TogglesRow({
         <span className="font-semibold tabular-nums">{timePart}</span>
       </div>
 
-      <div className="flex items-center gap-1.5" role="group" aria-label="Quick toggles">
+      <div className="flex items-center gap-1" role="group" aria-label="Quick toggles">
         {buttons.map((btn) => {
           const hasErr = errorKey === btn.key;
           return (
             <div key={btn.key} className="relative flex items-center justify-center">
               <motion.button
                 type="button"
+                data-testid={`home-toggle-${btn.key}`}
                 aria-label={btn.label}
-                aria-pressed={btn.key === "lock" ? undefined : btn.active}
+                aria-pressed={btn.pressable ? btn.active : undefined}
                 title={hasErr ? msg.home.toggles.radioError : btn.label}
                 onClick={btn.onClick}
                 whileTap={
                   reduceMotion
                     ? undefined
-                    : { scale: 0.96, transition: MOTION_PRESETS.pressFeedback }
+                    : { scale: 0.94, transition: MOTION_PRESETS.pressFeedback }
                 }
                 animate={
                   hasErr && !reduceMotion ? { x: [...CONTENT_STAGGER.errorShakeX] } : { x: 0 }
                 }
                 transition={{ duration: 0.24 }}
-                className="-my-[2px] flex h-[32px] w-[32px] items-center justify-center rounded-full"
+                className="-my-[2px] flex h-[30px] w-[30px] items-center justify-center rounded-full"
                 style={{ background: "transparent" }}
               >
                 <span
-                  className="flex h-[26px] w-[26px] items-center justify-center rounded-full transition-colors duration-150"
+                  className="flex h-[24px] w-[24px] items-center justify-center rounded-full transition-colors duration-150"
                   style={{
                     background: btn.active ? btn.activeColor : COLOR_TOKENS.toggleOff,
                     color: btn.active ? COLOR_TOKENS.textPrimary : COLOR_TOKENS.toggleIconOff,
+                    border: `1px solid ${btn.active ? COLOR_TOKENS.hairlineTop : COLOR_TOKENS.hairline}`,
                   }}
                 >
                   {btn.icon}

@@ -4,6 +4,19 @@ All notable changes to **Lumen** are documented here following [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Home Quick Shortcuts Customization (`TogglesRow`, `lumen-windows`, `src-tauri`, `src/design/icons.tsx`):**
+  - Replaced the Home header quick toggles with 7 requested workflow shortcuts fitted with uniform `1.5`-stroke SVG icons (`SnippingToolIcon`, `ScreenRecordIcon`, `FocusTimerIcon`, `MicIcon`/`MicOffIcon`, `VideoCamIcon`/`VideoCamOffIcon`, `LockIcon`, `BellOffIcon`) and bilingual English/Bangla labels (`en.json`, `bn.json`):
+    - **Snipping Tool Screenshot** (`system_launch_snipping_screenshot` -> `ms-screenclip:`)
+    - **Screen Recording** (`system_launch_screen_recording` -> `ms-screenclip:?clippingMode=Video`)
+    - **One-Click Focus Timer** (synced Focus state + `pomodoroToggle`)
+    - **Mic Mute** (`system_toggle_mic_mute` WASAPI endpoint mute)
+    - **Camera On/Off** (`system_toggle_camera` -> live HKCU `ConsentStore\webcam` read + Windows Camera Privacy toggle `ms-settings:privacy-webcam`)
+    - **Lock PC** (`system_lock_workstation` -> `LockWorkStation`)
+    - **Silent Mode** (`system_toggle_silent_mode` suppressing UI/Lumi sounds and notification popups cleanly)
+  - Synced `Lumen web-site` [webIpcBridge.ts](file:///d:/Real%20client%20project/Personal%20Project/Lumen/Lumen%20web-site/src/demo/webIpcBridge.ts) and `/dev/states` (`DevStatesPage`) and added unit tests in [HomePage.test.tsx](file:///d:/Real%20client%20project/Personal%20Project/Lumen/src/__tests__/HomePage.test.tsx).
+
 ### Fixed
 
 - **Waqt Timeline Block Grid Overflow, Motion `layoutId` Projection Overlap & False "Day is Full" Trigger:**
